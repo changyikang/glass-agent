@@ -2,10 +2,11 @@
 
 一个用于配眼镜咨询场景的 MCP Server，提供验光单解读、镜片推荐、镜框选择、视力检查建议，以及新眼镜不适排查等能力。
 
-这个项目目前提供两种运行方式：
+这个项目目前提供三种运行方式：
 
-- `stdio` MCP Server：用于 Claude Desktop 或其他支持 MCP 的客户端
-- 本地 Web 调试页：用于浏览器里直接填写参数、查看工具返回结果
+- `stdio` MCP Server（TypeScript）：用于 Claude Desktop 或其他支持 MCP 的客户端
+- 本地 Web 调试页（TypeScript）：用于浏览器里直接填写参数、查看工具返回结果
+- **Java + Spring Boot 智能体**：见 [`java/`](java/) 目录，基于 Spring AI，用大模型通过 Function Calling 自动编排这 6 个工具，并提供工具直调 REST 接口
 
 ## 功能
 
