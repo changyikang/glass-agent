@@ -1,0 +1,25 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: glass-agent
+  ai:
+    openai:
+      # API Key 走环境变量，不写死在代码里。未配置时给一个占位值，保证应用仍能启动，
+      # 这样 /api/tools/** 工具接口照常可用；只有 /api/agent/chat 对话接口在 key 无效时会返回友好错误。
+      api-key: ${AI_API_KEY:not-configured}
+      # 默认指向阿里云百炼（通义千问）的 OpenAI 兼容端点；可改成 DeepSeek / OpenAI 官方地址。
+      #   通义千问: https://dashscope.aliyuncs.com/compatible-mode/v1
+      #   DeepSeek: https://api.deepseek.com/v1
+      #   OpenAI:   https://api.openai.com/v1
+      base-url: ${AI_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+      chat:
+        options:
+          # 模型名，按所选服务商填写，例如 qwen-plus / deepseek-chat / gpt-4o-mini
+          model: ${AI_MODEL:qwen-plus}
+          temperature: 0.3
+
+logging:
+  level:
+    org.springframework.ai: INFO
