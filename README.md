@@ -28,17 +28,17 @@ tools that an LLM (or any MCP client) can use. It covers prescription reading,
 lens recommendation, frame selection, vision-check guidance, progressive-lens
 assessment, and troubleshooting discomfort with new glasses.
 
-The project ships **two interchangeable implementations that share the same six
+The project ships **two interchangeable implementations that share the same seven
 tools**, so you can adopt whichever fits your stack:
 
 | Implementation | Path | Best for |
 | --- | --- | --- |
 | **TypeScript MCP Server** | root (`src/`) | Plugging into Claude Desktop or any MCP-compatible client over `stdio` |
-| **Java Spring Boot Agent** | [`java/`](java/) | Running as a service where an LLM auto-orchestrates the tools via Function Calling, plus direct REST access |
+| **Java Spring Boot Agent** | [`java/`](java/) | A conversational agent that proactively asks the questions it needs, then recommends and attaches purchase links — via Function Calling, plus direct REST access |
 
 ### Features
 
-The six built-in tools:
+The seven built-in tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -48,12 +48,17 @@ The six built-in tools:
 | `prescription_interpreter` | Explains SPH / CYL / AXIS / PD / ADD and flags fitting risks |
 | `progressive_lens_assessment` | Assesses single-vision vs. office vs. progressive lenses |
 | `new_glasses_troubleshooting` | Tells adaptation from a real problem needing a re-check |
+| `shopping_links` | Turns a recommendation into ready-to-click JD / Taobao / Pinduoduo search links |
+
+The Java agent adds **multi-turn intake**: pass a `conversationId` and it remembers
+the dialogue, so it asks the questions it needs, gives a fitting recommendation, and
+attaches purchase links at the end.
 
 ### Architecture
 
 ```
                          ┌──────────────────────────────┐
-        MCP client       │      Six shared optical       │      REST client
+        MCP client       │     Seven shared optical      │      REST client
    (Claude Desktop, …)   │        fitting tools          │   (curl / your app)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │
@@ -122,12 +127,14 @@ curl -X POST http://localhost:8080/api/tools/lens_recommendation \
   -d '{"sph":-7.5,"cyl":-2.0,"usage":"daily","budget":"premium"}'
 ```
 
-Chat with the agent (needs `AI_API_KEY`):
+Chat with the agent (needs `AI_API_KEY`). Send the same `conversationId` across
+turns so it remembers the dialogue, asks what it still needs, then recommends and
+attaches purchase links:
 
 ```bash
 curl -X POST http://localhost:8080/api/agent/chat \
   -H 'Content-Type: application/json' \
-  -d '{"message":"I am -3.00, mostly on the computer, mid budget — recommend lenses"}'
+  -d '{"conversationId":"u-123","message":"I want new glasses, mostly for the computer"}'
 ```
 
 See [`java/README.md`](java/README.md) for full details.
@@ -171,16 +178,16 @@ Released under the [MIT License](LICENSE).
 
 **glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜框选择、视力检查建议、渐进镜片评估，以及新眼镜佩戴不适排查。
 
-项目提供 **两套可互换、共享同一组六个工具的实现**，你可以按技术栈选用：
+项目提供 **两套可互换、共享同一组七个工具的实现**，你可以按技术栈选用：
 
 | 实现方式 | 路径 | 适用场景 |
 | --- | --- | --- |
 | **TypeScript MCP Server** | 根目录（`src/`） | 通过 `stdio` 接入 Claude Desktop 或任何兼容 MCP 的客户端 |
-| **Java Spring Boot 智能体** | [`java/`](java/) | 作为服务运行，大模型通过 Function Calling 自动编排工具，并提供工具直调 REST 接口 |
+| **Java Spring Boot 智能体** | [`java/`](java/) | 会主动追问必要信息的对话式智能体：先问诊、再给建议、并附上购买链接；大模型通过 Function Calling 自动编排工具，同时提供工具直调 REST 接口 |
 
 ### 功能
 
-内置六个工具：
+内置七个工具：
 
 | 工具 | 作用 |
 | --- | --- |
@@ -190,12 +197,16 @@ Released under the [MIT License](LICENSE).
 | `prescription_interpreter` | 解读 SPH / CYL / AXIS / PD / ADD 并提示配镜风险点 |
 | `progressive_lens_assessment` | 评估更适合单焦、办公镜还是渐进多焦点镜片 |
 | `new_glasses_troubleshooting` | 区分是适应期还是需要复查的真问题 |
+| `shopping_links` | 把配镜建议转成可直接点击的京东 / 淘宝 / 拼多多搜索购买链接 |
+
+Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可记住对话上下文，
+于是它会主动追问所需信息，给出配镜建议，并在最后附上购买链接。
 
 ### 架构
 
 ```
                          ┌──────────────────────────────┐
-       MCP 客户端         │        六个共享的配镜工具       │       REST 客户端
+       MCP 客户端         │        七个共享的配镜工具       │       REST 客户端
    (Claude Desktop 等)   │                              │   (curl / 你的应用)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │
@@ -261,12 +272,13 @@ curl -X POST http://localhost:8080/api/tools/lens_recommendation \
   -d '{"sph":-7.5,"cyl":-2.0,"usage":"daily","budget":"premium"}'
 ```
 
-智能体对话（需配置 `AI_API_KEY`）：
+智能体对话（需配置 `AI_API_KEY`）。多轮之间传同一个 `conversationId`，
+它就能记住上下文：先主动追问缺的信息，再给出建议并附上购买链接：
 
 ```bash
 curl -X POST http://localhost:8080/api/agent/chat \
   -H 'Content-Type: application/json' \
-  -d '{"message":"我近视-3.00度，主要用电脑，中等预算，帮我推荐镜片"}'
+  -d '{"conversationId":"u-123","message":"我想配副新眼镜，主要用来看电脑"}'
 ```
 
 完整说明见 [`java/README.md`](java/README.md)。

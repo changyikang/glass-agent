@@ -409,7 +409,8 @@ function renderPage(): string {
         frame_selection_guide: "镜框选择指南",
         prescription_interpreter: "验光单解读",
         progressive_lens_assessment: "渐进镜片适配评估",
-        new_glasses_troubleshooting: "新眼镜不适排查"
+        new_glasses_troubleshooting: "新眼镜不适排查",
+        shopping_links: "购买链接生成"
       };
       const fieldLabelMap = {
         age_group: "年龄段",

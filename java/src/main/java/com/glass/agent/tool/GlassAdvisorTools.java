@@ -1,5 +1,7 @@
 package com.glass.agent.tool;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -603,6 +605,65 @@ public class GlassAdvisorTools {
                                 ? "有一定概率属于适应期，但仍需留意是否逐日改善。"
                                 : "更像是处方、加工或镜架参数问题，而不只是适应期。",
                 bulletJoin(actionItems));
+    }
+
+    // ---------------------------------------------------------------------
+    // 7. 购物链接生成
+    // ---------------------------------------------------------------------
+    @Tool(description = "购物链接生成：把配镜建议转成可点击的电商搜索购买链接。传入若干中文商品关键词"
+            + "（如「1.67 非球面 防蓝光 镜片」「TR90 超轻 近视镜框」），返回每个关键词在京东、淘宝、拼多多的搜索链接，"
+            + "便于用户直接比价选购。")
+    public String shoppingLinks(
+            @ToolParam(description = "商品搜索关键词列表，建议每项包含关键规格，如折射率/材质/镀膜（镜片）或框型/材质（镜框）")
+            List<String> keywords) {
+
+        if (keywords == null || keywords.isEmpty()) {
+            throw new IllegalArgumentException("参数 keywords 必须是非空的关键词列表");
+        }
+        List<String> cleaned = new ArrayList<>();
+        for (String keyword : keywords) {
+            if (keyword != null && !keyword.isBlank()) {
+                cleaned.add(keyword.trim());
+            }
+        }
+        if (cleaned.isEmpty()) {
+            throw new IllegalArgumentException("参数 keywords 至少要包含一个非空关键词");
+        }
+        if (cleaned.size() > 8) {
+            throw new IllegalArgumentException("参数 keywords 一次最多支持 8 个");
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("## 🛒 购买链接\n");
+        sb.append("以下链接会跳转到各平台的实时搜索结果，可直接点击比价选购：\n\n");
+        for (int i = 0; i < cleaned.size(); i++) {
+            String keyword = cleaned.get(i);
+            if (i > 0) {
+                sb.append("\n\n");
+            }
+            sb.append("**").append(keyword).append("**\n- ");
+            sb.append("[京东](").append(jdSearchUrl(keyword)).append(") · ");
+            sb.append("[淘宝](").append(taobaoSearchUrl(keyword)).append(") · ");
+            sb.append("[拼多多](").append(pddSearchUrl(keyword)).append(")");
+        }
+        sb.append("\n\n> 链接为搜索入口，价格与款式以平台实时为准；请务必对照验光单核对度数后再下单。");
+        return sb.toString();
+    }
+
+    private static String encodeKeyword(String keyword) {
+        return URLEncoder.encode(keyword, StandardCharsets.UTF_8);
+    }
+
+    private static String jdSearchUrl(String keyword) {
+        return "https://search.jd.com/Search?keyword=" + encodeKeyword(keyword) + "&enc=utf-8";
+    }
+
+    private static String taobaoSearchUrl(String keyword) {
+        return "https://s.taobao.com/search?q=" + encodeKeyword(keyword);
+    }
+
+    private static String pddSearchUrl(String keyword) {
+        return "https://mobile.yangkeduo.com/search_result.html?search_key=" + encodeKeyword(keyword);
     }
 
     // ---------------------------------------------------------------------

@@ -34,7 +34,8 @@ public class ToolController {
                 tool("frame_selection_guide", "镜框选择指南：结合脸型、生活方式和度数深浅推荐框型、材质和尺寸思路。"),
                 tool("prescription_interpreter", "验光单解读：解释 SPH/CYL/AXIS/PD/ADD 的意义，并提示配镜风险点。"),
                 tool("progressive_lens_assessment", "渐进镜片适配评估：判断更适合单焦、办公镜还是渐进多焦点镜片。"),
-                tool("new_glasses_troubleshooting", "新眼镜不适排查：根据症状、佩戴时长和镜片类型判断是适应期还是需要复查。"));
+                tool("new_glasses_troubleshooting", "新眼镜不适排查：根据症状、佩戴时长和镜片类型判断是适应期还是需要复查。"),
+                tool("shopping_links", "购物链接生成：把配镜建议转成京东/淘宝/拼多多的商品搜索购买链接。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -72,6 +73,11 @@ public class ToolController {
                 req.symptom(), req.wearDays(), req.lensType(), req.prescriptionChanged()));
     }
 
+    @PostMapping("/shopping_links")
+    public ToolResponse shoppingLinks(@RequestBody ShoppingRequest req) {
+        return ToolResponse.of(tools.shoppingLinks(req.keywords()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -104,5 +110,8 @@ public class ToolController {
     }
 
     public record TroubleshootingRequest(String symptom, int wearDays, String lensType, boolean prescriptionChanged) {
+    }
+
+    public record ShoppingRequest(List<String> keywords) {
     }
 }
