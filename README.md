@@ -4,7 +4,7 @@
 
 **An optical-fitting advisor built on the Model Context Protocol (MCP) and LLM Function Calling.**
 
-**基于 MCP 与大模型 Function Calling 的智能配镜顾问。**
+**基于 MCP 与大模型 Function Calling 的智能配镜顾问**
 
 [![CI](https://github.com/changyikang/glass-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/changyikang/glass-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
