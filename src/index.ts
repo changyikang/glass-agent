@@ -21,7 +21,7 @@ export type ToolDefinition = {
 };
 
 const server = new Server(
-  { name: "glass-mcp", version: "1.2.0" },
+  { name: "glass-agent", version: "1.2.0" },
   { capabilities: { tools: {} } }
 );
 

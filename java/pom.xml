@@ -18,7 +18,7 @@
     <description>配眼镜指南智能体：Spring Boot + Spring AI，基于大模型 Function Calling 调用配镜工具</description>
 
     <properties>
-        <java.version>17</java.version>
+        <java.version>21</java.version>
         <spring-ai.version>1.0.0</spring-ai.version>
     </properties>
 

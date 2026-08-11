@@ -1,18 +1,44 @@
 {
-  "name": "glass-mcp",
+  "name": "glass-agent",
   "version": "1.2.0",
-  "description": "配眼镜指南 MCP Server",
+  "description": "Optical-fitting advisor MCP server / 配镜指南 MCP Server",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "glass-mcp": "dist/index.js"
+    "glass-agent": "dist/index.js"
   },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "llm",
+    "function-calling",
+    "eyeglasses",
+    "optical",
+    "glasses",
+    "typescript"
+  ],
+  "homepage": "https://github.com/changyikang/glass-agent#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/changyikang/glass-agent.git"
+  },
+  "bugs": {
+    "url": "https://github.com/changyikang/glass-agent/issues"
+  },
+  "author": "changyikang",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "web": "npm run build && node dist/web.js",
     "dev": "tsc --watch",
-    "test": "npm run build && node --test dist/**/*.test.js"
+    "test": "npm run build && node --test dist/*.test.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"
