@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Bump the Java toolchain from 17 to the 21 LTS (pom, CI, docs and badges).
+- 将 Java 版本从 17 升级到 21 LTS（pom、CI、文档与徽章同步）。
+
 ### Added
 - Bilingual (English / 中文) README with badges, architecture overview and quickstart for both components.
 - 双语（英文 / 中文）README，含徽章、架构说明与两个模块的快速上手。

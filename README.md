@@ -9,7 +9,7 @@
 [![CI](https://github.com/changyikang/glass-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/changyikang/glass-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?logo=node.js&logoColor=white)](package.json)
-[![Java](https://img.shields.io/badge/Java-17%2B-007396?logo=openjdk&logoColor=white)](java/pom.xml)
+[![Java](https://img.shields.io/badge/Java-21%2B-007396?logo=openjdk&logoColor=white)](java/pom.xml)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3-6DB33F?logo=springboot&logoColor=white)](java/pom.xml)
 [![MCP](https://img.shields.io/badge/MCP-compatible-000000)](https://modelcontextprotocol.io)
 
@@ -72,7 +72,7 @@ LLM layer that selects and calls tools from natural-language questions.
 ### Requirements
 
 - TypeScript MCP Server: **Node.js 18+** and npm
-- Java Agent: **JDK 17+** and Maven 3.8+
+- Java Agent: **JDK 21+** and Maven 3.8+
 
 ### Quick start — TypeScript MCP Server
 
@@ -213,7 +213,7 @@ Released under the [MIT License](LICENSE).
 ### 环境要求
 
 - TypeScript MCP Server：**Node.js 18+** 与 npm
-- Java 智能体：**JDK 17+** 与 Maven 3.8+
+- Java 智能体：**JDK 21+** 与 Maven 3.8+
 
 ### 快速上手 —— TypeScript MCP Server
 
