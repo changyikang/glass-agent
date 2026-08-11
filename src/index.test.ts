@@ -18,7 +18,24 @@ test("exports the expected MCP tool set", () => {
     "prescription_interpreter",
     "progressive_lens_assessment",
     "new_glasses_troubleshooting",
+    "shopping_links",
   ]);
+});
+
+test("shopping links builds per-platform search URLs and encodes keywords", () => {
+  const tool = getTool("shopping_links");
+  const result = tool.handler({ keywords: ["1.67 非球面 防蓝光 镜片", "  "] });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  const encoded = encodeURIComponent("1.67 非球面 防蓝光 镜片");
+  assert.match(text, new RegExp(`https://search\\.jd\\.com/Search\\?keyword=${encoded}`));
+  assert.ok(text.includes("淘宝") && text.includes("拼多多"));
+});
+
+test("shopping links rejects an empty keyword list", () => {
+  const tool = getTool("shopping_links");
+  assert.throws(() => tool.handler({ keywords: [] }), /至少要包含一个非空关键词/);
 });
 
 test("lens recommendation returns domain-specific driving guidance", () => {

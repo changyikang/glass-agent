@@ -57,4 +57,19 @@ class GlassAdvisorToolsTest {
                 () -> tools.visionCheckGuide("teenager", null));
         assertTrue(ex.getMessage().contains("age_group"));
     }
+
+    @Test
+    void shoppingLinksBuildsEncodedPlatformUrls() {
+        String result = tools.shoppingLinks(java.util.List.of("1.67 非球面 防蓝光 镜片", "  "));
+        String encoded = java.net.URLEncoder.encode("1.67 非球面 防蓝光 镜片", java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(result.contains("https://search.jd.com/Search?keyword=" + encoded));
+        assertTrue(result.contains("淘宝") && result.contains("拼多多"));
+    }
+
+    @Test
+    void shoppingLinksRejectsEmptyKeywords() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.shoppingLinks(java.util.List.of()));
+        assertTrue(ex.getMessage().contains("keywords"));
+    }
 }

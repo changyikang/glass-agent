@@ -191,6 +191,24 @@ export const tools: ToolDefinition[] = [
     },
     handler: handleNewGlassesTroubleshooting,
   },
+  {
+    name: "shopping_links",
+    description:
+      "购物链接生成：把配镜建议转成可点击的电商搜索购买链接。传入若干中文商品关键词（如「1.67 非球面 防蓝光 镜片」「TR90 超轻 近视镜框」），返回每个关键词在京东、淘宝、拼多多的搜索链接，便于用户直接比价选购。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        keywords: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "商品搜索关键词列表，建议每项包含关键规格，如折射率/材质/镀膜（镜片）或框型/材质（镜框）。",
+        },
+      },
+      required: ["keywords"],
+    },
+    handler: handleShoppingLinks,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -722,6 +740,44 @@ ${actionItems.map((item) => `- ${item}`).join("\n")}
 - 瞳距、瞳高、散光轴位是否准确
 - 镜框前倾角、顶点距、面弯是否与验配时一致
 - 新旧处方差异是否超过正常适应范围`);
+}
+
+const shoppingPlatforms: Array<{ name: string; build: (keyword: string) => string }> = [
+  { name: "京东", build: (kw) => `https://search.jd.com/Search?keyword=${encodeURIComponent(kw)}&enc=utf-8` },
+  { name: "淘宝", build: (kw) => `https://s.taobao.com/search?q=${encodeURIComponent(kw)}` },
+  { name: "拼多多", build: (kw) => `https://mobile.yangkeduo.com/search_result.html?search_key=${encodeURIComponent(kw)}` },
+];
+
+function handleShoppingLinks(args: ToolArgs): ToolResult {
+  const raw = args["keywords"];
+  if (!Array.isArray(raw)) {
+    throw new Error("参数 keywords 必须是字符串数组");
+  }
+  const keywords = raw
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter((item) => item.length > 0);
+  if (keywords.length === 0) {
+    throw new Error("参数 keywords 至少要包含一个非空关键词");
+  }
+  if (keywords.length > 8) {
+    throw new Error("参数 keywords 一次最多支持 8 个");
+  }
+
+  const sections = keywords.map((keyword) => {
+    const links = shoppingPlatforms.map((p) => `[${p.name}](${p.build(keyword)})`).join(" · ");
+    return `**${keyword}**\n- ${links}`;
+  });
+
+  const text = [
+    "## 🛒 购买链接",
+    "以下链接会跳转到各平台的实时搜索结果，可直接点击比价选购：",
+    "",
+    sections.join("\n\n"),
+    "",
+    "> 链接为搜索入口，价格与款式以平台实时为准；请务必对照验光单核对度数后再下单。",
+  ].join("\n");
+
+  return textResult(text);
 }
 
 function ensureObject(value: unknown): ToolArgs {

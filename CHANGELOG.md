@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `shopping_links` tool (both implementations) that turns a recommendation into ready-to-click JD / Taobao / Pinduoduo search links.
+- 新增 `shopping_links` 工具（两套实现）：把配镜建议转成京东 / 淘宝 / 拼多多的商品搜索购买链接。
+- Multi-turn intake for the Java agent: a `conversationId` on `/api/agent/chat` plus an in-memory `ConversationStore`, and a system prompt that proactively asks the questions it needs before recommending and attaching purchase links.
+- Java 智能体的多轮问诊：`/api/agent/chat` 支持 `conversationId` 并新增进程内 `ConversationStore`，系统提示词改为先主动追问必要信息、再给建议并附购买链接。
+
 ### Changed
 - Bump the Java toolchain from 17 to the 21 LTS (pom, CI, docs and badges).
 - 将 Java 版本从 17 升级到 21 LTS（pom、CI、文档与徽章同步）。
