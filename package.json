@@ -38,7 +38,7 @@
     "start": "node dist/index.js",
     "web": "npm run build && node dist/web.js",
     "dev": "tsc --watch",
-    "test": "npm run build && node --test dist/**/*.test.js"
+    "test": "npm run build && node --test dist/*.test.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"
