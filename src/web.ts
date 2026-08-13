@@ -645,6 +645,30 @@ function renderPage(): string {
         loadButton.className = "secondary";
         loadButton.textContent = "JSON 回填表单";
 
+        const sampleButton = document.createElement("button");
+        sampleButton.className = "secondary";
+        sampleButton.textContent = "填充示例数据";
+
+        function applyArgsToForm(args) {
+          const inputs = fields.querySelectorAll("input, select");
+          for (const input of inputs) {
+            if (!(input.name in args)) {
+              input.value = "";
+              continue;
+            }
+            input.value = String(args[input.name]);
+          }
+        }
+
+        sampleButton.addEventListener("click", () => {
+          const sample = tool.sample || {};
+          quickJson.value = JSON.stringify(sample, null, 2);
+          applyArgsToForm(sample);
+          resultStatus.textContent = "已填充示例数据";
+          resultStatus.className = "status ok";
+          resultTool.textContent = displayToolName(tool);
+        });
+
         syncButton.addEventListener("click", () => {
           const args = {};
           const inputs = fields.querySelectorAll("input, select");
@@ -669,15 +693,7 @@ function renderPage(): string {
             return;
           }
 
-          const inputs = fields.querySelectorAll("input, select");
-          for (const input of inputs) {
-            if (!(input.name in args)) {
-              input.value = "";
-              continue;
-            }
-            const value = args[input.name];
-            input.value = String(value);
-          }
+          applyArgsToForm(args);
         });
 
         runButton.addEventListener("click", async () => {
@@ -728,6 +744,7 @@ function renderPage(): string {
         });
 
         actions.appendChild(runButton);
+        actions.appendChild(sampleButton);
         actions.appendChild(syncButton);
         actions.appendChild(loadButton);
         card.appendChild(actions);

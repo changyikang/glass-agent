@@ -17,6 +17,8 @@ export type ToolDefinition = {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  /** A realistic, valid set of arguments used to pre-fill the debug web page. */
+  sample: ToolArgs;
   handler: (args: ToolArgs) => ToolResult;
 };
 
@@ -44,6 +46,7 @@ export const tools: ToolDefinition[] = [
       },
       required: ["age_group"],
     },
+    sample: { age_group: "adult", concern: "近视" },
     handler: handleVisionCheckGuide,
   },
   {
@@ -73,6 +76,7 @@ export const tools: ToolDefinition[] = [
       },
       required: ["sph", "usage", "budget"],
     },
+    sample: { sph: -3.25, cyl: -0.75, usage: "computer", budget: "mid" },
     handler: handleLensRecommendation,
   },
   {
@@ -99,6 +103,7 @@ export const tools: ToolDefinition[] = [
       },
       required: ["face_shape", "lifestyle"],
     },
+    sample: { face_shape: "round", lifestyle: "professional", prescription_strength: "medium" },
     handler: handleFrameSelectionGuide,
   },
   {
@@ -117,6 +122,15 @@ export const tools: ToolDefinition[] = [
         add: { type: "number", description: "老花附加度数 ADD，单位D，可选" },
       },
       required: ["od_sph", "os_sph"],
+    },
+    sample: {
+      od_sph: -3,
+      od_cyl: -0.75,
+      od_axis: 90,
+      os_sph: -2.75,
+      os_cyl: -0.5,
+      os_axis: 85,
+      pd: 62,
     },
     handler: handlePrescriptionInterpreter,
   },
@@ -150,6 +164,13 @@ export const tools: ToolDefinition[] = [
         },
       },
       required: ["age", "near_difficulty", "screen_hours", "drive_frequency", "first_time_user"],
+    },
+    sample: {
+      age: 45,
+      near_difficulty: "obvious",
+      screen_hours: 7,
+      drive_frequency: "weekly",
+      first_time_user: true,
     },
     handler: handleProgressiveLensAssessment,
   },
@@ -189,6 +210,12 @@ export const tools: ToolDefinition[] = [
       },
       required: ["symptom", "wear_days", "lens_type", "prescription_changed"],
     },
+    sample: {
+      symptom: "dizziness",
+      wear_days: 3,
+      lens_type: "progressive",
+      prescription_changed: true,
+    },
     handler: handleNewGlassesTroubleshooting,
   },
   {
@@ -207,6 +234,7 @@ export const tools: ToolDefinition[] = [
       },
       required: ["keywords"],
     },
+    sample: { keywords: ["1.67 非球面 防蓝光 镜片", "TR90 超轻 近视镜框"] },
     handler: handleShoppingLinks,
   },
 ];

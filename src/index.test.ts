@@ -71,3 +71,11 @@ test("executeTool returns MCP-style error result for unknown tools", () => {
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /未知工具/);
 });
+
+test("every tool ships a sample payload that runs successfully", () => {
+  for (const tool of tools) {
+    assert.ok(tool.sample, `expected ${tool.name} to have a sample payload`);
+    const result = executeTool(tool.name, tool.sample);
+    assert.equal(result.isError, undefined, `sample for ${tool.name} should not error: ${result.content[0]?.text}`);
+  }
+});

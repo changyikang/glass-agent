@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- One-click sample-data fill on the TypeScript debug page: each tool now ships a realistic `sample` payload (validated by a unit test), and the debug page has a "填充示例数据" button that fills the form and JSON box from it.
+- 调试页示例数据一键填充：每个工具新增一份经过单元测试校验的真实 `sample` 参数，调试页新增“填充示例数据”按钮，一键把示例写入表单和 JSON 编辑框。
 - `shopping_links` tool (both implementations) that turns a recommendation into ready-to-click JD / Taobao / Pinduoduo search links.
 - 新增 `shopping_links` 工具（两套实现）：把配镜建议转成京东 / 淘宝 / 拼多多的商品搜索购买链接。
 - Multi-turn intake for the Java agent: a `conversationId` on `/api/agent/chat` plus an in-memory `ConversationStore`, and a system prompt that proactively asks the questions it needs before recommending and attaching purchase links.

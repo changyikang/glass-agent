@@ -89,6 +89,9 @@ npm start         # start the stdio MCP server
 npm run web       # start the local web debug page (http://127.0.0.1:3000)
 ```
 
+Each tool card on the debug page has a **"填充示例数据" (fill sample data)** button that
+loads a realistic, valid payload into the form and JSON box so you can try a tool in one click.
+
 Register it with an MCP client such as Claude Desktop:
 
 ```json
@@ -158,7 +161,7 @@ glass-agent/
 
 - [ ] More optical business rules and a case library
 - [ ] Tool-call history
-- [ ] One-click sample-data fill on the debug page
+- [x] One-click sample-data fill on the debug page
 - [ ] A more polished product-grade frontend
 - [ ] Broader automated test coverage
 
@@ -236,6 +239,9 @@ npm start         # 启动 stdio MCP Server
 npm run web       # 启动本地网页调试页（http://127.0.0.1:3000）
 ```
 
+调试页每个工具卡片上都有一个**「填充示例数据」**按钮，点击即可把一份真实有效的参数
+一键写入表单和 JSON 编辑框，方便快速试用。
+
 接入 Claude Desktop 等 MCP 客户端：
 
 ```json
@@ -302,7 +308,7 @@ glass-agent/
 
 - [ ] 增加更多配镜业务规则与案例库
 - [ ] 工具调用历史记录
-- [ ] 调试页示例数据一键填充
+- [x] 调试页示例数据一键填充
 - [ ] 更正式的产品级前端页面
 - [ ] 更全面的自动化测试
 
