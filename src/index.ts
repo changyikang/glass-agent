@@ -6,6 +6,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { recordCall } from "./history.js";
 
 type ToolArgs = Record<string, unknown>;
 export type ToolResult = {
@@ -247,16 +248,21 @@ export function listTools(): Array<Omit<ToolDefinition, "handler">> {
 
 export function executeTool(name: string, args: unknown): ToolResult {
   const tool = toolMap.get(name);
+  let result: ToolResult;
+
   if (!tool) {
-    return errorResult(`未知工具：${name}`);
+    result = errorResult(`未知工具：${name}`);
+  } else {
+    try {
+      result = tool.handler(ensureObject(args ?? {}));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      result = errorResult(message);
+    }
   }
 
-  try {
-    return tool.handler(ensureObject(args ?? {}));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return errorResult(message);
-  }
+  recordCall(name, args, result);
+  return result;
 }
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({

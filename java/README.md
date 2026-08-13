@@ -11,6 +11,7 @@
 | 智能体对话 | `POST /api/agent/chat` | 是 | 自然语言多轮对话，大模型自动追问并编排工具 |
 | 直接调用工具 | `POST /api/tools/{name}` | 否 | 传结构化参数直接拿工具结果，便于调试或程序化集成 |
 | 工具列表 | `GET /api/tools` | 否 | 列出全部工具及说明 |
+| 调用历史 | `GET /api/history` / `DELETE /api/history` | 否 | 查询最近的工具调用（最新在前，可加 `?limit=N`）或清空 |
 
 ## 多轮问诊
 
@@ -84,6 +85,13 @@ curl -X POST http://localhost:8080/api/tools/shopping_links \
   -d '{"keywords":["1.67 非球面 防蓝光 镜片","TR90 超轻 近视镜框"]}'
 ```
 
+查看 / 清空工具调用历史（进程内保存最近 50 次，最新在前）：
+
+```bash
+curl http://localhost:8080/api/history          # 全部，或加 ?limit=10
+curl -X DELETE http://localhost:8080/api/history # 清空
+```
+
 智能体对话（需配置密钥，多轮之间传同一个 `conversationId`）：
 
 ```bash
@@ -107,13 +115,15 @@ java/
     ├── GlassAgentApplication.java      # 启动类
     ├── tool/
     │   ├── GlassAdvisorTools.java      # 7 个工具的业务逻辑 + @Tool 注解
+    │   ├── ToolCallHistory.java        # 进程内工具调用历史（最近 50 次）
     │   └── Diopters.java               # 度数格式化帮助函数
     ├── agent/
     │   ├── ChatConfig.java             # ChatClient 装配（系统提示词 + 挂载工具）
     │   ├── ChatController.java         # 智能体对话接口（多轮问诊）
     │   └── ConversationStore.java      # 进程内对话记忆（按 conversationId）
     └── web/
-        ├── ToolController.java         # 工具直调 REST 接口
+        ├── ToolController.java         # 工具直调 REST 接口（同时记录调用历史）
+        ├── HistoryController.java      # 工具调用历史 REST 接口
         └── ApiExceptionHandler.java    # 参数校验错误统一处理
 ```
 

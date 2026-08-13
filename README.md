@@ -91,6 +91,9 @@ npm run web       # start the local web debug page (http://127.0.0.1:3000)
 
 Each tool card on the debug page has a **"填充示例数据" (fill sample data)** button that
 loads a realistic, valid payload into the form and JSON box so you can try a tool in one click.
+A **tool-call history** panel shows the most recent 50 calls (from both MCP clients and the page
+itself), newest first, and can be refreshed or cleared. It is also available as a small REST API:
+`GET /api/history` (optionally `?limit=N`) and `DELETE /api/history`.
 
 Register it with an MCP client such as Claude Desktop:
 
@@ -160,7 +163,7 @@ glass-agent/
 ### Roadmap
 
 - [ ] More optical business rules and a case library
-- [ ] Tool-call history
+- [x] Tool-call history (debug page panel + REST API, both implementations)
 - [x] One-click sample-data fill on the debug page
 - [ ] A more polished product-grade frontend
 - [ ] Broader automated test coverage
@@ -240,7 +243,9 @@ npm run web       # 启动本地网页调试页（http://127.0.0.1:3000）
 ```
 
 调试页每个工具卡片上都有一个**「填充示例数据」**按钮，点击即可把一份真实有效的参数
-一键写入表单和 JSON 编辑框，方便快速试用。
+一键写入表单和 JSON 编辑框，方便快速试用。页面还带一个**工具调用历史**面板，展示最近 50 次
+调用（含 MCP 客户端与本页调用），最新在前，可刷新或清空；同时提供 REST 接口
+`GET /api/history`（可加 `?limit=N`）与 `DELETE /api/history`。
 
 接入 Claude Desktop 等 MCP 客户端：
 
@@ -307,7 +312,7 @@ glass-agent/
 ### 后续规划
 
 - [ ] 增加更多配镜业务规则与案例库
-- [ ] 工具调用历史记录
+- [x] 工具调用历史记录（调试页面板 + REST 接口，两套实现）
 - [x] 调试页示例数据一键填充
 - [ ] 更正式的产品级前端页面
 - [ ] 更全面的自动化测试

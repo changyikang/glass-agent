@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { executeTool, tools } from "./index.js";
+import { getHistory, clearHistory } from "./history.js";
 
 function getTool(name: string) {
   const tool = tools.find((item) => item.name === name);
@@ -78,4 +79,17 @@ test("every tool ships a sample payload that runs successfully", () => {
     const result = executeTool(tool.name, tool.sample);
     assert.equal(result.isError, undefined, `sample for ${tool.name} should not error: ${result.content[0]?.text}`);
   }
+});
+
+test("executeTool records every call in the shared history log", () => {
+  clearHistory();
+  executeTool("vision_check_guide", { age_group: "adult" });
+  executeTool("missing_tool", {});
+
+  const history = getHistory();
+  assert.equal(history.length, 2);
+  assert.equal(history[0].tool, "missing_tool");
+  assert.equal(history[0].isError, true);
+  assert.equal(history[1].tool, "vision_check_guide");
+  assert.equal(history[1].isError, false);
 });

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Tool-call history in both implementations: an in-memory log of the most recent 50 tool calls (success and error), newest first. The TypeScript debug page gains a history panel, and both implementations expose `GET /api/history` (optional `?limit=N`) and `DELETE /api/history`.
+- 两套实现新增工具调用历史：进程内记录最近 50 次调用（含成功与失败），最新在前。TypeScript 调试页新增历史面板，两套实现均提供 `GET /api/history`（可加 `?limit=N`）与 `DELETE /api/history`。
 - One-click sample-data fill on the TypeScript debug page: each tool now ships a realistic `sample` payload (validated by a unit test), and the debug page has a "填充示例数据" button that fills the form and JSON box from it.
 - 调试页示例数据一键填充：每个工具新增一份经过单元测试校验的真实 `sample` 参数，调试页新增“填充示例数据”按钮，一键把示例写入表单和 JSON 编辑框。
 - `shopping_links` tool (both implementations) that turns a recommendation into ready-to-click JD / Taobao / Pinduoduo search links.
