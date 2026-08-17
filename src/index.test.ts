@@ -20,6 +20,7 @@ test("exports the expected MCP tool set", () => {
     "progressive_lens_assessment",
     "new_glasses_troubleshooting",
     "shopping_links",
+    "lens_thickness_estimator",
   ]);
 });
 
@@ -64,6 +65,32 @@ test("prescription interpreter rejects astigmatism without axis", () => {
       }),
     /右眼有散光时必须提供轴位/
   );
+});
+
+test("lens thickness estimator recommends a higher index for strong myopia", () => {
+  const tool = getTool("lens_thickness_estimator");
+  const result = tool.handler({ sph: -8, lens_index: "1.56", frame_width: 52 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // power 8, effective diameter 56 (r=28): sag = 8*784/(2000*0.44)... n=1.56 → 2000*0.56
+  // sag = 8*784/1120 = 5.6, edge = 1.2 + 5.6 = 6.8mm
+  assert.match(text, /边缘最厚：约 6\.8 mm/);
+  assert.match(text, /建议提高到 1\.74/);
+});
+
+test("lens thickness estimator reports center thickness for plus lenses", () => {
+  const tool = getTool("lens_thickness_estimator");
+  const result = tool.handler({ sph: 5, lens_index: "1.60", frame_width: 52 });
+
+  assert.equal(result.isError, undefined);
+  assert.match(result.content[0].text, /中心最厚/);
+  assert.match(result.content[0].text, /正镜片/);
+});
+
+test("lens thickness estimator rejects an unsupported index", () => {
+  const tool = getTool("lens_thickness_estimator");
+  assert.throws(() => tool.handler({ sph: -3, lens_index: "1.50" }), /lens_index/);
 });
 
 test("executeTool returns MCP-style error result for unknown tools", () => {

@@ -1,6 +1,6 @@
 # glass-agent（Java + Spring Boot 版）
 
-配眼镜指南**智能体**，基于 **Spring Boot 3 + Spring AI**。它把原 TypeScript MCP Server 的 7 个配镜工具移植为 Java 实现，并在此之上接入大模型：用户用自然语言提问，大模型通过 **Function Calling** 自动选择并调用工具。智能体会**主动追问必要信息**（度数、用途、预算、脸型等），信息足够后给出配镜建议，并在最后**附上京东 / 淘宝 / 拼多多的购买链接**。
+配眼镜指南**智能体**，基于 **Spring Boot 3 + Spring AI**。它把原 TypeScript MCP Server 的 8 个配镜工具移植为 Java 实现，并在此之上接入大模型：用户用自然语言提问，大模型通过 **Function Calling** 自动选择并调用工具。智能体会**主动追问必要信息**（度数、用途、预算、脸型等），信息足够后给出配镜建议，并在最后**附上京东 / 淘宝 / 拼多多的购买链接**。
 
 原 TypeScript / MCP 版本仍保留在仓库根目录，两者并存。
 
@@ -33,6 +33,7 @@
 - `progressive_lens_assessment`：评估是否适合渐进镜片或办公镜
 - `new_glasses_troubleshooting`：排查新眼镜佩戴不适
 - `shopping_links`：把配镜建议转成京东 / 淘宝 / 拼多多的商品搜索购买链接
+- `lens_thickness_estimator`：按度数、折射率和镜圈宽度估算镜片最厚处的厚度与重量倾向，并判断是否值得提高折射率减薄
 
 ## 环境要求
 
@@ -85,6 +86,14 @@ curl -X POST http://localhost:8080/api/tools/shopping_links \
   -d '{"keywords":["1.67 非球面 防蓝光 镜片","TR90 超轻 近视镜框"]}'
 ```
 
+镜片厚度估算（`lensIndex` 必填，`cyl` / `frameWidth` 可选）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/lens_thickness_estimator \
+  -H 'Content-Type: application/json' \
+  -d '{"sph":-6.0,"cyl":-1.0,"lensIndex":"1.60","frameWidth":54}'
+```
+
 查看 / 清空工具调用历史（进程内保存最近 50 次，最新在前）：
 
 ```bash
@@ -114,7 +123,7 @@ java/
 └── src/main/java/com/glass/agent/
     ├── GlassAgentApplication.java      # 启动类
     ├── tool/
-    │   ├── GlassAdvisorTools.java      # 7 个工具的业务逻辑 + @Tool 注解
+    │   ├── GlassAdvisorTools.java      # 8 个工具的业务逻辑 + @Tool 注解
     │   ├── ToolCallHistory.java        # 进程内工具调用历史（最近 50 次）
     │   └── Diopters.java               # 度数格式化帮助函数
     ├── agent/

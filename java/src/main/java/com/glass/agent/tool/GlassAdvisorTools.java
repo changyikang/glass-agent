@@ -23,7 +23,7 @@ import static com.glass.agent.tool.Diopters.renderPrescriptionLine;
  * <p>每个方法都标注了 Spring AI 的 {@link Tool} 注解，会被自动暴露为大模型可调用的 Function；
  * 同时也是普通 Spring Bean 方法，供 REST 控制器直接调用（不经过大模型）。
  *
- * <p>逻辑与原 TypeScript 版本 {@code src/index.ts} 中的 6 个 handler 一一对应。
+ * <p>逻辑与原 TypeScript 版本 {@code src/index.ts} 中的 8 个 handler 一一对应。
  */
 @Component
 public class GlassAdvisorTools {
@@ -648,6 +648,149 @@ public class GlassAdvisorTools {
         }
         sb.append("\n\n> 链接为搜索入口，价格与款式以平台实时为准；请务必对照验光单核对度数后再下单。");
         return sb.toString();
+    }
+
+    // ---------------------------------------------------------------------
+    // 8. 镜片厚度估算
+    // ---------------------------------------------------------------------
+    private static final List<String> LENS_INDICES = List.of("1.56", "1.60", "1.67", "1.74");
+
+    @Tool(description = "镜片厚度估算：基于薄透镜矢高（sagitta）近似，按度数、折射率和镜圈宽度估算镜片最厚处"
+            + "（近视看边缘、远视看中心）的厚度与重量倾向，并判断是否值得提高折射率减薄。")
+    public String lensThicknessEstimator(
+            @ToolParam(description = "球镜度数，单位D，如 -6.00。近视填负数，远视填正数。")
+            double sph,
+            @ToolParam(required = false, description = "柱镜度数，单位D，如 -1.00。无散光可不填。")
+            Double cyl,
+            @ToolParam(description = "镜片折射率：1.56 / 1.60 / 1.67 / 1.74")
+            String lensIndex,
+            @ToolParam(required = false, description = "镜圈水平宽度（镜腿上标注的“眼宽”数字），单位mm，常见 48-58，默认 52。")
+            Double frameWidth) {
+
+        checkRange("sph", sph, -20, 12);
+        double cylValue = cyl == null ? 0 : cyl;
+        if (cyl != null) {
+            checkRange("cyl", cylValue, -8, 8);
+        }
+        String index = expectEnum("lens_index", lensIndex, "1.56", "1.60", "1.67", "1.74");
+        double frameWidthValue = frameWidth == null ? 52 : frameWidth;
+        if (frameWidth != null) {
+            checkRange("frame_width", frameWidthValue, 40, 70);
+        }
+
+        double n = Double.parseDouble(index);
+        double power = Math.max(Math.abs(sph), Math.abs(sph + cylValue));
+        boolean isPlus = sph > 0;
+        double effectiveDiameter = frameWidthValue + 4; // 4mm 偏心余量：实际有效直径通常大于镜圈标称宽度
+
+        double thickest = estimateThickest(power, n, effectiveDiameter, isPlus);
+        String rating = thicknessRating(thickest);
+        String thickestLabel = isPlus ? "中心最厚" : "边缘最厚";
+        String lensTypeLabel = isPlus
+                ? "远视 / 正镜片（中心厚、边缘薄）"
+                : "近视 / 负镜片（中心薄、边缘厚）";
+
+        String weightNote = thickest >= 5
+                ? "偏厚，长时间佩戴重量感会比较明显，建议配合小镜框和更高折射率一起控制。"
+                : thickest >= 3.5
+                        ? "中等，多数人佩戴可接受。"
+                        : "较轻薄，重量通常不是主要问题。";
+
+        String rec = recommendedIndex(power);
+        int chosenRank = LENS_INDICES.indexOf(index);
+        int recRank = LENS_INDICES.indexOf(rec);
+
+        String indexAdvice;
+        if (chosenRank < recRank) {
+            double upgraded = estimateThickest(power, Double.parseDouble(rec), effectiveDiameter, isPlus);
+            double delta = thickest - upgraded;
+            indexAdvice = "建议提高到 " + rec + "：" + thickestLabel + "处约从 "
+                    + format1(thickest) + " 降到 " + format1(upgraded) + " mm（减薄约 " + format1(delta) + " mm）。";
+        } else if (chosenRank > recRank && power < 2) {
+            indexAdvice = "度数不高，选到 " + index + " 更多是减重/美观考量，性价比一般，1.56 / 1.60 通常已足够。";
+        } else {
+            indexAdvice = "当前折射率 " + index + " 与度数基本匹配，可优先在镜框尺寸上再做优化。";
+        }
+
+        return """
+                ## 镜片厚度估算
+
+                > 基于薄透镜矢高（sagitta）近似：最厚处 ≈ 基础厚度 + 功率 × 半径² / (2000 × (n−1))。用于横向比较不同折射率与镜框，实际成品还取决于加工工艺、瞳距偏心与镜片设计。
+
+                **输入参数**
+                - 球镜：%s
+                - 柱镜：%s
+                - 参考功率（最大子午线）：%s
+                - 折射率：%s（n = %s）
+                - 镜圈宽度：%s mm（估算有效直径 %s mm）
+
+                **估算结果**
+                - 镜片类型：%s
+                - %s：约 %s mm（%s）
+                - 重量倾向：%s
+
+                **折射率建议**
+                - %s
+
+                **实用提醒**
+                - 边缘/中心厚度对镜框尺寸非常敏感：镜圈越小、越贴合脸型，成品越薄越轻。
+                - 高度数尽量选全框，避开无框和超大框，边缘更好收。
+                - 折射率越高越薄，但材料密度也更高，减重幅度通常小于减薄幅度，别只盯着折射率。""".formatted(
+                formatSignedDiopter(sph),
+                cylValue == 0 ? "无明显散光" : formatSignedDiopter(cylValue),
+                formatDiopter(power),
+                index,
+                trimNumber(n),
+                trimNumber(frameWidthValue),
+                trimNumber(effectiveDiameter),
+                lensTypeLabel,
+                thickestLabel,
+                format1(thickest),
+                rating,
+                weightNote,
+                indexAdvice);
+    }
+
+    /** 薄透镜矢高近似：估算镜片最厚处（近视看边缘、远视看中心）的毫米厚度。 */
+    private static double estimateThickest(double power, double refractiveIndex, double effectiveDiameter, boolean isPlus) {
+        double r = effectiveDiameter / 2;
+        double sag = (power * r * r) / (2000 * (refractiveIndex - 1));
+        double base = isPlus ? 1.0 : 1.2;
+        return base + sag;
+    }
+
+    /** 与 lensRecommendation 相同的功率阈值，给出性价比最优的折射率。 */
+    private static String recommendedIndex(double power) {
+        if (power <= 2) {
+            return "1.56";
+        }
+        if (power <= 4) {
+            return "1.60";
+        }
+        if (power <= 6) {
+            return "1.67";
+        }
+        return "1.74";
+    }
+
+    private static String thicknessRating(double thickest) {
+        if (thickest < 2) {
+            return "很薄";
+        }
+        if (thickest < 3.5) {
+            return "较薄";
+        }
+        if (thickest < 5) {
+            return "中等";
+        }
+        if (thickest < 7) {
+            return "偏厚";
+        }
+        return "很厚";
+    }
+
+    private static String format1(double value) {
+        return String.format("%.1f", value);
     }
 
     private static String encodeKeyword(String keyword) {

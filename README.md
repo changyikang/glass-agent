@@ -25,10 +25,11 @@
 
 **glass-agent** turns the domain knowledge of eyeglasses fitting into callable
 tools that an LLM (or any MCP client) can use. It covers prescription reading,
-lens recommendation, frame selection, vision-check guidance, progressive-lens
-assessment, and troubleshooting discomfort with new glasses.
+lens recommendation, lens-thickness estimation, frame selection, vision-check
+guidance, progressive-lens assessment, and troubleshooting discomfort with new
+glasses.
 
-The project ships **two interchangeable implementations that share the same seven
+The project ships **two interchangeable implementations that share the same eight
 tools**, so you can adopt whichever fits your stack:
 
 | Implementation | Path | Best for |
@@ -38,7 +39,7 @@ tools**, so you can adopt whichever fits your stack:
 
 ### Features
 
-The seven built-in tools:
+The eight built-in tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -49,6 +50,7 @@ The seven built-in tools:
 | `progressive_lens_assessment` | Assesses single-vision vs. office vs. progressive lenses |
 | `new_glasses_troubleshooting` | Tells adaptation from a real problem needing a re-check |
 | `shopping_links` | Turns a recommendation into ready-to-click JD / Taobao / Pinduoduo search links |
+| `lens_thickness_estimator` | Estimates a lens' thickest point (edge for myopia, center for hyperopia) and weight tendency from power, index and frame width, and flags whether a higher index is worth it |
 
 The Java agent adds **multi-turn intake**: pass a `conversationId` and it remembers
 the dialogue, so it asks the questions it needs, gives a fitting recommendation, and
@@ -58,7 +60,7 @@ attaches purchase links at the end.
 
 ```
                          ┌──────────────────────────────┐
-        MCP client       │     Seven shared optical      │      REST client
+        MCP client       │     Eight shared optical      │      REST client
    (Claude Desktop, …)   │        fitting tools          │   (curl / your app)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │
@@ -182,9 +184,9 @@ Released under the [MIT License](LICENSE).
 
 ### 项目简介
 
-**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜框选择、视力检查建议、渐进镜片评估，以及新眼镜佩戴不适排查。
+**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜框选择、视力检查建议、渐进镜片评估，以及新眼镜佩戴不适排查。
 
-项目提供 **两套可互换、共享同一组七个工具的实现**，你可以按技术栈选用：
+项目提供 **两套可互换、共享同一组八个工具的实现**，你可以按技术栈选用：
 
 | 实现方式 | 路径 | 适用场景 |
 | --- | --- | --- |
@@ -193,7 +195,7 @@ Released under the [MIT License](LICENSE).
 
 ### 功能
 
-内置七个工具：
+内置八个工具：
 
 | 工具 | 作用 |
 | --- | --- |
@@ -204,6 +206,7 @@ Released under the [MIT License](LICENSE).
 | `progressive_lens_assessment` | 评估更适合单焦、办公镜还是渐进多焦点镜片 |
 | `new_glasses_troubleshooting` | 区分是适应期还是需要复查的真问题 |
 | `shopping_links` | 把配镜建议转成可直接点击的京东 / 淘宝 / 拼多多搜索购买链接 |
+| `lens_thickness_estimator` | 按度数、折射率和镜圈宽度估算镜片最厚处（近视看边缘、远视看中心）的厚度与重量倾向，并判断是否值得提高折射率减薄 |
 
 Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可记住对话上下文，
 于是它会主动追问所需信息，给出配镜建议，并在最后附上购买链接。
@@ -212,7 +215,7 @@ Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可�
 
 ```
                          ┌──────────────────────────────┐
-       MCP 客户端         │        七个共享的配镜工具       │       REST 客户端
+       MCP 客户端         │        八个共享的配镜工具       │       REST 客户端
    (Claude Desktop 等)   │                              │   (curl / 你的应用)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │

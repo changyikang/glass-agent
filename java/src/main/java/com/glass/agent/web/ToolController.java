@@ -51,7 +51,8 @@ public class ToolController {
                 tool("prescription_interpreter", "验光单解读：解释 SPH/CYL/AXIS/PD/ADD 的意义，并提示配镜风险点。"),
                 tool("progressive_lens_assessment", "渐进镜片适配评估：判断更适合单焦、办公镜还是渐进多焦点镜片。"),
                 tool("new_glasses_troubleshooting", "新眼镜不适排查：根据症状、佩戴时长和镜片类型判断是适应期还是需要复查。"),
-                tool("shopping_links", "购物链接生成：把配镜建议转成京东/淘宝/拼多多的商品搜索购买链接。"));
+                tool("shopping_links", "购物链接生成：把配镜建议转成京东/淘宝/拼多多的商品搜索购买链接。"),
+                tool("lens_thickness_estimator", "镜片厚度估算：按度数、折射率和镜圈宽度估算镜片最厚处的厚度与重量倾向，并判断是否值得提高折射率减薄。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -96,6 +97,12 @@ public class ToolController {
         return run("shopping_links", req, () -> tools.shoppingLinks(req.keywords()));
     }
 
+    @PostMapping("/lens_thickness_estimator")
+    public ToolResponse lensThicknessEstimator(@RequestBody ThicknessRequest req) {
+        return run("lens_thickness_estimator", req,
+                () -> tools.lensThicknessEstimator(req.sph(), req.cyl(), req.lensIndex(), req.frameWidth()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -131,5 +138,8 @@ public class ToolController {
     }
 
     public record ShoppingRequest(List<String> keywords) {
+    }
+
+    public record ThicknessRequest(double sph, Double cyl, String lensIndex, Double frameWidth) {
     }
 }
