@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { listTools, executeTool, ToolResult } from "./index.js";
+import { getHistory, clearHistory } from "./history.js";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? "127.0.0.1";
@@ -287,21 +288,95 @@ function renderPage(): string {
         border: 1px solid var(--line);
       }
 
-      .aside {
+      .side-stack {
+        display: grid;
+        gap: 20px;
+        align-content: start;
         position: sticky;
         top: 20px;
-        align-self: start;
       }
 
-      .aside h3 {
+      .aside h3,
+      .history h3 {
         margin: 0 0 10px;
         font-size: 22px;
       }
 
-      .aside p {
+      .aside p,
+      .history > p {
         margin: 0 0 16px;
         color: var(--muted);
         line-height: 1.6;
+      }
+
+      .history-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .history-header .actions {
+        gap: 8px;
+      }
+
+      .history-header button {
+        padding: 8px 14px;
+        font-size: 13px;
+      }
+
+      .history-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 10px;
+        max-height: 360px;
+        overflow-y: auto;
+      }
+
+      .history-item {
+        display: grid;
+        gap: 4px;
+        padding: 10px 12px;
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.7);
+      }
+
+      .history-item.error {
+        border-color: rgba(168, 54, 42, 0.35);
+        background: rgba(168, 54, 42, 0.08);
+      }
+
+      .history-item-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        font-family: "Avenir Next", "Helvetica Neue", sans-serif;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .history-item-tool {
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .history-item-summary {
+        margin: 0;
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .history-empty {
+        color: var(--muted);
+        font-size: 13px;
       }
 
       .result-meta {
@@ -359,7 +434,7 @@ function renderPage(): string {
           grid-template-columns: 1fr;
         }
 
-        .aside {
+        .side-stack {
           position: static;
         }
       }
@@ -380,19 +455,32 @@ function renderPage(): string {
 
       <section class="layout">
         <div class="tools" id="tools-root"></div>
-        <aside class="panel card aside">
-          <h3>运行结果</h3>
-          <p>选择任意工具，填写参数后点击执行。右侧会保留最近一次调用结果，便于你检查规则、报错和文本输出。</p>
-          <div class="result-meta">
-            <span id="result-status" class="status ok">等待运行</span>
-            <div id="result-tool" class="chip">尚未选择工具</div>
-          </div>
-          <pre id="result-output">点击左侧任意工具的“运行工具”开始。</pre>
-          <div class="tips">
-            <strong>提示</strong><br />
-            如果想验证 MCP 客户端集成，仍然用 <code>node dist/index.js</code>。这个页面只是本地调试面板。
-          </div>
-        </aside>
+        <div class="side-stack">
+          <aside class="panel card aside">
+            <h3>运行结果</h3>
+            <p>选择任意工具，填写参数后点击执行。右侧会保留最近一次调用结果，便于你检查规则、报错和文本输出。</p>
+            <div class="result-meta">
+              <span id="result-status" class="status ok">等待运行</span>
+              <div id="result-tool" class="chip">尚未选择工具</div>
+            </div>
+            <pre id="result-output">点击左侧任意工具的“运行工具”开始。</pre>
+            <div class="tips">
+              <strong>提示</strong><br />
+              如果想验证 MCP 客户端集成，仍然用 <code>node dist/index.js</code>。这个页面只是本地调试面板。
+            </div>
+          </aside>
+          <section class="panel card history">
+            <div class="history-header">
+              <h3>调用历史</h3>
+              <div class="actions">
+                <button id="history-refresh" class="secondary" type="button">刷新</button>
+                <button id="history-clear" class="secondary" type="button">清空</button>
+              </div>
+            </div>
+            <p>最近 50 次工具调用（含 MCP 客户端与本页调用），最新的排在最前面。</p>
+            <ol id="history-list" class="history-list"></ol>
+          </section>
+        </div>
       </section>
     </div>
 
@@ -403,6 +491,9 @@ function renderPage(): string {
       const resultStatus = document.getElementById("result-status");
       const resultTool = document.getElementById("result-tool");
       const resultOutput = document.getElementById("result-output");
+      const historyList = document.getElementById("history-list");
+      const historyRefreshButton = document.getElementById("history-refresh");
+      const historyClearButton = document.getElementById("history-clear");
       const toolLabelMap = {
         vision_check_guide: "视力检查指南",
         lens_recommendation: "镜片推荐",
@@ -645,6 +736,30 @@ function renderPage(): string {
         loadButton.className = "secondary";
         loadButton.textContent = "JSON 回填表单";
 
+        const sampleButton = document.createElement("button");
+        sampleButton.className = "secondary";
+        sampleButton.textContent = "填充示例数据";
+
+        function applyArgsToForm(args) {
+          const inputs = fields.querySelectorAll("input, select");
+          for (const input of inputs) {
+            if (!(input.name in args)) {
+              input.value = "";
+              continue;
+            }
+            input.value = String(args[input.name]);
+          }
+        }
+
+        sampleButton.addEventListener("click", () => {
+          const sample = tool.sample || {};
+          quickJson.value = JSON.stringify(sample, null, 2);
+          applyArgsToForm(sample);
+          resultStatus.textContent = "已填充示例数据";
+          resultStatus.className = "status ok";
+          resultTool.textContent = displayToolName(tool);
+        });
+
         syncButton.addEventListener("click", () => {
           const args = {};
           const inputs = fields.querySelectorAll("input, select");
@@ -669,15 +784,7 @@ function renderPage(): string {
             return;
           }
 
-          const inputs = fields.querySelectorAll("input, select");
-          for (const input of inputs) {
-            if (!(input.name in args)) {
-              input.value = "";
-              continue;
-            }
-            const value = args[input.name];
-            input.value = String(value);
-          }
+          applyArgsToForm(args);
         });
 
         runButton.addEventListener("click", async () => {
@@ -718,6 +825,7 @@ function renderPage(): string {
             resultStatus.textContent = payload.isError ? "工具返回错误" : "调用成功";
             resultStatus.className = payload.isError ? "status error" : "status ok";
             resultOutput.textContent = text;
+            refreshHistory();
           } catch (error) {
             resultStatus.textContent = "请求失败";
             resultStatus.className = "status error";
@@ -728,6 +836,7 @@ function renderPage(): string {
         });
 
         actions.appendChild(runButton);
+        actions.appendChild(sampleButton);
         actions.appendChild(syncButton);
         actions.appendChild(loadButton);
         card.appendChild(actions);
@@ -738,6 +847,75 @@ function renderPage(): string {
       for (const tool of tools) {
         createToolCard(tool);
       }
+
+      function formatTime(isoString) {
+        const date = new Date(isoString);
+        return Number.isNaN(date.getTime()) ? isoString : date.toLocaleString("zh-CN", { hour12: false });
+      }
+
+      function renderHistory(items) {
+        historyList.innerHTML = "";
+        if (!items.length) {
+          const empty = document.createElement("li");
+          empty.className = "history-empty";
+          empty.textContent = "还没有调用记录，运行一个工具试试。";
+          historyList.appendChild(empty);
+          return;
+        }
+
+        for (const entry of items) {
+          const item = document.createElement("li");
+          item.className = "history-item" + (entry.isError ? " error" : "");
+
+          const top = document.createElement("div");
+          top.className = "history-item-top";
+          const toolLabel = document.createElement("span");
+          toolLabel.className = "history-item-tool";
+          toolLabel.textContent = toolLabelMap[entry.tool] || entry.tool;
+          const time = document.createElement("span");
+          time.textContent = formatTime(entry.timestamp);
+          top.appendChild(toolLabel);
+          top.appendChild(time);
+          item.appendChild(top);
+
+          const summary = document.createElement("p");
+          summary.className = "history-item-summary";
+          summary.textContent = entry.summary || (entry.isError ? "(无输出)" : "");
+          item.appendChild(summary);
+
+          historyList.appendChild(item);
+        }
+      }
+
+      async function refreshHistory() {
+        try {
+          const response = await fetch("/api/history");
+          const items = await response.json();
+          renderHistory(Array.isArray(items) ? items : []);
+        } catch (error) {
+          historyList.innerHTML = "";
+          const failure = document.createElement("li");
+          failure.className = "history-empty";
+          failure.textContent = "加载调用历史失败：" + String(error);
+          historyList.appendChild(failure);
+        }
+      }
+
+      historyRefreshButton.addEventListener("click", () => {
+        refreshHistory();
+      });
+
+      historyClearButton.addEventListener("click", async () => {
+        historyClearButton.disabled = true;
+        try {
+          await fetch("/api/history", { method: "DELETE" });
+          await refreshHistory();
+        } finally {
+          historyClearButton.disabled = false;
+        }
+      });
+
+      refreshHistory();
     </script>
   </body>
 </html>`;
@@ -781,6 +959,19 @@ async function main(): Promise<void> {
 
     if (request.method === "POST" && url.pathname === "/api/run") {
       await handleRun(request, response);
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/history") {
+      const limitParam = url.searchParams.get("limit");
+      const limit = limitParam !== null ? Number(limitParam) : undefined;
+      sendJson(response, 200, getHistory(Number.isFinite(limit) ? limit : undefined));
+      return;
+    }
+
+    if (request.method === "DELETE" && url.pathname === "/api/history") {
+      clearHistory();
+      sendJson(response, 200, { cleared: true });
       return;
     }
 

@@ -6,6 +6,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { recordCall } from "./history.js";
 
 type ToolArgs = Record<string, unknown>;
 export type ToolResult = {
@@ -17,6 +18,8 @@ export type ToolDefinition = {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  /** A realistic, valid set of arguments used to pre-fill the debug web page. */
+  sample: ToolArgs;
   handler: (args: ToolArgs) => ToolResult;
 };
 
@@ -44,6 +47,7 @@ export const tools: ToolDefinition[] = [
       },
       required: ["age_group"],
     },
+    sample: { age_group: "adult", concern: "近视" },
     handler: handleVisionCheckGuide,
   },
   {
@@ -73,6 +77,7 @@ export const tools: ToolDefinition[] = [
       },
       required: ["sph", "usage", "budget"],
     },
+    sample: { sph: -3.25, cyl: -0.75, usage: "computer", budget: "mid" },
     handler: handleLensRecommendation,
   },
   {
@@ -99,6 +104,7 @@ export const tools: ToolDefinition[] = [
       },
       required: ["face_shape", "lifestyle"],
     },
+    sample: { face_shape: "round", lifestyle: "professional", prescription_strength: "medium" },
     handler: handleFrameSelectionGuide,
   },
   {
@@ -117,6 +123,15 @@ export const tools: ToolDefinition[] = [
         add: { type: "number", description: "老花附加度数 ADD，单位D，可选" },
       },
       required: ["od_sph", "os_sph"],
+    },
+    sample: {
+      od_sph: -3,
+      od_cyl: -0.75,
+      od_axis: 90,
+      os_sph: -2.75,
+      os_cyl: -0.5,
+      os_axis: 85,
+      pd: 62,
     },
     handler: handlePrescriptionInterpreter,
   },
@@ -150,6 +165,13 @@ export const tools: ToolDefinition[] = [
         },
       },
       required: ["age", "near_difficulty", "screen_hours", "drive_frequency", "first_time_user"],
+    },
+    sample: {
+      age: 45,
+      near_difficulty: "obvious",
+      screen_hours: 7,
+      drive_frequency: "weekly",
+      first_time_user: true,
     },
     handler: handleProgressiveLensAssessment,
   },
@@ -189,6 +211,12 @@ export const tools: ToolDefinition[] = [
       },
       required: ["symptom", "wear_days", "lens_type", "prescription_changed"],
     },
+    sample: {
+      symptom: "dizziness",
+      wear_days: 3,
+      lens_type: "progressive",
+      prescription_changed: true,
+    },
     handler: handleNewGlassesTroubleshooting,
   },
   {
@@ -207,7 +235,38 @@ export const tools: ToolDefinition[] = [
       },
       required: ["keywords"],
     },
+    sample: { keywords: ["1.67 非球面 防蓝光 镜片", "TR90 超轻 近视镜框"] },
     handler: handleShoppingLinks,
+  },
+  {
+    name: "lens_thickness_estimator",
+    description:
+      "镜片厚度估算：基于薄透镜矢高（sagitta）近似，按度数、折射率和镜圈宽度估算镜片最厚处（近视看边缘、远视看中心）的厚度与重量倾向，并判断是否值得提高折射率减薄。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sph: {
+          type: "number",
+          description: "球镜度数，单位D，如 -6.00。近视填负数，远视填正数。",
+        },
+        cyl: {
+          type: "number",
+          description: "柱镜度数，单位D，如 -1.00。无散光可不填。",
+        },
+        lens_index: {
+          type: "string",
+          enum: ["1.56", "1.60", "1.67", "1.74"],
+          description: "镜片折射率：1.56 / 1.60 / 1.67 / 1.74",
+        },
+        frame_width: {
+          type: "number",
+          description: "镜圈水平宽度（镜腿上标注的“眼宽”数字），单位mm，常见 48-58，默认 52。",
+        },
+      },
+      required: ["sph", "lens_index"],
+    },
+    sample: { sph: -6, cyl: -1, lens_index: "1.60", frame_width: 54 },
+    handler: handleLensThicknessEstimator,
   },
 ];
 
@@ -219,16 +278,21 @@ export function listTools(): Array<Omit<ToolDefinition, "handler">> {
 
 export function executeTool(name: string, args: unknown): ToolResult {
   const tool = toolMap.get(name);
+  let result: ToolResult;
+
   if (!tool) {
-    return errorResult(`未知工具：${name}`);
+    result = errorResult(`未知工具：${name}`);
+  } else {
+    try {
+      result = tool.handler(ensureObject(args ?? {}));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      result = errorResult(message);
+    }
   }
 
-  try {
-    return tool.handler(ensureObject(args ?? {}));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return errorResult(message);
-  }
+  recordCall(name, args, result);
+  return result;
 }
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -778,6 +842,109 @@ function handleShoppingLinks(args: ToolArgs): ToolResult {
   ].join("\n");
 
   return textResult(text);
+}
+
+const LENS_INDICES = ["1.56", "1.60", "1.67", "1.74"] as const;
+
+/** Sagitta-based estimate of a lens' thickest point (edge for minus, center for plus). */
+function estimateThickest(power: number, refractiveIndex: number, effectiveDiameter: number, isPlus: boolean): { sag: number; thickest: number } {
+  const r = effectiveDiameter / 2;
+  const sag = (power * r * r) / (2000 * (refractiveIndex - 1));
+  const base = isPlus ? 1.0 : 1.2;
+  return { sag, thickest: base + sag };
+}
+
+/** The most cost-effective index for a given power, matching lens_recommendation's thresholds. */
+function recommendedIndex(power: number): (typeof LENS_INDICES)[number] {
+  if (power <= 2) {
+    return "1.56";
+  }
+  if (power <= 4) {
+    return "1.60";
+  }
+  if (power <= 6) {
+    return "1.67";
+  }
+  return "1.74";
+}
+
+function thicknessRating(thickest: number): string {
+  if (thickest < 2) {
+    return "很薄";
+  }
+  if (thickest < 3.5) {
+    return "较薄";
+  }
+  if (thickest < 5) {
+    return "中等";
+  }
+  if (thickest < 7) {
+    return "偏厚";
+  }
+  return "很厚";
+}
+
+function handleLensThicknessEstimator(args: ToolArgs): ToolResult {
+  const sph = expectNumber(args, "sph", { min: -20, max: 12 });
+  const cyl = optionalNumber(args, "cyl", { min: -8, max: 8 }) ?? 0;
+  const lensIndex = expectEnum(args, "lens_index", LENS_INDICES);
+  const frameWidth = optionalNumber(args, "frame_width", { min: 40, max: 70 }) ?? 52;
+
+  const n = Number(lensIndex);
+  const power = Math.max(Math.abs(sph), Math.abs(sph + cyl));
+  const isPlus = sph > 0;
+  const effectiveDiameter = frameWidth + 4; // 4mm 偏心余量：实际有效直径通常大于镜圈标称宽度
+
+  const { thickest } = estimateThickest(power, n, effectiveDiameter, isPlus);
+  const rating = thicknessRating(thickest);
+  const thickestLabel = isPlus ? "中心最厚" : "边缘最厚";
+  const lensTypeLabel = isPlus ? "远视 / 正镜片（中心厚、边缘薄）" : "近视 / 负镜片（中心薄、边缘厚）";
+
+  const weightNote =
+    thickest >= 5
+      ? "偏厚，长时间佩戴重量感会比较明显，建议配合小镜框和更高折射率一起控制。"
+      : thickest >= 3.5
+        ? "中等，多数人佩戴可接受。"
+        : "较轻薄，重量通常不是主要问题。";
+
+  const rec = recommendedIndex(power);
+  const chosenRank = LENS_INDICES.indexOf(lensIndex);
+  const recRank = LENS_INDICES.indexOf(rec);
+
+  let indexAdvice: string;
+  if (chosenRank < recRank) {
+    const upgraded = estimateThickest(power, Number(rec), effectiveDiameter, isPlus);
+    const delta = thickest - upgraded.thickest;
+    indexAdvice = `建议提高到 ${rec}：${thickestLabel}处约从 ${thickest.toFixed(1)} 降到 ${upgraded.thickest.toFixed(1)} mm（减薄约 ${delta.toFixed(1)} mm）。`;
+  } else if (chosenRank > recRank && power < 2) {
+    indexAdvice = `度数不高，选到 ${lensIndex} 更多是减重/美观考量，性价比一般，1.56 / 1.60 通常已足够。`;
+  } else {
+    indexAdvice = `当前折射率 ${lensIndex} 与度数基本匹配，可优先在镜框尺寸上再做优化。`;
+  }
+
+  return textResult(`## 镜片厚度估算
+
+> 基于薄透镜矢高（sagitta）近似：最厚处 ≈ 基础厚度 + 功率 × 半径² / (2000 × (n−1))。用于横向比较不同折射率与镜框，实际成品还取决于加工工艺、瞳距偏心与镜片设计。
+
+**输入参数**
+- 球镜：${formatSignedDiopter(sph)}
+- 柱镜：${cyl === 0 ? "无明显散光" : formatSignedDiopter(cyl)}
+- 参考功率（最大子午线）：${formatDiopter(power)}
+- 折射率：${lensIndex}（n = ${n}）
+- 镜圈宽度：${trimTrailingZeros(frameWidth.toFixed(1))} mm（估算有效直径 ${trimTrailingZeros(effectiveDiameter.toFixed(1))} mm）
+
+**估算结果**
+- 镜片类型：${lensTypeLabel}
+- ${thickestLabel}：约 ${thickest.toFixed(1)} mm（${rating}）
+- 重量倾向：${weightNote}
+
+**折射率建议**
+- ${indexAdvice}
+
+**实用提醒**
+- 边缘/中心厚度对镜框尺寸非常敏感：镜圈越小、越贴合脸型，成品越薄越轻。
+- 高度数尽量选全框，避开无框和超大框，边缘更好收。
+- 折射率越高越薄，但材料密度也更高，减重幅度通常小于减薄幅度，别只盯着折射率。`);
 }
 
 function ensureObject(value: unknown): ToolArgs {

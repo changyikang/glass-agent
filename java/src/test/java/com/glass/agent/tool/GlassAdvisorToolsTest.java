@@ -72,4 +72,26 @@ class GlassAdvisorToolsTest {
                 () -> tools.shoppingLinks(java.util.List.of()));
         assertTrue(ex.getMessage().contains("keywords"));
     }
+
+    @Test
+    void thicknessEstimatorRecommendsHigherIndexForStrongMyopia() {
+        // 功率 8，有效直径 56（半径 28），n=1.56：矢高 = 8*784/(2000*0.56) = 5.6，边缘 = 1.2 + 5.6 = 6.8mm
+        String result = tools.lensThicknessEstimator(-8.0, null, "1.56", 52.0);
+        assertTrue(result.contains("边缘最厚：约 6.8 mm"));
+        assertTrue(result.contains("建议提高到 1.74"));
+    }
+
+    @Test
+    void thicknessEstimatorReportsCenterThicknessForPlusLenses() {
+        String result = tools.lensThicknessEstimator(5.0, null, "1.60", 52.0);
+        assertTrue(result.contains("中心最厚"));
+        assertTrue(result.contains("正镜片"));
+    }
+
+    @Test
+    void thicknessEstimatorRejectsUnsupportedIndex() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.lensThicknessEstimator(-3.0, null, "1.50", null));
+        assertTrue(ex.getMessage().contains("lens_index"));
+    }
 }

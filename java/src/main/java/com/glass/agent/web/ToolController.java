@@ -2,8 +2,10 @@ package com.glass.agent.web;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 import com.glass.agent.tool.GlassAdvisorTools;
+import com.glass.agent.tool.ToolCallHistory;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,9 +22,23 @@ import org.springframework.web.bind.annotation.RestController;
 public class ToolController {
 
     private final GlassAdvisorTools tools;
+    private final ToolCallHistory history;
 
-    public ToolController(GlassAdvisorTools tools) {
+    public ToolController(GlassAdvisorTools tools, ToolCallHistory history) {
         this.tools = tools;
+        this.history = history;
+    }
+
+    /** 执行工具并记录调用历史；工具抛出的校验异常照常向上抛给全局处理器（同时记为失败）。 */
+    private ToolResponse run(String name, Object arguments, Supplier<String> call) {
+        try {
+            String text = call.get();
+            history.record(name, arguments, text, false);
+            return ToolResponse.of(text);
+        } catch (RuntimeException ex) {
+            history.record(name, arguments, "错误：" + ex.getMessage(), true);
+            throw ex;
+        }
     }
 
     /** 列出全部工具及其说明，便于客户端发现。 */
@@ -35,27 +51,30 @@ public class ToolController {
                 tool("prescription_interpreter", "验光单解读：解释 SPH/CYL/AXIS/PD/ADD 的意义，并提示配镜风险点。"),
                 tool("progressive_lens_assessment", "渐进镜片适配评估：判断更适合单焦、办公镜还是渐进多焦点镜片。"),
                 tool("new_glasses_troubleshooting", "新眼镜不适排查：根据症状、佩戴时长和镜片类型判断是适应期还是需要复查。"),
-                tool("shopping_links", "购物链接生成：把配镜建议转成京东/淘宝/拼多多的商品搜索购买链接。"));
+                tool("shopping_links", "购物链接生成：把配镜建议转成京东/淘宝/拼多多的商品搜索购买链接。"),
+                tool("lens_thickness_estimator", "镜片厚度估算：按度数、折射率和镜圈宽度估算镜片最厚处的厚度与重量倾向，并判断是否值得提高折射率减薄。"));
     }
 
     @PostMapping("/vision_check_guide")
     public ToolResponse visionCheckGuide(@RequestBody VisionCheckRequest req) {
-        return ToolResponse.of(tools.visionCheckGuide(req.ageGroup(), req.concern()));
+        return run("vision_check_guide", req, () -> tools.visionCheckGuide(req.ageGroup(), req.concern()));
     }
 
     @PostMapping("/lens_recommendation")
     public ToolResponse lensRecommendation(@RequestBody LensRequest req) {
-        return ToolResponse.of(tools.lensRecommendation(req.sph(), req.cyl(), req.usage(), req.budget()));
+        return run("lens_recommendation", req,
+                () -> tools.lensRecommendation(req.sph(), req.cyl(), req.usage(), req.budget()));
     }
 
     @PostMapping("/frame_selection_guide")
     public ToolResponse frameSelectionGuide(@RequestBody FrameRequest req) {
-        return ToolResponse.of(tools.frameSelectionGuide(req.faceShape(), req.lifestyle(), req.prescriptionStrength()));
+        return run("frame_selection_guide", req,
+                () -> tools.frameSelectionGuide(req.faceShape(), req.lifestyle(), req.prescriptionStrength()));
     }
 
     @PostMapping("/prescription_interpreter")
     public ToolResponse prescriptionInterpreter(@RequestBody PrescriptionRequest req) {
-        return ToolResponse.of(tools.prescriptionInterpreter(
+        return run("prescription_interpreter", req, () -> tools.prescriptionInterpreter(
                 req.odSph(), req.odCyl(), req.odAxis(),
                 req.osSph(), req.osCyl(), req.osAxis(),
                 req.pd(), req.add()));
@@ -63,19 +82,25 @@ public class ToolController {
 
     @PostMapping("/progressive_lens_assessment")
     public ToolResponse progressiveLensAssessment(@RequestBody ProgressiveRequest req) {
-        return ToolResponse.of(tools.progressiveLensAssessment(
+        return run("progressive_lens_assessment", req, () -> tools.progressiveLensAssessment(
                 req.age(), req.nearDifficulty(), req.screenHours(), req.driveFrequency(), req.firstTimeUser()));
     }
 
     @PostMapping("/new_glasses_troubleshooting")
     public ToolResponse newGlassesTroubleshooting(@RequestBody TroubleshootingRequest req) {
-        return ToolResponse.of(tools.newGlassesTroubleshooting(
+        return run("new_glasses_troubleshooting", req, () -> tools.newGlassesTroubleshooting(
                 req.symptom(), req.wearDays(), req.lensType(), req.prescriptionChanged()));
     }
 
     @PostMapping("/shopping_links")
     public ToolResponse shoppingLinks(@RequestBody ShoppingRequest req) {
-        return ToolResponse.of(tools.shoppingLinks(req.keywords()));
+        return run("shopping_links", req, () -> tools.shoppingLinks(req.keywords()));
+    }
+
+    @PostMapping("/lens_thickness_estimator")
+    public ToolResponse lensThicknessEstimator(@RequestBody ThicknessRequest req) {
+        return run("lens_thickness_estimator", req,
+                () -> tools.lensThicknessEstimator(req.sph(), req.cyl(), req.lensIndex(), req.frameWidth()));
     }
 
     private static Map<String, String> tool(String name, String description) {
@@ -113,5 +138,8 @@ public class ToolController {
     }
 
     public record ShoppingRequest(List<String> keywords) {
+    }
+
+    public record ThicknessRequest(double sph, Double cyl, String lensIndex, Double frameWidth) {
     }
 }
