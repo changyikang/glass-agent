@@ -21,7 +21,38 @@ test("exports the expected MCP tool set", () => {
     "new_glasses_troubleshooting",
     "shopping_links",
     "lens_thickness_estimator",
+    "pupillary_distance_guide",
   ]);
+});
+
+test("pupillary distance guide derives binocular PD from monocular readings and flags asymmetry", () => {
+  const tool = getTool("pupillary_distance_guide");
+  const result = tool.handler({ pd_right: 30, pd_left: 34 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // 30 + 34 = 64mm binocular
+  assert.match(text, /64 mm（由左右单眼相加得到）/);
+  assert.match(text, /明显不对称/);
+});
+
+test("pupillary distance guide computes a smaller near PD than distance PD", () => {
+  const tool = getTool("pupillary_distance_guide");
+  const result = tool.handler({ binocular_pd: 63, working_distance_cm: 40 });
+
+  assert.equal(result.isError, undefined);
+  // near PD = 63 * 400 / 427 ≈ 59.0mm, reduction ≈ 4.0mm
+  assert.match(result.content[0].text, /约 59 mm（比远用约小 4 mm）/);
+});
+
+test("pupillary distance guide requires both monocular values together", () => {
+  const tool = getTool("pupillary_distance_guide");
+  assert.throws(() => tool.handler({ pd_right: 31 }), /需要左右眼一起提供/);
+});
+
+test("pupillary distance guide requires at least one PD input", () => {
+  const tool = getTool("pupillary_distance_guide");
+  assert.throws(() => tool.handler({}), /请至少提供双眼瞳距/);
 });
 
 test("shopping links builds per-platform search URLs and encodes keywords", () => {

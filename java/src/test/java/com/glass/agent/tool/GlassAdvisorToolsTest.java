@@ -94,4 +94,33 @@ class GlassAdvisorToolsTest {
                 () -> tools.lensThicknessEstimator(-3.0, null, "1.50", null));
         assertTrue(ex.getMessage().contains("lens_index"));
     }
+
+    @Test
+    void pupillaryDistanceDerivesBinocularFromMonocularAndFlagsAsymmetry() {
+        // 30 + 34 = 64mm 双眼瞳距，左右相差 4mm 属明显不对称
+        String result = tools.pupillaryDistanceGuide(null, 30.0, 34.0, null);
+        assertTrue(result.contains("64 mm（由左右单眼相加得到）"));
+        assertTrue(result.contains("明显不对称"));
+    }
+
+    @Test
+    void pupillaryDistanceComputesSmallerNearPd() {
+        // 近用瞳距 = 63 * 400 / 427 ≈ 59.0mm，比远用约小 4.0mm
+        String result = tools.pupillaryDistanceGuide(63.0, null, null, 40.0);
+        assertTrue(result.contains("约 59 mm（比远用约小 4 mm）"));
+    }
+
+    @Test
+    void pupillaryDistanceRequiresBothMonocularValues() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.pupillaryDistanceGuide(null, 31.0, null, null));
+        assertTrue(ex.getMessage().contains("左右眼一起提供"));
+    }
+
+    @Test
+    void pupillaryDistanceRequiresAtLeastOneInput() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.pupillaryDistanceGuide(null, null, null, null));
+        assertTrue(ex.getMessage().contains("请至少提供双眼瞳距"));
+    }
 }

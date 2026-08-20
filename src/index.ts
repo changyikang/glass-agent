@@ -268,6 +268,34 @@ export const tools: ToolDefinition[] = [
     sample: { sph: -6, cyl: -1, lens_index: "1.60", frame_width: 54 },
     handler: handleLensThicknessEstimator,
   },
+  {
+    name: "pupillary_distance_guide",
+    description:
+      "瞳距（PD）助手：网购配镜必填的瞳距参数解读与换算。可传入双眼瞳距，或分别传入左右单眼瞳距，工具会校验数值是否落在常见范围、互相核对、按工作距离折算近用瞳距，并给出左右不对称提醒和自测方法。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        binocular_pd: {
+          type: "number",
+          description: "双眼瞳距（远用），单位mm，成人常见 54-74。与左右单眼瞳距至少提供一种。",
+        },
+        pd_right: {
+          type: "number",
+          description: "右眼单眼瞳距（瞳孔中心到鼻梁中线），单位mm。若填写需与 pd_left 一起提供。",
+        },
+        pd_left: {
+          type: "number",
+          description: "左眼单眼瞳距（瞳孔中心到鼻梁中线），单位mm。若填写需与 pd_right 一起提供。",
+        },
+        working_distance_cm: {
+          type: "number",
+          description: "近用工作距离，单位cm，用于折算近用瞳距，默认 40（常见阅读距离）。",
+        },
+      },
+    },
+    sample: { binocular_pd: 63, working_distance_cm: 40 },
+    handler: handlePupillaryDistanceGuide,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -945,6 +973,83 @@ function handleLensThicknessEstimator(args: ToolArgs): ToolResult {
 - 边缘/中心厚度对镜框尺寸非常敏感：镜圈越小、越贴合脸型，成品越薄越轻。
 - 高度数尽量选全框，避开无框和超大框，边缘更好收。
 - 折射率越高越薄，但材料密度也更高，减重幅度通常小于减薄幅度，别只盯着折射率。`);
+}
+
+/** 镜片平面到眼球旋转中心的近似距离（mm），用于把远用瞳距折算为近用瞳距。 */
+const PD_ROTATION_CENTER_MM = 27;
+
+function pdRangeNote(pd: number): string {
+  if (pd < 54) {
+    return "低于成人常见范围（约 54-74mm），如果不是儿童或小脸型，请重新测量确认。";
+  }
+  if (pd > 74) {
+    return "高于成人常见范围（约 54-74mm），请重新测量确认，避免加工时光心定位偏差。";
+  }
+  return "落在成人常见范围（约 54-74mm）内。";
+}
+
+function handlePupillaryDistanceGuide(args: ToolArgs): ToolResult {
+  const binocular = optionalNumber(args, "binocular_pd", { min: 40, max: 85 });
+  const pdRight = optionalNumber(args, "pd_right", { min: 18, max: 45 });
+  const pdLeft = optionalNumber(args, "pd_left", { min: 18, max: 45 });
+  const workingDistanceCm = optionalNumber(args, "working_distance_cm", { min: 20, max: 100 }) ?? 40;
+
+  const hasMono = pdRight !== undefined || pdLeft !== undefined;
+  if (hasMono && (pdRight === undefined || pdLeft === undefined)) {
+    throw new Error("单眼瞳距需要左右眼一起提供（pd_left 与 pd_right）");
+  }
+  if (binocular === undefined && !hasMono) {
+    throw new Error("请至少提供双眼瞳距 binocular_pd，或同时提供左右单眼瞳距 pd_left 和 pd_right");
+  }
+
+  const monoSum = pdRight !== undefined && pdLeft !== undefined ? pdRight + pdLeft : undefined;
+  const totalPd = binocular ?? monoSum!;
+
+  const warnings: string[] = [];
+  if (binocular !== undefined && monoSum !== undefined && Math.abs(binocular - monoSum) > 1.5) {
+    warnings.push(
+      `双眼瞳距 ${trimTrailingZeros(binocular.toFixed(1))}mm 与左右单眼之和 ${trimTrailingZeros(monoSum.toFixed(1))}mm 相差 ${trimTrailingZeros(Math.abs(binocular - monoSum).toFixed(1))}mm，请核对测量数据。`
+    );
+  }
+  if (pdRight !== undefined && pdLeft !== undefined && Math.abs(pdRight - pdLeft) >= 3) {
+    warnings.push(
+      `左右单眼瞳距相差约 ${trimTrailingZeros(Math.abs(pdRight - pdLeft).toFixed(1))}mm，属于明显不对称，务必按单眼瞳距分别定位光心，不能简单平分双眼瞳距。`
+    );
+  }
+
+  const displayRight = pdRight ?? totalPd / 2;
+  const displayLeft = pdLeft ?? totalPd / 2;
+  const monoSource = pdRight !== undefined ? "实测" : "由双眼瞳距均分估算，仅供参考";
+
+  const workingDistanceMm = workingDistanceCm * 10;
+  const nearPd = (totalPd * workingDistanceMm) / (workingDistanceMm + PD_ROTATION_CENTER_MM);
+  const nearReduction = totalPd - nearPd;
+
+  return textResult(`## 瞳距（PD）助手
+
+> 瞳距（PD）指两眼瞳孔中心的水平距离，是网购或加工配镜时把镜片光心对准眼睛的关键参数。远用看远、近用（阅读）时双眼会内聚，近用瞳距会比远用略小。
+
+**双眼瞳距（远用）**
+- ${trimTrailingZeros(totalPd.toFixed(1))} mm${binocular === undefined ? "（由左右单眼相加得到）" : ""}
+- ${pdRangeNote(totalPd)}
+
+**单眼瞳距（左右）**
+- 右眼 OD：约 ${trimTrailingZeros(displayRight.toFixed(1))} mm
+- 左眼 OS：约 ${trimTrailingZeros(displayLeft.toFixed(1))} mm
+- 来源：${monoSource}
+
+**近用瞳距（工作距离 ${trimTrailingZeros(workingDistanceCm.toFixed(1))} cm）**
+- 约 ${trimTrailingZeros(nearPd.toFixed(1))} mm（比远用约小 ${trimTrailingZeros(nearReduction.toFixed(1))} mm）
+- 配单独的阅读镜或看渐进/办公镜的近用区时才需要用到，普通远用镜按远用瞳距即可。
+
+**提醒**
+${renderBulletList(warnings, "数值看起来正常，仍建议以视光师现场用瞳距仪测量为准。")}
+
+**自测方法（应急，精度有限）**
+- 对着镜子，把直尺贴在眉骨上，平视前方。
+- 闭右眼，用左眼把尺子的 0 刻度对准右眼瞳孔中心。
+- 保持尺子不动，闭左眼，用右眼读出左眼瞳孔中心对应的刻度，即为双眼瞳距。
+- 建议重复 2-3 次取平均；高度数、渐进片和儿童配镜请以专业测量为准。`);
 }
 
 function ensureObject(value: unknown): ToolArgs {

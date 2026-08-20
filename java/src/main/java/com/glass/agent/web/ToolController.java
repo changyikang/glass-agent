@@ -52,7 +52,8 @@ public class ToolController {
                 tool("progressive_lens_assessment", "渐进镜片适配评估：判断更适合单焦、办公镜还是渐进多焦点镜片。"),
                 tool("new_glasses_troubleshooting", "新眼镜不适排查：根据症状、佩戴时长和镜片类型判断是适应期还是需要复查。"),
                 tool("shopping_links", "购物链接生成：把配镜建议转成京东/淘宝/拼多多的商品搜索购买链接。"),
-                tool("lens_thickness_estimator", "镜片厚度估算：按度数、折射率和镜圈宽度估算镜片最厚处的厚度与重量倾向，并判断是否值得提高折射率减薄。"));
+                tool("lens_thickness_estimator", "镜片厚度估算：按度数、折射率和镜圈宽度估算镜片最厚处的厚度与重量倾向，并判断是否值得提高折射率减薄。"),
+                tool("pupillary_distance_guide", "瞳距（PD）助手：校验瞳距、由单眼/双眼互算、按工作距离折算近用瞳距，并提示左右不对称与自测方法。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -103,6 +104,12 @@ public class ToolController {
                 () -> tools.lensThicknessEstimator(req.sph(), req.cyl(), req.lensIndex(), req.frameWidth()));
     }
 
+    @PostMapping("/pupillary_distance_guide")
+    public ToolResponse pupillaryDistanceGuide(@RequestBody PupillaryDistanceRequest req) {
+        return run("pupillary_distance_guide", req, () -> tools.pupillaryDistanceGuide(
+                req.binocularPd(), req.pdRight(), req.pdLeft(), req.workingDistanceCm()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -141,5 +148,9 @@ public class ToolController {
     }
 
     public record ThicknessRequest(double sph, Double cyl, String lensIndex, Double frameWidth) {
+    }
+
+    public record PupillaryDistanceRequest(Double binocularPd, Double pdRight, Double pdLeft,
+                                           Double workingDistanceCm) {
     }
 }
