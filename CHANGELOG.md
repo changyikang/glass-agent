@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `lens_coating_advisor` tool (both implementations): given a usage profile (daily screen hours, sun/outdoor exposure, night-driving frequency, light sensitivity, and whether one pair should work indoors and out), it rates each coating/function — anti-reflective base coating, UV400, blue-light, photochromic, polarized — as pay / consider / skip with reasons, and returns a consolidated shopping list plus cautions (e.g. avoiding yellow "night-vision" lenses). Brings the shared tool set to ten.
+- 新增 `lens_coating_advisor` 工具（两套实现）：按用眼画像（日均屏幕时长、户外日晒、夜间驾驶频率、是否畏光、是否想一副室内外通用）逐项判断减反射基础膜、UV400、防蓝光、变色片、偏振太阳镜「值不值得多花钱」，给出推荐等级与原因，并汇总成「建议付费 / 可选 / 不必要」购物清单及提醒（如不推荐黄色「夜视」镜片）。共享工具增至十个。
 - `pupillary_distance_guide` tool (both implementations): validates a pupillary distance, cross-checks binocular against left/right monocular readings (and derives one from the other), converts the distance PD into a near PD for a given working distance, flags left/right asymmetry, and explains how to self-measure. Brings the shared tool set to nine.
 - 新增 `pupillary_distance_guide` 工具（两套实现）：校验瞳距、把双眼瞳距与左右单眼互相核对/互算、按工作距离折算近用瞳距、提示左右不对称，并给出自测方法。共享工具增至九个。
 - `lens_thickness_estimator` tool (both implementations): a sagitta-based estimate of a lens' thickest point (edge for myopia, center for hyperopia) and weight tendency from power, refractive index and frame width, plus a recommendation on whether a higher index is worth it. Brings the shared tool set to eight.

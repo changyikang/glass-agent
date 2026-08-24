@@ -53,7 +53,8 @@ public class ToolController {
                 tool("new_glasses_troubleshooting", "新眼镜不适排查：根据症状、佩戴时长和镜片类型判断是适应期还是需要复查。"),
                 tool("shopping_links", "购物链接生成：把配镜建议转成京东/淘宝/拼多多的商品搜索购买链接。"),
                 tool("lens_thickness_estimator", "镜片厚度估算：按度数、折射率和镜圈宽度估算镜片最厚处的厚度与重量倾向，并判断是否值得提高折射率减薄。"),
-                tool("pupillary_distance_guide", "瞳距（PD）助手：校验瞳距、由单眼/双眼互算、按工作距离折算近用瞳距，并提示左右不对称与自测方法。"));
+                tool("pupillary_distance_guide", "瞳距（PD）助手：校验瞳距、由单眼/双眼互算、按工作距离折算近用瞳距，并提示左右不对称与自测方法。"),
+                tool("lens_coating_advisor", "镜片镀膜与功能顾问：按用眼场景逐项判断减反射、UV、防蓝光、变色片、偏振太阳镜值不值得多花钱，并给出购物清单。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -110,6 +111,13 @@ public class ToolController {
                 req.binocularPd(), req.pdRight(), req.pdLeft(), req.workingDistanceCm()));
     }
 
+    @PostMapping("/lens_coating_advisor")
+    public ToolResponse lensCoatingAdvisor(@RequestBody CoatingRequest req) {
+        return run("lens_coating_advisor", req, () -> tools.lensCoatingAdvisor(
+                req.screenHours(), req.outdoorFrequency(), req.nightDriving(),
+                req.lightSensitive(), req.preferOnePair()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -152,5 +160,9 @@ public class ToolController {
 
     public record PupillaryDistanceRequest(Double binocularPd, Double pdRight, Double pdLeft,
                                            Double workingDistanceCm) {
+    }
+
+    public record CoatingRequest(double screenHours, String outdoorFrequency, String nightDriving,
+                                 Boolean lightSensitive, Boolean preferOnePair) {
     }
 }

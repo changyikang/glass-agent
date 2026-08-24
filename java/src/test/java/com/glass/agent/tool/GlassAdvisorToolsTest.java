@@ -123,4 +123,37 @@ class GlassAdvisorToolsTest {
                 () -> tools.pupillaryDistanceGuide(null, null, null, null));
         assertTrue(ex.getMessage().contains("请至少提供双眼瞳距"));
     }
+
+    @Test
+    void coatingAdvisorKeepsBaseCoatingStandardAndSkipsBlueLightForLightScreenUse() {
+        String result = tools.lensCoatingAdvisor(2.0, "rare", null, null, null);
+        assertTrue(result.contains("基础膜层"));
+        assertTrue(result.contains("标配（默认就选）"));
+        assertTrue(result.contains("防蓝光膜"));
+        // 轻度屏幕使用 → 防蓝光落入「通常不必额外花钱」清单
+        int skipHeader = result.indexOf("**通常不必额外花钱**");
+        assertTrue(skipHeader > 0 && result.indexOf("防蓝光", skipHeader) > 0);
+    }
+
+    @Test
+    void coatingAdvisorStronglyRecommendsUvAndPolarizedForFrequentOutdoor() {
+        String result = tools.lensCoatingAdvisor(9.0, "often", null, true, null);
+        assertTrue(result.contains("UV 防护（UV400）**：强烈推荐"));
+        assertTrue(result.contains("偏振太阳镜"));
+        assertTrue(result.contains("**：推荐"));
+    }
+
+    @Test
+    void coatingAdvisorRecommendsPhotochromicAndWarnsAboutNightVisionLenses() {
+        String result = tools.lensCoatingAdvisor(5.0, "sometimes", "frequent", null, true);
+        assertTrue(result.contains("变色片（光致变色）**：推荐"));
+        assertTrue(result.contains("夜视 / 防远光"));
+    }
+
+    @Test
+    void coatingAdvisorRejectsOutOfRangeScreenHours() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.lensCoatingAdvisor(30.0, "rare", null, null, null));
+        assertTrue(ex.getMessage().contains("screen_hours"));
+    }
 }

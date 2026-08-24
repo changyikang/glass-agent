@@ -296,6 +296,47 @@ export const tools: ToolDefinition[] = [
     sample: { binocular_pd: 63, working_distance_cm: 40 },
     handler: handlePupillaryDistanceGuide,
   },
+  {
+    name: "lens_coating_advisor",
+    description:
+      "镜片镀膜与功能顾问：按用眼场景逐项判断「减反射绿膜、UV 防护、防蓝光、变色片、偏振太阳镜」值不值得为它多花钱，避免被过度推销。传入日均屏幕时长、户外/日晒频率、夜间驾驶频率等，返回每项功能的推荐等级、原因，以及一份「建议付费 / 可选 / 不必要」的购物清单。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        screen_hours: {
+          type: "number",
+          description: "日均看屏幕（电脑/手机/平板）的时长，单位小时，0-18。",
+        },
+        outdoor_frequency: {
+          type: "string",
+          enum: ["rare", "sometimes", "often"],
+          description: "户外/日晒暴露频率：rare(很少), sometimes(有时), often(经常)。",
+        },
+        night_driving: {
+          type: "string",
+          enum: ["none", "occasional", "frequent"],
+          description: "夜间驾驶频率：none(基本不), occasional(偶尔), frequent(经常)。默认 none。",
+        },
+        light_sensitive: {
+          type: "boolean",
+          description: "是否对强光/眩光比较敏感（畏光、易被反光晃到）。默认 false。",
+        },
+        prefer_one_pair: {
+          type: "boolean",
+          description: "是否希望一副眼镜室内外通用（用于判断是否推荐变色片）。默认 false。",
+        },
+      },
+      required: ["screen_hours", "outdoor_frequency"],
+    },
+    sample: {
+      screen_hours: 9,
+      outdoor_frequency: "sometimes",
+      night_driving: "occasional",
+      light_sensitive: false,
+      prefer_one_pair: true,
+    },
+    handler: handleLensCoatingAdvisor,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -1052,6 +1093,195 @@ ${renderBulletList(warnings, "数值看起来正常，仍建议以视光师现�
 - 建议重复 2-3 次取平均；高度数、渐进片和儿童配镜请以专业测量为准。`);
 }
 
+type CoatingTier = "must" | "optional" | "skip";
+interface CoatingRec {
+  name: string;
+  tier: CoatingTier;
+  verdict: string;
+  reason: string;
+}
+
+const OUTDOOR_LABELS: Record<string, string> = {
+  rare: "很少",
+  sometimes: "有时",
+  often: "经常",
+};
+const NIGHT_DRIVING_LABELS: Record<string, string> = {
+  none: "基本不",
+  occasional: "偶尔",
+  frequent: "经常",
+};
+
+function handleLensCoatingAdvisor(args: ToolArgs): ToolResult {
+  const screenHours = expectNumber(args, "screen_hours", { min: 0, max: 18 });
+  const outdoor = expectEnum(args, "outdoor_frequency", ["rare", "sometimes", "often"]);
+  const nightDriving = optionalEnum(args, "night_driving", ["none", "occasional", "frequent"]) ?? "none";
+  const lightSensitive = optionalBoolean(args, "light_sensitive") ?? false;
+  const preferOnePair = optionalBoolean(args, "prefer_one_pair") ?? false;
+
+  const recs: CoatingRec[] = [];
+
+  // 1. 基础膜层：几乎是现代树脂片的默认配置
+  recs.push({
+    name: "基础膜层（加硬耐磨 + 减反射绿膜 + 疏水防污）",
+    tier: "must",
+    verdict: "标配（默认就选）",
+    reason:
+      nightDriving !== "none"
+        ? "减少镜片内外反光、提升通透度和夜间抗眩光，同时更耐刮、更好清洁；你经常夜间开车，减反射膜尤其能压低对向车灯的鬼影和光晕。"
+        : "减少镜片内外反光、提升通透度，同时更耐刮、更好清洁，是现代树脂镜片的基础配置，几乎不用犹豫。",
+  });
+
+  // 2. UV 防护
+  if (outdoor === "often") {
+    recs.push({
+      name: "UV 防护（UV400）",
+      tier: "must",
+      verdict: "强烈推荐",
+      reason: "长期日晒会增加白内障、翼状胬肉等风险，经常在户外一定要确认镜片达到 UV400；太阳镜/变色片更要如此。",
+    });
+  } else if (outdoor === "sometimes") {
+    recs.push({
+      name: "UV 防护（UV400）",
+      tier: "must",
+      verdict: "推荐",
+      reason: "紫外线防护属于低成本高收益，多数中高端树脂片本身就带 UV400，下单前确认参数即可。",
+    });
+  } else {
+    recs.push({
+      name: "UV 防护（UV400）",
+      tier: "must",
+      verdict: "标配（通常无需额外加价）",
+      reason: "大部分树脂镜片出厂就阻隔 UV400，确认参数标注即可，不必为「UV 防护」单独加钱。",
+    });
+  }
+
+  // 3. 防蓝光
+  if (screenHours >= 8) {
+    recs.push({
+      name: "防蓝光膜",
+      tier: "optional",
+      verdict: "可选（重度屏幕使用者可考虑）",
+      reason: "长时间看屏幕的人，防蓝光主要作用是主观上的对比度和舒适度，尤其晚上；但它并不能替代「调低亮度/色温 + 定时休息」，护眼作用别被夸大。",
+    });
+  } else if (screenHours >= 4) {
+    recs.push({
+      name: "防蓝光膜",
+      tier: "optional",
+      verdict: "可选",
+      reason: "屏幕时间中等，防蓝光更多是心理和轻微舒适度收益，可按预算决定，不是刚需。",
+    });
+  } else {
+    recs.push({
+      name: "防蓝光膜",
+      tier: "skip",
+      verdict: "一般不需要",
+      reason: "屏幕使用不多时，防蓝光膜的实际收益很小，还可能让镜片带轻微底色，通常不值得额外花钱。",
+    });
+  }
+
+  // 4. 变色片（光致变色）
+  if (preferOnePair && outdoor !== "rare") {
+    recs.push({
+      name: "变色片（光致变色）",
+      tier: "optional",
+      verdict: "推荐",
+      reason: "你希望一副镜片室内外通用，又经常见光，变色片能省去换太阳镜的麻烦；注意它变色/褪色都需要时间，且在车内因挡风玻璃阻隔紫外线通常变色不明显。",
+    });
+  } else if (outdoor === "often" && lightSensitive) {
+    recs.push({
+      name: "变色片（光致变色）",
+      tier: "optional",
+      verdict: "推荐",
+      reason: "你经常在户外又比较畏光，变色片能随光线自动调节；但室内会残留淡淡底色，介意的话可改配单独太阳镜。",
+    });
+  } else if (outdoor === "rare" && !preferOnePair) {
+    recs.push({
+      name: "变色片（光致变色）",
+      tier: "skip",
+      verdict: "一般不需要",
+      reason: "户外时间少、也不追求一副通用，变色片的溢价通常用不上。",
+    });
+  } else {
+    recs.push({
+      name: "变色片（光致变色）",
+      tier: "optional",
+      verdict: "可选",
+      reason: "介于需要与不需要之间：想省一副太阳镜可以上，但要接受变色有延迟、车内变色弱、室内有淡底色这几点。",
+    });
+  }
+
+  // 5. 偏振太阳镜（单独一副）
+  if (outdoor === "often") {
+    recs.push({
+      name: "偏振太阳镜（建议单独配一副）",
+      tier: "must",
+      verdict: "推荐",
+      reason: "经常户外或白天开车，偏振能有效削掉水面、路面、雪地的反射眩光；注意偏振只适合白天，夜间开车不要戴，且可能影响部分液晶仪表/手机屏显示。",
+    });
+  } else if (outdoor === "sometimes" && lightSensitive) {
+    recs.push({
+      name: "偏振太阳镜（建议单独配一副）",
+      tier: "optional",
+      verdict: "可选",
+      reason: "你有时户外且比较畏光，一副偏振太阳镜会很舒服；日常近视镜没必要做成偏振，分开配更灵活。",
+    });
+  } else {
+    recs.push({
+      name: "偏振太阳镜（建议单独配一副）",
+      tier: "skip",
+      verdict: "一般不需要",
+      reason: "户外强光暴露不多时，普通防 UV 已足够，偏振太阳镜可等有需要时再单独配。",
+    });
+  }
+
+  const cautions: string[] = [];
+  if (nightDriving === "frequent") {
+    cautions.push("夜间驾驶最关键的是干净的减反射膜；市面上的黄色「夜视 / 防远光」镜片会降低进光量，多数情况下并不推荐。");
+  }
+  if (screenHours >= 8) {
+    cautions.push("长时间用屏幕，比防蓝光更有效的是调低屏幕亮度和色温、遵循 20-20-20 用眼法则（每 20 分钟看 20 英尺外 20 秒）并保证休息。");
+  }
+  if (lightSensitive && outdoor === "rare") {
+    cautions.push("你畏光但户外不多，如果不适感明显，建议先做一次眼科检查排查干眼或其它眼表问题，而不是只靠镀膜解决。");
+  }
+  cautions.push("镀膜和功能再全也替代不了准确验光和合适镜框：先把度数、瞳距、镜框选对，再谈镀膜取舍。");
+
+  const renderRec = (r: CoatingRec) => `- **${r.name}**：${r.verdict}\n  - ${r.reason}`;
+  const namesByTier = (tier: CoatingTier) =>
+    recs.filter((r) => r.tier === tier).map((r) => r.name.replace(/（.*）$/, "").trim());
+
+  const mustList = namesByTier("must");
+  const optionalList = namesByTier("optional");
+  const skipList = namesByTier("skip");
+
+  return textResult(`## 镜片镀膜与功能顾问
+
+> 镀膜和功能是配镜里最容易被过度推销的部分。下面按你的用眼场景，逐项给出「值不值得为它多花钱」的判断，而不是一律都上。
+
+**你的用眼画像**
+- 日均屏幕时长：${trimTrailingZeros(screenHours.toFixed(1))} 小时
+- 户外 / 日晒频率：${OUTDOOR_LABELS[outdoor]}
+- 夜间驾驶：${NIGHT_DRIVING_LABELS[nightDriving]}
+- 是否对强光 / 眩光敏感：${lightSensitive ? "是" : "否"}
+- 是否希望一副镜片室内外通用：${preferOnePair ? "是" : "否"}
+
+**逐项建议**
+${recs.map(renderRec).join("\n")}
+
+**建议为它们付费**
+${renderBulletList(mustList, "暂无必须额外付费的项目。")}
+
+**可以再考虑（按预算决定）**
+${renderBulletList(optionalList, "暂无需要再权衡的可选项目。")}
+
+**通常不必额外花钱**
+${renderBulletList(skipList, "以上场景下没有明显不值得的项目。")}
+
+**提醒**
+${cautions.map((item) => `- ${item}`).join("\n")}`);
+}
+
 function ensureObject(value: unknown): ToolArgs {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("工具参数必须是对象");
@@ -1097,6 +1327,13 @@ function expectBoolean(args: ToolArgs, key: string): boolean {
     throw new Error(`参数 ${key} 必须是布尔值`);
   }
   return value;
+}
+
+function optionalBoolean(args: ToolArgs, key: string): boolean | undefined {
+  if (!(key in args) || args[key] === undefined) {
+    return undefined;
+  }
+  return expectBoolean(args, key);
 }
 
 function expectEnum<T extends string>(args: ToolArgs, key: string, allowed: readonly T[]): T {

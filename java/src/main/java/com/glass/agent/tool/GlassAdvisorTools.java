@@ -23,7 +23,7 @@ import static com.glass.agent.tool.Diopters.renderPrescriptionLine;
  * <p>每个方法都标注了 Spring AI 的 {@link Tool} 注解，会被自动暴露为大模型可调用的 Function；
  * 同时也是普通 Spring Bean 方法，供 REST 控制器直接调用（不经过大模型）。
  *
- * <p>逻辑与原 TypeScript 版本 {@code src/index.ts} 中的 9 个 handler 一一对应。
+ * <p>逻辑与原 TypeScript 版本 {@code src/index.ts} 中的 10 个 handler 一一对应。
  */
 @Component
 public class GlassAdvisorTools {
@@ -848,6 +848,174 @@ public class GlassAdvisorTools {
                 format1Trim(nearPd),
                 format1Trim(nearReduction),
                 renderBulletList(warnings, "数值看起来正常，仍建议以视光师现场用瞳距仪测量为准。"));
+    }
+
+    // ---------------------------------------------------------------------
+    // 10. 镜片镀膜与功能顾问
+    // ---------------------------------------------------------------------
+    private static final Map<String, String> OUTDOOR_LABELS = Map.of(
+            "rare", "很少", "sometimes", "有时", "often", "经常");
+    private static final Map<String, String> NIGHT_DRIVING_LABELS = Map.of(
+            "none", "基本不", "occasional", "偶尔", "frequent", "经常");
+
+    /** 单条镀膜建议：名称、分级（must/optional/skip）、推荐等级文案、原因。 */
+    private record CoatingRec(String name, String tier, String verdict, String reason) {
+    }
+
+    @Tool(description = "镜片镀膜与功能顾问：按用眼场景逐项判断「减反射绿膜、UV 防护、防蓝光、变色片、偏振太阳镜」"
+            + "值不值得为它多花钱，避免被过度推销。传入日均屏幕时长、户外/日晒频率、夜间驾驶频率等，"
+            + "返回每项功能的推荐等级、原因，以及一份「建议付费 / 可选 / 不必要」的购物清单。")
+    public String lensCoatingAdvisor(
+            @ToolParam(description = "日均看屏幕（电脑/手机/平板）的时长，单位小时，0-18。")
+            double screenHours,
+            @ToolParam(description = "户外/日晒暴露频率：rare(很少), sometimes(有时), often(经常)。")
+            String outdoorFrequency,
+            @ToolParam(required = false, description = "夜间驾驶频率：none(基本不), occasional(偶尔), frequent(经常)。默认 none。")
+            String nightDriving,
+            @ToolParam(required = false, description = "是否对强光/眩光比较敏感（畏光、易被反光晃到）。默认 false。")
+            Boolean lightSensitive,
+            @ToolParam(required = false, description = "是否希望一副眼镜室内外通用（用于判断是否推荐变色片）。默认 false。")
+            Boolean preferOnePair) {
+
+        checkRange("screen_hours", screenHours, 0, 18);
+        String outdoor = expectEnum("outdoor_frequency", outdoorFrequency, "rare", "sometimes", "often");
+        String night = nightDriving == null
+                ? "none"
+                : expectEnum("night_driving", nightDriving, "none", "occasional", "frequent");
+        boolean sensitive = lightSensitive != null && lightSensitive;
+        boolean onePair = preferOnePair != null && preferOnePair;
+
+        List<CoatingRec> recs = new ArrayList<>();
+
+        // 1. 基础膜层
+        recs.add(new CoatingRec(
+                "基础膜层（加硬耐磨 + 减反射绿膜 + 疏水防污）",
+                "must",
+                "标配（默认就选）",
+                !night.equals("none")
+                        ? "减少镜片内外反光、提升通透度和夜间抗眩光，同时更耐刮、更好清洁；你经常夜间开车，减反射膜尤其能压低对向车灯的鬼影和光晕。"
+                        : "减少镜片内外反光、提升通透度，同时更耐刮、更好清洁，是现代树脂镜片的基础配置，几乎不用犹豫。"));
+
+        // 2. UV 防护
+        if (outdoor.equals("often")) {
+            recs.add(new CoatingRec("UV 防护（UV400）", "must", "强烈推荐",
+                    "长期日晒会增加白内障、翼状胬肉等风险，经常在户外一定要确认镜片达到 UV400；太阳镜/变色片更要如此。"));
+        } else if (outdoor.equals("sometimes")) {
+            recs.add(new CoatingRec("UV 防护（UV400）", "must", "推荐",
+                    "紫外线防护属于低成本高收益，多数中高端树脂片本身就带 UV400，下单前确认参数即可。"));
+        } else {
+            recs.add(new CoatingRec("UV 防护（UV400）", "must", "标配（通常无需额外加价）",
+                    "大部分树脂镜片出厂就阻隔 UV400，确认参数标注即可，不必为「UV 防护」单独加钱。"));
+        }
+
+        // 3. 防蓝光
+        if (screenHours >= 8) {
+            recs.add(new CoatingRec("防蓝光膜", "optional", "可选（重度屏幕使用者可考虑）",
+                    "长时间看屏幕的人，防蓝光主要作用是主观上的对比度和舒适度，尤其晚上；但它并不能替代「调低亮度/色温 + 定时休息」，护眼作用别被夸大。"));
+        } else if (screenHours >= 4) {
+            recs.add(new CoatingRec("防蓝光膜", "optional", "可选",
+                    "屏幕时间中等，防蓝光更多是心理和轻微舒适度收益，可按预算决定，不是刚需。"));
+        } else {
+            recs.add(new CoatingRec("防蓝光膜", "skip", "一般不需要",
+                    "屏幕使用不多时，防蓝光膜的实际收益很小，还可能让镜片带轻微底色，通常不值得额外花钱。"));
+        }
+
+        // 4. 变色片
+        if (onePair && !outdoor.equals("rare")) {
+            recs.add(new CoatingRec("变色片（光致变色）", "optional", "推荐",
+                    "你希望一副镜片室内外通用，又经常见光，变色片能省去换太阳镜的麻烦；注意它变色/褪色都需要时间，且在车内因挡风玻璃阻隔紫外线通常变色不明显。"));
+        } else if (outdoor.equals("often") && sensitive) {
+            recs.add(new CoatingRec("变色片（光致变色）", "optional", "推荐",
+                    "你经常在户外又比较畏光，变色片能随光线自动调节；但室内会残留淡淡底色，介意的话可改配单独太阳镜。"));
+        } else if (outdoor.equals("rare") && !onePair) {
+            recs.add(new CoatingRec("变色片（光致变色）", "skip", "一般不需要",
+                    "户外时间少、也不追求一副通用，变色片的溢价通常用不上。"));
+        } else {
+            recs.add(new CoatingRec("变色片（光致变色）", "optional", "可选",
+                    "介于需要与不需要之间：想省一副太阳镜可以上，但要接受变色有延迟、车内变色弱、室内有淡底色这几点。"));
+        }
+
+        // 5. 偏振太阳镜
+        if (outdoor.equals("often")) {
+            recs.add(new CoatingRec("偏振太阳镜（建议单独配一副）", "must", "推荐",
+                    "经常户外或白天开车，偏振能有效削掉水面、路面、雪地的反射眩光；注意偏振只适合白天，夜间开车不要戴，且可能影响部分液晶仪表/手机屏显示。"));
+        } else if (outdoor.equals("sometimes") && sensitive) {
+            recs.add(new CoatingRec("偏振太阳镜（建议单独配一副）", "optional", "可选",
+                    "你有时户外且比较畏光，一副偏振太阳镜会很舒服；日常近视镜没必要做成偏振，分开配更灵活。"));
+        } else {
+            recs.add(new CoatingRec("偏振太阳镜（建议单独配一副）", "skip", "一般不需要",
+                    "户外强光暴露不多时，普通防 UV 已足够，偏振太阳镜可等有需要时再单独配。"));
+        }
+
+        List<String> cautions = new ArrayList<>();
+        if (night.equals("frequent")) {
+            cautions.add("夜间驾驶最关键的是干净的减反射膜；市面上的黄色「夜视 / 防远光」镜片会降低进光量，多数情况下并不推荐。");
+        }
+        if (screenHours >= 8) {
+            cautions.add("长时间用屏幕，比防蓝光更有效的是调低屏幕亮度和色温、遵循 20-20-20 用眼法则（每 20 分钟看 20 英尺外 20 秒）并保证休息。");
+        }
+        if (sensitive && outdoor.equals("rare")) {
+            cautions.add("你畏光但户外不多，如果不适感明显，建议先做一次眼科检查排查干眼或其它眼表问题，而不是只靠镀膜解决。");
+        }
+        cautions.add("镀膜和功能再全也替代不了准确验光和合适镜框：先把度数、瞳距、镜框选对，再谈镀膜取舍。");
+
+        StringBuilder recBlock = new StringBuilder();
+        for (int i = 0; i < recs.size(); i++) {
+            CoatingRec r = recs.get(i);
+            if (i > 0) {
+                recBlock.append("\n");
+            }
+            recBlock.append("- **").append(r.name()).append("**：").append(r.verdict())
+                    .append("\n  - ").append(r.reason());
+        }
+
+        return """
+                ## 镜片镀膜与功能顾问
+
+                > 镀膜和功能是配镜里最容易被过度推销的部分。下面按你的用眼场景，逐项给出「值不值得为它多花钱」的判断，而不是一律都上。
+
+                **你的用眼画像**
+                - 日均屏幕时长：%s 小时
+                - 户外 / 日晒频率：%s
+                - 夜间驾驶：%s
+                - 是否对强光 / 眩光敏感：%s
+                - 是否希望一副镜片室内外通用：%s
+
+                **逐项建议**
+                %s
+
+                **建议为它们付费**
+                %s
+
+                **可以再考虑（按预算决定）**
+                %s
+
+                **通常不必额外花钱**
+                %s
+
+                **提醒**
+                %s""".formatted(
+                trimNumber(screenHours),
+                OUTDOOR_LABELS.get(outdoor),
+                NIGHT_DRIVING_LABELS.get(night),
+                sensitive ? "是" : "否",
+                onePair ? "是" : "否",
+                recBlock.toString(),
+                renderBulletList(coatingNamesByTier(recs, "must"), "暂无必须额外付费的项目。"),
+                renderBulletList(coatingNamesByTier(recs, "optional"), "暂无需要再权衡的可选项目。"),
+                renderBulletList(coatingNamesByTier(recs, "skip"), "以上场景下没有明显不值得的项目。"),
+                bulletJoin(cautions));
+    }
+
+    /** 取指定分级的功能名称，去掉名称里括号内的补充说明，用于生成购物清单。 */
+    private static List<String> coatingNamesByTier(List<CoatingRec> recs, String tier) {
+        List<String> names = new ArrayList<>();
+        for (CoatingRec r : recs) {
+            if (r.tier().equals(tier)) {
+                names.add(r.name().replaceAll("（.*）$", "").trim());
+            }
+        }
+        return names;
     }
 
     private static String pdRangeNote(double pd) {

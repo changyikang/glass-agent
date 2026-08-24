@@ -1,6 +1,6 @@
 # glass-agent（Java + Spring Boot 版）
 
-配眼镜指南**智能体**，基于 **Spring Boot 3 + Spring AI**。它把原 TypeScript MCP Server 的 9 个配镜工具移植为 Java 实现，并在此之上接入大模型：用户用自然语言提问，大模型通过 **Function Calling** 自动选择并调用工具。智能体会**主动追问必要信息**（度数、用途、预算、脸型等），信息足够后给出配镜建议，并在最后**附上京东 / 淘宝 / 拼多多的购买链接**。
+配眼镜指南**智能体**，基于 **Spring Boot 3 + Spring AI**。它把原 TypeScript MCP Server 的 10 个配镜工具移植为 Java 实现，并在此之上接入大模型：用户用自然语言提问，大模型通过 **Function Calling** 自动选择并调用工具。智能体会**主动追问必要信息**（度数、用途、预算、脸型等），信息足够后给出配镜建议，并在最后**附上京东 / 淘宝 / 拼多多的购买链接**。
 
 原 TypeScript / MCP 版本仍保留在仓库根目录，两者并存。
 
@@ -35,6 +35,7 @@
 - `shopping_links`：把配镜建议转成京东 / 淘宝 / 拼多多的商品搜索购买链接
 - `lens_thickness_estimator`：按度数、折射率和镜圈宽度估算镜片最厚处的厚度与重量倾向，并判断是否值得提高折射率减薄
 - `pupillary_distance_guide`：校验并互算瞳距（双眼 / 左右单眼），按工作距离折算近用瞳距，提示左右不对称并给出自测方法
+- `lens_coating_advisor`：按用眼场景逐项判断减反射、UV、防蓝光、变色片、偏振太阳镜值不值得多花钱，并给出「建议付费 / 可选 / 不必要」购物清单
 
 ## 环境要求
 
@@ -103,6 +104,14 @@ curl -X POST http://localhost:8080/api/tools/pupillary_distance_guide \
   -d '{"binocularPd":63,"workingDistanceCm":40}'
 ```
 
+镜片镀膜与功能顾问（`screenHours` 与 `outdoorFrequency` 必填，`nightDriving` / `lightSensitive` / `preferOnePair` 可选）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/lens_coating_advisor \
+  -H 'Content-Type: application/json' \
+  -d '{"screenHours":9,"outdoorFrequency":"sometimes","nightDriving":"occasional","preferOnePair":true}'
+```
+
 查看 / 清空工具调用历史（进程内保存最近 50 次，最新在前）：
 
 ```bash
@@ -132,7 +141,7 @@ java/
 └── src/main/java/com/glass/agent/
     ├── GlassAgentApplication.java      # 启动类
     ├── tool/
-    │   ├── GlassAdvisorTools.java      # 9 个工具的业务逻辑 + @Tool 注解
+    │   ├── GlassAdvisorTools.java      # 10 个工具的业务逻辑 + @Tool 注解
     │   ├── ToolCallHistory.java        # 进程内工具调用历史（最近 50 次）
     │   └── Diopters.java               # 度数格式化帮助函数
     ├── agent/

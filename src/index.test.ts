@@ -22,7 +22,54 @@ test("exports the expected MCP tool set", () => {
     "shopping_links",
     "lens_thickness_estimator",
     "pupillary_distance_guide",
+    "lens_coating_advisor",
   ]);
+});
+
+test("lens coating advisor treats base coating as standard and downgrades blue-light for light screen users", () => {
+  const tool = getTool("lens_coating_advisor");
+  const result = tool.handler({ screen_hours: 2, outdoor_frequency: "rare" });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /基础膜层.*标配/);
+  // Light screen use → blue-light lands in the "通常不必额外花钱" bucket
+  assert.match(text, /防蓝光膜/);
+  assert.match(text, /通常不必额外花钱[\s\S]*防蓝光/);
+});
+
+test("lens coating advisor strongly recommends UV and polarized for frequent outdoor use", () => {
+  const tool = getTool("lens_coating_advisor");
+  const result = tool.handler({
+    screen_hours: 9,
+    outdoor_frequency: "often",
+    light_sensitive: true,
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /UV 防护（UV400）\*\*：强烈推荐/);
+  assert.match(text, /偏振太阳镜.*\*\*：推荐/);
+});
+
+test("lens coating advisor recommends photochromic when one pair is preferred and warns about night-vision lenses", () => {
+  const tool = getTool("lens_coating_advisor");
+  const result = tool.handler({
+    screen_hours: 5,
+    outdoor_frequency: "sometimes",
+    night_driving: "frequent",
+    prefer_one_pair: true,
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /变色片（光致变色）\*\*：推荐/);
+  assert.match(text, /夜视 \/ 防远光/);
+});
+
+test("lens coating advisor rejects out-of-range screen hours", () => {
+  const tool = getTool("lens_coating_advisor");
+  assert.throws(() => tool.handler({ screen_hours: 30, outdoor_frequency: "rare" }), /screen_hours/);
 });
 
 test("pupillary distance guide derives binocular PD from monocular readings and flags asymmetry", () => {
