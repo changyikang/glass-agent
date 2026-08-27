@@ -337,6 +337,47 @@ export const tools: ToolDefinition[] = [
     },
     handler: handleLensCoatingAdvisor,
   },
+  {
+    name: "myopia_control_guide",
+    description:
+      "青少年近视防控指南：根据孩子年龄、当前近视度数、近一年近视加深速度、父母近视情况和日均户外时长，评估近视进展风险，并按适配度排序给出干预手段（户外活动、科学用眼习惯、近视离焦框架镜、角膜塑形镜 OK 镜、低浓度阿托品），并说明各方案的适用条件与就医边界。仅为科普，用药与 OK 镜验配需到专业机构。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        age: {
+          type: "number",
+          description: "孩子年龄（岁），3-18 的整数。",
+        },
+        current_sph: {
+          type: "number",
+          description:
+            "当前近视球镜度数，单位D，近视填负数（如 -2.50）。大于 -0.50 视为尚未达到近视标准。",
+        },
+        annual_progression: {
+          type: "number",
+          description: "近一年近视加深的度数（正数，单位D/年，如 0.75）。不清楚可不填。",
+        },
+        parent_myopia: {
+          type: "string",
+          enum: ["none", "one", "both"],
+          description: "父母近视情况：none(都不近视), one(一方近视), both(双方近视)。可不填。",
+        },
+        outdoor_hours: {
+          type: "number",
+          description: "孩子日均户外活动时长（小时，0-8）。可不填。",
+        },
+      },
+      required: ["age", "current_sph"],
+    },
+    sample: {
+      age: 9,
+      current_sph: -1.5,
+      annual_progression: 0.75,
+      parent_myopia: "both",
+      outdoor_hours: 0.5,
+    },
+    handler: handleMyopiaControlGuide,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -1277,6 +1318,245 @@ ${renderBulletList(optionalList, "暂无需要再权衡的可选项目。")}
 
 **通常不必额外花钱**
 ${renderBulletList(skipList, "以上场景下没有明显不值得的项目。")}
+
+**提醒**
+${cautions.map((item) => `- ${item}`).join("\n")}`);
+}
+
+type MyopiaTier = "priority" | "consider" | "notyet";
+interface MyopiaOption {
+  name: string;
+  tier: MyopiaTier;
+  verdict: string;
+  reason: string;
+}
+
+const PARENT_MYOPIA_LABELS: Record<string, string> = {
+  none: "都不近视",
+  one: "一方近视",
+  both: "双方近视",
+};
+
+/** 按当前球镜度数给出近视程度描述（负数越小度数越高）。 */
+function myopiaDegreeLabel(sph: number): string {
+  if (sph > -0.5) {
+    return "尚未达到近视标准（近视前期 / 远视储备阶段）";
+  }
+  if (sph > -3) {
+    return "低度近视";
+  }
+  if (sph > -6) {
+    return "中度近视";
+  }
+  return "高度近视（≤ -6.00D，需重视眼底随访）";
+}
+
+function handleMyopiaControlGuide(args: ToolArgs): ToolResult {
+  const age = expectNumber(args, "age", { min: 3, max: 18, integer: true });
+  const currentSph = expectNumber(args, "current_sph", { min: -15, max: 2 });
+  const annualProgression = optionalNumber(args, "annual_progression", { min: 0, max: 3 });
+  const parentMyopia = optionalEnum(args, "parent_myopia", ["none", "one", "both"]);
+  const outdoorHours = optionalNumber(args, "outdoor_hours", { min: 0, max: 8 });
+
+  const isMyopic = currentSph <= -0.5;
+  const progText =
+    annualProgression !== undefined
+      ? `${trimTrailingZeros(annualProgression.toFixed(2))}D/年（近视加深）`
+      : "未提供";
+  const fastProgress = annualProgression !== undefined && annualProgression >= 0.5;
+
+  // ---- 进展风险评分 ----
+  let score = 0;
+  const factors: string[] = [];
+  if (isMyopic && age < 9) {
+    score += 2;
+    factors.push("发病年龄小（9 岁前已近视），进展风险显著偏高。");
+  } else if (isMyopic && age < 12) {
+    score += 1;
+    factors.push("发病年龄偏小（12 岁前近视），仍需重点防控。");
+  }
+  if (annualProgression !== undefined) {
+    if (annualProgression >= 1.0) {
+      score += 2;
+      factors.push(`近一年加深约 ${trimTrailingZeros(annualProgression.toFixed(2))}D，进展很快。`);
+    } else if (annualProgression >= 0.5) {
+      score += 1;
+      factors.push(`近一年加深约 ${trimTrailingZeros(annualProgression.toFixed(2))}D，进展偏快。`);
+    } else {
+      factors.push(`近一年加深约 ${trimTrailingZeros(annualProgression.toFixed(2))}D，进展相对平稳。`);
+    }
+  }
+  if (currentSph <= -6) {
+    score += 2;
+    factors.push("已属高度近视，眼底并发症风险更高。");
+  } else if (currentSph <= -3) {
+    score += 1;
+    factors.push("已属中度近视。");
+  }
+  if (parentMyopia === "both") {
+    score += 2;
+    factors.push("父母双方均近视，遗传易感性较高。");
+  } else if (parentMyopia === "one") {
+    score += 1;
+    factors.push("父母一方近视，有一定遗传倾向。");
+  }
+  if (outdoorHours !== undefined && outdoorHours < 1) {
+    score += 1;
+    factors.push("日均户外不足 1 小时，缺少最重要的保护因素。");
+  } else if (outdoorHours !== undefined && outdoorHours >= 2) {
+    score -= 1;
+    factors.push("日均户外 2 小时以上，是重要的保护因素。");
+  }
+  if (score < 0) {
+    score = 0;
+  }
+  const riskLevel = score >= 4 ? "高" : score >= 2 ? "中" : "低";
+
+  // ---- 逐项方案 ----
+  const options: MyopiaOption[] = [];
+
+  // 1. 户外活动（基础，永远优先）
+  options.push({
+    name: "每天累计 2 小时以上户外活动",
+    tier: "priority",
+    verdict: outdoorHours !== undefined && outdoorHours < 2 ? "最该优先补上" : "保持",
+    reason:
+      outdoorHours !== undefined
+        ? outdoorHours < 2
+          ? `目前日均户外约 ${trimTrailingZeros(outdoorHours.toFixed(1))} 小时，证据最充分且几乎零成本，建议累计到每天 2 小时以上（自然光是关键，阴天也有效）。`
+          : `目前日均户外约 ${trimTrailingZeros(outdoorHours.toFixed(1))} 小时，已达标，请继续保持——这是防控近视最基础也最有效的一环。`
+        : "证据最充分且几乎零成本：保证每天累计 2 小时以上的户外活动，自然光是关键，阴天也有效。",
+  });
+
+  // 2. 科学用眼习惯（基础，永远优先）
+  options.push({
+    name: "科学用眼习惯",
+    tier: "priority",
+    verdict: "长期坚持",
+    reason:
+      "保持读写距离 33cm 以上、坐姿端正；遵循 20-20-20（每近距离用眼 20 分钟，看 20 英尺≈6 米外 20 秒）；保证读写照明充足、少用手机等小屏幕、保证充足睡眠。",
+  });
+
+  // 3. 近视离焦框架镜片
+  if (isMyopic) {
+    options.push({
+      name: "近视离焦框架镜片（多区正向离焦等设计）",
+      tier: "priority",
+      verdict: "日常配镜首选",
+      reason:
+        "非侵入、佩戴门槛低，适合大多数需要戴镜的近视儿童；相比普通单光镜片有助于延缓进展，是日常眼镜的优先选择。",
+    });
+  } else {
+    options.push({
+      name: "近视离焦框架镜片（多区正向离焦等设计）",
+      tier: "notyet",
+      verdict: "暂不需要",
+      reason:
+        "目前尚未达到近视标准，普通监测即可；一旦确诊近视需要配镜，可优先选近视离焦设计而非普通单光片。",
+    });
+  }
+
+  // 4. 角膜塑形镜（OK 镜，夜戴）
+  if (age < 8) {
+    options.push({
+      name: "角膜塑形镜（OK 镜 / 夜戴）",
+      tier: "notyet",
+      verdict: "年龄偏小，暂不考虑",
+      reason:
+        "OK 镜通常建议 8 岁以上、能自己配合摘戴与护理的孩子，目前年龄偏小，先从户外和离焦框架镜入手。",
+    });
+  } else if (!isMyopic) {
+    options.push({
+      name: "角膜塑形镜（OK 镜 / 夜戴）",
+      tier: "notyet",
+      verdict: "尚不需要",
+      reason: "尚未确诊近视或度数很低，暂不需要 OK 镜，先做好户外与用眼习惯、定期复查。",
+    });
+  } else if (currentSph < -6) {
+    options.push({
+      name: "角膜塑形镜（OK 镜 / 夜戴）",
+      tier: "consider",
+      verdict: "需专业评估（度数偏高）",
+      reason:
+        "度数偏高、超出 OK 镜常规适配范围（约 -1.00 ~ -6.00D），能否验配需由专业机构评估角膜曲率、厚度等条件后决定。",
+    });
+  } else {
+    options.push({
+      name: "角膜塑形镜（OK 镜 / 夜戴）",
+      tier: "consider",
+      verdict: fastProgress ? "很值得评估" : "可以考虑评估",
+      reason:
+        "夜间佩戴、白天可获得清晰裸眼视力，对延缓眼轴增长有较好证据；需到正规医疗机构验配，严格护理卫生并定期复查，谨防角膜感染。",
+    });
+  }
+
+  // 5. 低浓度阿托品
+  if (!isMyopic) {
+    options.push({
+      name: "低浓度阿托品滴眼液（如 0.01%）",
+      tier: "notyet",
+      verdict: "一般暂不用药",
+      reason: "尚未近视时通常不用药，先把户外与用眼习惯做到位；是否需要请由眼科医生评估。",
+    });
+  } else {
+    options.push({
+      name: "低浓度阿托品滴眼液（如 0.01%）",
+      tier: "consider",
+      verdict: riskLevel === "高" || fastProgress ? "建议就诊咨询" : "可咨询医生",
+      reason:
+        riskLevel === "高" || fastProgress
+          ? "进展较快，可就诊时咨询低浓度阿托品，需眼科医生评估并处方、定期随访；不建议自行购买使用。"
+          : "低浓度阿托品是控制进展的选项之一，是否使用请由眼科医生评估，切勿自行购买或网购使用。",
+    });
+  }
+
+  // ---- 提醒 ----
+  const cautions: string[] = [];
+  cautions.push(
+    "角膜塑形镜（OK 镜）和低浓度阿托品都属于医疗行为，必须在正规眼科 / 视光机构验配、开具并定期随访，切勿自行购买或网购使用。"
+  );
+  cautions.push(
+    "判断真性还是假性近视、评估是否用药，需要散瞳验光；建议每 3-6 个月复查一次，有条件时监测眼轴长度。"
+  );
+  if (!isMyopic) {
+    cautions.push(
+      "目前重点是「保住远视储备、别过早近视」——多户外、控制近距离用眼比急着配镜更重要。"
+    );
+  }
+  if (currentSph <= -6 || riskLevel === "高") {
+    cautions.push("高度近视要把眼底检查列为常规项目，警惕视网膜变性、裂孔等并发症。");
+  }
+  cautions.push("本工具只做科普参考，不替代医生诊断，具体方案请遵专业机构意见。");
+
+  const renderOption = (o: MyopiaOption) => `- **${o.name}**：${o.verdict}\n  - ${o.reason}`;
+  const namesByTier = (tier: MyopiaTier) => options.filter((o) => o.tier === tier).map((o) => o.name);
+
+  return textResult(`## 青少年近视防控指南
+
+> 近视防控的核心是「延缓进展、控制眼轴增长」，越早干预越好，且防控措施可以叠加使用。以下结合孩子的年龄、度数、进展速度、遗传与户外情况给出评估与方案，仅供科普参考。
+
+**孩子情况**
+- 年龄：${age} 岁
+- 当前度数（球镜）：${formatSignedDiopter(currentSph)} —— ${myopiaDegreeLabel(currentSph)}
+- 近一年加深：${progText}
+- 父母近视：${parentMyopia !== undefined ? PARENT_MYOPIA_LABELS[parentMyopia] : "未提供"}
+- 日均户外：${outdoorHours !== undefined ? `${trimTrailingZeros(outdoorHours.toFixed(1))} 小时` : "未提供"}
+
+**进展风险评估**
+- 综合判断：${riskLevel}风险
+${renderBulletList(factors, "暂未发现突出的高危因素，继续保持良好用眼习惯和定期复查即可。")}
+
+**逐项方案**
+${options.map(renderOption).join("\n")}
+
+**现在最该做的（优先）**
+${renderBulletList(namesByTier("priority"), "暂无优先项。")}
+
+**可结合专业机构评估**
+${renderBulletList(namesByTier("consider"), "暂无需要评估的医疗方案。")}
+
+**暂不需要 / 条件未到**
+${renderBulletList(namesByTier("notyet"), "暂无。")}
 
 **提醒**
 ${cautions.map((item) => `- ${item}`).join("\n")}`);

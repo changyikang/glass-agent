@@ -23,7 +23,57 @@ test("exports the expected MCP tool set", () => {
     "lens_thickness_estimator",
     "pupillary_distance_guide",
     "lens_coating_advisor",
+    "myopia_control_guide",
   ]);
+});
+
+test("myopia control guide flags high risk and prioritizes outdoor time for a young, fast-progressing child", () => {
+  const tool = getTool("myopia_control_guide");
+  const result = tool.handler({
+    age: 8,
+    current_sph: -2,
+    annual_progression: 1,
+    parent_myopia: "both",
+    outdoor_hours: 0.5,
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /综合判断：高风险/);
+  // outdoor under 2h → prioritized
+  assert.match(text, /户外活动.*：最该优先补上/);
+  // myopic → defocus lens is a day-to-day first choice
+  assert.match(text, /近视离焦框架镜片.*：日常配镜首选/);
+  // fast progression → atropine consult recommended
+  assert.match(text, /低浓度阿托品.*：建议就诊咨询/);
+});
+
+test("myopia control guide holds ortho-K for children under 8 and treats pre-myopia specially", () => {
+  const tool = getTool("myopia_control_guide");
+  const result = tool.handler({ age: 6, current_sph: 0.25 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /尚未达到近视标准/);
+  assert.match(text, /角膜塑形镜.*：年龄偏小，暂不考虑/);
+  // pre-myopia caution about preserving hyperopia reserve
+  assert.match(text, /保住远视储备/);
+});
+
+test("myopia control guide considers ortho-K needs special evaluation for high myopia", () => {
+  const tool = getTool("myopia_control_guide");
+  const result = tool.handler({ age: 13, current_sph: -6.5 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /高度近视/);
+  assert.match(text, /角膜塑形镜.*：需专业评估（度数偏高）/);
+  assert.match(text, /眼底检查列为常规项目/);
+});
+
+test("myopia control guide rejects an out-of-range age", () => {
+  const tool = getTool("myopia_control_guide");
+  assert.throws(() => tool.handler({ age: 25, current_sph: -1 }), /age/);
 });
 
 test("lens coating advisor treats base coating as standard and downgrades blue-light for light screen users", () => {

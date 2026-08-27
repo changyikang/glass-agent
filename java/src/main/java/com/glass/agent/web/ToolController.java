@@ -54,7 +54,8 @@ public class ToolController {
                 tool("shopping_links", "购物链接生成：把配镜建议转成京东/淘宝/拼多多的商品搜索购买链接。"),
                 tool("lens_thickness_estimator", "镜片厚度估算：按度数、折射率和镜圈宽度估算镜片最厚处的厚度与重量倾向，并判断是否值得提高折射率减薄。"),
                 tool("pupillary_distance_guide", "瞳距（PD）助手：校验瞳距、由单眼/双眼互算、按工作距离折算近用瞳距，并提示左右不对称与自测方法。"),
-                tool("lens_coating_advisor", "镜片镀膜与功能顾问：按用眼场景逐项判断减反射、UV、防蓝光、变色片、偏振太阳镜值不值得多花钱，并给出购物清单。"));
+                tool("lens_coating_advisor", "镜片镀膜与功能顾问：按用眼场景逐项判断减反射、UV、防蓝光、变色片、偏振太阳镜值不值得多花钱，并给出购物清单。"),
+                tool("myopia_control_guide", "青少年近视防控指南：按年龄、度数、进展速度、遗传与户外情况评估近视进展风险，并排序给出户外、用眼习惯、离焦框架镜、OK 镜、低浓度阿托品等方案。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -118,6 +119,13 @@ public class ToolController {
                 req.lightSensitive(), req.preferOnePair()));
     }
 
+    @PostMapping("/myopia_control_guide")
+    public ToolResponse myopiaControlGuide(@RequestBody MyopiaControlRequest req) {
+        return run("myopia_control_guide", req, () -> tools.myopiaControlGuide(
+                req.age(), req.currentSph(), req.annualProgression(),
+                req.parentMyopia(), req.outdoorHours()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -164,5 +172,9 @@ public class ToolController {
 
     public record CoatingRequest(double screenHours, String outdoorFrequency, String nightDriving,
                                  Boolean lightSensitive, Boolean preferOnePair) {
+    }
+
+    public record MyopiaControlRequest(int age, double currentSph, Double annualProgression,
+                                       String parentMyopia, Double outdoorHours) {
     }
 }

@@ -156,4 +156,36 @@ class GlassAdvisorToolsTest {
                 () -> tools.lensCoatingAdvisor(30.0, "rare", null, null, null));
         assertTrue(ex.getMessage().contains("screen_hours"));
     }
+
+    @Test
+    void myopiaControlFlagsHighRiskAndPrioritizesOutdoorForYoungFastProgressor() {
+        String result = tools.myopiaControlGuide(8, -2.0, 1.0, "both", 0.5);
+        assertTrue(result.contains("综合判断：高风险"));
+        assertTrue(result.contains("最该优先补上"));
+        assertTrue(result.contains("日常配镜首选"));
+        assertTrue(result.contains("建议就诊咨询"));
+    }
+
+    @Test
+    void myopiaControlHoldsOrthoKForYoungChildAndHandlesPreMyopia() {
+        String result = tools.myopiaControlGuide(6, 0.25, null, null, null);
+        assertTrue(result.contains("尚未达到近视标准"));
+        assertTrue(result.contains("年龄偏小，暂不考虑"));
+        assertTrue(result.contains("保住远视储备"));
+    }
+
+    @Test
+    void myopiaControlMarksOrthoKForSpecialEvaluationOnHighMyopia() {
+        String result = tools.myopiaControlGuide(13, -6.5, null, null, null);
+        assertTrue(result.contains("高度近视"));
+        assertTrue(result.contains("需专业评估（度数偏高）"));
+        assertTrue(result.contains("眼底检查列为常规项目"));
+    }
+
+    @Test
+    void myopiaControlRejectsOutOfRangeAge() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.myopiaControlGuide(25, -1.0, null, null, null));
+        assertTrue(ex.getMessage().contains("age"));
+    }
 }

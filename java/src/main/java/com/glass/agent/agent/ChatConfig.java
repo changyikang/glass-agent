@@ -29,7 +29,8 @@ public class ChatConfig {
 
             二、给出建议
             信息足够后，调用相应工具（vision_check_guide、lens_recommendation、frame_selection_guide、
-            prescription_interpreter、progressive_lens_assessment、new_glasses_troubleshooting）获取结构化依据，
+            prescription_interpreter、progressive_lens_assessment、new_glasses_troubleshooting、
+            myopia_control_guide 等）获取结构化依据，
             再用通俗语言给出清晰建议，至少覆盖：
             - 镜片：折射率、材质、镀膜
             - 镜框：框型、材质、尺寸方向

@@ -26,8 +26,8 @@
 **glass-agent** turns the domain knowledge of eyeglasses fitting into callable
 tools that an LLM (or any MCP client) can use. It covers prescription reading,
 lens recommendation, lens-thickness estimation, lens-coating advice, frame
-selection, vision-check guidance, progressive-lens assessment, and
-troubleshooting discomfort with new glasses.
+selection, vision-check guidance, progressive-lens assessment,
+troubleshooting discomfort with new glasses, and children's myopia control.
 
 The project ships **two interchangeable implementations that share the same ten
 tools**, so you can adopt whichever fits your stack:
@@ -39,7 +39,7 @@ tools**, so you can adopt whichever fits your stack:
 
 ### Features
 
-The ten built-in tools:
+The eleven built-in tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -53,6 +53,7 @@ The ten built-in tools:
 | `lens_thickness_estimator` | Estimates a lens' thickest point (edge for myopia, center for hyperopia) and weight tendency from power, index and frame width, and flags whether a higher index is worth it |
 | `pupillary_distance_guide` | Validates and cross-checks pupillary distance (binocular vs. monocular), derives the near PD for a working distance, flags left/right asymmetry and explains how to self-measure |
 | `lens_coating_advisor` | Judges — per your usage profile (screen time, sun exposure, night driving) — whether each coating/function (anti-reflective, UV, blue-light, photochromic, polarized) is worth paying for, and returns a pay / consider / skip shopping list |
+| `myopia_control_guide` | Assesses a child's myopia-progression risk from age, current power, yearly progression, parental myopia and daily outdoor time, then ranks interventions (outdoor time, eye-use habits, defocus spectacle lenses, ortho-K, low-dose atropine) with their eligibility and medical boundaries |
 
 The Java agent adds **multi-turn intake**: pass a `conversationId` and it remembers
 the dialogue, so it asks the questions it needs, gives a fitting recommendation, and
@@ -62,8 +63,8 @@ attaches purchase links at the end.
 
 ```
                          ┌──────────────────────────────┐
-        MCP client       │       Ten shared optical      │      REST client
-   (Claude Desktop, …)   │         optical tools         │   (curl / your app)
+        MCP client       │      Eleven shared optical    │      REST client
+   (Claude Desktop, …)   │             tools             │   (curl / your app)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │
             ▼                 │                    │                  ▼
@@ -186,9 +187,9 @@ Released under the [MIT License](LICENSE).
 
 ### 项目简介
 
-**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估，以及新眼镜佩戴不适排查。
+**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查，以及青少年近视防控。
 
-项目提供 **两套可互换、共享同一组十个工具的实现**，你可以按技术栈选用：
+项目提供 **两套可互换、共享同一组十一个工具的实现**，你可以按技术栈选用：
 
 | 实现方式 | 路径 | 适用场景 |
 | --- | --- | --- |
@@ -197,7 +198,7 @@ Released under the [MIT License](LICENSE).
 
 ### 功能
 
-内置十个工具：
+内置十一个工具：
 
 | 工具 | 作用 |
 | --- | --- |
@@ -211,6 +212,7 @@ Released under the [MIT License](LICENSE).
 | `lens_thickness_estimator` | 按度数、折射率和镜圈宽度估算镜片最厚处（近视看边缘、远视看中心）的厚度与重量倾向，并判断是否值得提高折射率减薄 |
 | `pupillary_distance_guide` | 校验并互算瞳距（双眼 / 左右单眼），按工作距离折算近用瞳距，提示左右不对称并给出自测方法 |
 | `lens_coating_advisor` | 按用眼场景（屏幕时长、日晒、夜间驾驶）逐项判断减反射、UV、防蓝光、变色片、偏振太阳镜值不值得多花钱，并给出「建议付费 / 可选 / 不必要」购物清单 |
+| `myopia_control_guide` | 按孩子年龄、当前度数、近一年加深速度、父母近视与日均户外时长评估近视进展风险，并排序给出户外活动、科学用眼、离焦框架镜、OK 镜、低浓度阿托品等干预方案及其适用条件与就医边界 |
 
 Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可记住对话上下文，
 于是它会主动追问所需信息，给出配镜建议，并在最后附上购买链接。
@@ -219,7 +221,7 @@ Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可�
 
 ```
                          ┌──────────────────────────────┐
-       MCP 客户端         │        十个共享的配镜工具       │       REST 客户端
+       MCP 客户端         │       十一个共享的配镜工具      │       REST 客户端
    (Claude Desktop 等)   │                              │   (curl / 你的应用)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │
