@@ -1,6 +1,6 @@
 # glass-agent（Java + Spring Boot 版）
 
-配眼镜指南**智能体**，基于 **Spring Boot 3 + Spring AI**。它把原 TypeScript MCP Server 的 11 个配镜工具移植为 Java 实现，并在此之上接入大模型：用户用自然语言提问，大模型通过 **Function Calling** 自动选择并调用工具。智能体会**主动追问必要信息**（度数、用途、预算、脸型等），信息足够后给出配镜建议，并在最后**附上京东 / 淘宝 / 拼多多的购买链接**。
+配眼镜指南**智能体**，基于 **Spring Boot 3 + Spring AI**。它把原 TypeScript MCP Server 的 12 个配镜工具移植为 Java 实现，并在此之上接入大模型：用户用自然语言提问，大模型通过 **Function Calling** 自动选择并调用工具。智能体会**主动追问必要信息**（度数、用途、预算、脸型等），信息足够后给出配镜建议，并在最后**附上京东 / 淘宝 / 拼多多的购买链接**。
 
 原 TypeScript / MCP 版本仍保留在仓库根目录，两者并存。
 
@@ -37,6 +37,7 @@
 - `pupillary_distance_guide`：校验并互算瞳距（双眼 / 左右单眼），按工作距离折算近用瞳距，提示左右不对称并给出自测方法
 - `lens_coating_advisor`：按用眼场景逐项判断减反射、UV、防蓝光、变色片、偏振太阳镜值不值得多花钱，并给出「建议付费 / 可选 / 不必要」购物清单
 - `myopia_control_guide`：按孩子年龄、当前度数、近一年加深速度、父母近视与日均户外时长评估近视进展风险，并排序给出户外活动、科学用眼、离焦框架镜、OK 镜、低浓度阿托品等干预方案
+- `anisometropia_guide`：按左右眼等效球镜之差评估屈光参差程度，估算框架镜下两眼影像大小差异（不等像）并与耐受上限比较，识别混合性参差与柱镜差异过大等特殊情况
 
 ## 环境要求
 
@@ -121,6 +122,14 @@ curl -X POST http://localhost:8080/api/tools/myopia_control_guide \
   -d '{"age":9,"currentSph":-1.5,"annualProgression":0.75,"parentMyopia":"both","outdoorHours":0.5}'
 ```
 
+屈光参差评估（`rightSph` 与 `leftSph` 必填，`rightCyl` / `leftCyl` 可选）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/anisometropia_guide \
+  -H 'Content-Type: application/json' \
+  -d '{"rightSph":-1.0,"leftSph":-3.5,"leftCyl":-0.75}'
+```
+
 查看 / 清空工具调用历史（进程内保存最近 50 次，最新在前）：
 
 ```bash
@@ -150,7 +159,7 @@ java/
 └── src/main/java/com/glass/agent/
     ├── GlassAgentApplication.java      # 启动类
     ├── tool/
-    │   ├── GlassAdvisorTools.java      # 11 个工具的业务逻辑 + @Tool 注解
+    │   ├── GlassAdvisorTools.java      # 12 个工具的业务逻辑 + @Tool 注解
     │   ├── ToolCallHistory.java        # 进程内工具调用历史（最近 50 次）
     │   └── Diopters.java               # 度数格式化帮助函数
     ├── agent/

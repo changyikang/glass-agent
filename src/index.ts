@@ -378,6 +378,35 @@ export const tools: ToolDefinition[] = [
     },
     handler: handleMyopiaControlGuide,
   },
+  {
+    name: "anisometropia_guide",
+    description:
+      "屈光参差评估：输入左右眼球镜（及可选柱镜）度数，按等效球镜之差评估两眼屈光参差程度（无 / 轻度 / 中度 / 显著），估算框架镜下两眼视网膜影像大小差异（不等像 aniseikonia）与耐受边界，识别「一眼近视一眼远视」的混合性参差和柱镜差异过大等特殊情况，并给出框架镜 vs 隐形眼镜、逐步适应、儿童弱视预警等建议。仅供科普，具体以专业视光 / 眼科评估为准。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        right_sph: {
+          type: "number",
+          description: "右眼(OD)球镜度数，单位D，近视填负数、远视填正数，如 -1.00。",
+        },
+        left_sph: {
+          type: "number",
+          description: "左眼(OS)球镜度数，单位D，近视填负数、远视填正数，如 -3.50。",
+        },
+        right_cyl: {
+          type: "number",
+          description: "右眼(OD)柱镜度数，单位D，负散光记法填负数，无散光可不填（默认0）。",
+        },
+        left_cyl: {
+          type: "number",
+          description: "左眼(OS)柱镜度数，单位D，负散光记法填负数，无散光可不填（默认0）。",
+        },
+      },
+      required: ["right_sph", "left_sph"],
+    },
+    sample: { right_sph: -1, left_sph: -3.5, right_cyl: 0, left_cyl: -0.75 },
+    handler: handleAnisometropiaGuide,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -1560,6 +1589,108 @@ ${renderBulletList(namesByTier("notyet"), "暂无。")}
 
 **提醒**
 ${cautions.map((item) => `- ${item}`).join("\n")}`);
+}
+
+/** 框架镜下，每 1.00D 屈光参差引起的两眼视网膜影像大小差异（不等像）近似百分比。 */
+const ANISEIKONIA_PERCENT_PER_DIOPTER = 1.5;
+/** 一般人群对两眼影像大小差异（不等像）的大致耐受上限（百分比）。 */
+const ANISEIKONIA_TOLERANCE_PERCENT = 5;
+
+function anisometropiaLevel(seDiff: number): string {
+  if (seDiff < 1) {
+    return "无明显参差";
+  }
+  if (seDiff < 2) {
+    return "轻度屈光参差";
+  }
+  if (seDiff < 3) {
+    return "中度屈光参差";
+  }
+  return "显著屈光参差";
+}
+
+function handleAnisometropiaGuide(args: ToolArgs): ToolResult {
+  const rightSph = expectNumber(args, "right_sph", { min: -30, max: 30 });
+  const leftSph = expectNumber(args, "left_sph", { min: -30, max: 30 });
+  const rightCyl = optionalNumber(args, "right_cyl", { min: -10, max: 10 }) ?? 0;
+  const leftCyl = optionalNumber(args, "left_cyl", { min: -10, max: 10 }) ?? 0;
+
+  const rightSE = rightSph + rightCyl / 2;
+  const leftSE = leftSph + leftCyl / 2;
+  const seDiff = Math.abs(rightSE - leftSE);
+  const sphDiff = Math.abs(rightSph - leftSph);
+  const cylDiff = Math.abs(rightCyl - leftCyl);
+
+  const level = anisometropiaLevel(seDiff);
+  const imageDiffPercent = seDiff * ANISEIKONIA_PERCENT_PER_DIOPTER;
+
+  // 一眼偏近视、一眼偏远视（混合性屈光参差 / antimetropia）
+  const antimetropia =
+    (rightSE <= -0.5 && leftSE >= 0.5) || (rightSE >= 0.5 && leftSE <= -0.5);
+
+  let advice: string;
+  switch (level) {
+    case "无明显参差":
+      advice = "两眼度数接近，屈光参差不明显，按验光度数配框架镜通常没有额外适应问题。";
+      break;
+    case "轻度屈光参差":
+      advice =
+        "轻度参差，绝大多数人配框架镜可以正常适应，初期偶有轻微不适；建议左右镜片选同一系列 / 折射率，一次配齐、连续佩戴适应。";
+      break;
+    case "中度屈光参差":
+      advice =
+        "中度参差，多数人可逐步适应框架镜，但初期可能出现头晕、走路踩空感、立体感变化；建议连续佩戴适应，对影像不等敏感者可考虑隐形眼镜（镜眼距贴近角膜，两眼放大差异更小）。";
+      break;
+    default:
+      advice =
+        "显著参差，框架镜下两眼影像不等明显，容易头晕、融像困难，建议优先考虑隐形眼镜，或到专业机构做双眼视功能与屈光手术评估。";
+  }
+
+  const notes: string[] = [];
+  if (antimetropia) {
+    notes.push(
+      "属于「混合性屈光参差」（一眼偏近视、一眼偏远视），两眼调节需求方向相反，框架镜适应通常更难，更建议专业验配与现场试戴。"
+    );
+  }
+  if (cylDiff >= 1.5) {
+    notes.push(
+      `两眼柱镜相差约 ${formatDiopter(cylDiff)}，除放大差异外还可能带来子午线方向上的影像倾斜 / 畸变，配镜后务必现场试戴确认清晰度与舒适度。`
+    );
+  }
+  if (imageDiffPercent > ANISEIKONIA_TOLERANCE_PERCENT) {
+    notes.push(
+      `估算两眼影像大小差异约 ${trimTrailingZeros(imageDiffPercent.toFixed(1))}%，已超过一般耐受上限（约 ${ANISEIKONIA_TOLERANCE_PERCENT}%），框架镜眩晕 / 融像困难的风险较高。`
+    );
+  }
+  if (seDiff >= 2) {
+    notes.push(
+      "儿童若存在中度以上屈光参差，是弱视和双眼视异常的高危因素，须尽早到眼科 / 视光机构检查，不要仅凭本工具判断。"
+    );
+  }
+
+  return textResult(`## 屈光参差评估
+
+> 屈光参差指两眼屈光度数不一致。以「等效球镜（SE = 球镜 + 柱镜÷2）」之差衡量：差异越大，框架镜下两眼视网膜影像大小差异（不等像 aniseikonia）越明显，越容易头晕、融像困难。以下为科普估算，实际以专业验光和试戴为准。
+
+**双眼度数**
+- 右眼 OD：${renderPrescriptionLine(rightSph, rightCyl)}（等效球镜 ${formatSignedDiopter(rightSE)}）
+- 左眼 OS：${renderPrescriptionLine(leftSph, leftCyl)}（等效球镜 ${formatSignedDiopter(leftSE)}）
+
+**参差分析**
+- 等效球镜差：${formatDiopter(seDiff)} → **${level}**
+- 球镜差：${formatDiopter(sphDiff)}；柱镜差：${formatDiopter(cylDiff)}
+- 框架镜下估算影像大小差异：约 ${trimTrailingZeros(imageDiffPercent.toFixed(1))}%（一般耐受上限约 ${ANISEIKONIA_TOLERANCE_PERCENT}%）
+
+**建议**
+- ${advice}
+
+**特别提示**
+${renderBulletList(notes, "未发现额外的特殊风险；仍建议以专业验光和现场试戴结果为准。")}
+
+**提醒**
+- 影像差异百分比为经验估算（约每 1.00D 参差对应 ${trimTrailingZeros(ANISEIKONIA_PERCENT_PER_DIOPTER.toFixed(1))}% 放大差异），实际还取决于镜片基弯、镜眼距和验配方式。
+- 隐形眼镜贴近角膜、镜眼距更小，通常能显著减小两眼放大差异，是较大屈光参差的常见方案，但需专业验配。
+- 本工具只做科普参考，不替代医生诊断。`);
 }
 
 function ensureObject(value: unknown): ToolArgs {

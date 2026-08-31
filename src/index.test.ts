@@ -24,7 +24,58 @@ test("exports the expected MCP tool set", () => {
     "pupillary_distance_guide",
     "lens_coating_advisor",
     "myopia_control_guide",
+    "anisometropia_guide",
   ]);
+});
+
+test("anisometropia guide grades a large spherical-equivalent difference as significant and flags aniseikonia over tolerance", () => {
+  const tool = getTool("anisometropia_guide");
+  const result = tool.handler({ right_sph: -1, left_sph: -5 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // SE diff = 4.00D → significant
+  assert.match(text, /等效球镜差：4D → \*\*显著屈光参差\*\*/);
+  // 4.00D * 1.5%/D = 6% > 5% tolerance
+  assert.match(text, /约 6%/);
+  assert.match(text, /超过一般耐受上限/);
+  // significant → contacts / professional evaluation
+  assert.match(text, /建议优先考虑隐形眼镜/);
+});
+
+test("anisometropia guide treats matched eyes as no meaningful difference and folds cylinder into the equivalent", () => {
+  const tool = getTool("anisometropia_guide");
+  // right SE = -2.375, left SE = -2.75 → diff 0.375 < 1 despite a 0.75D sphere gap
+  const result = tool.handler({ right_sph: -2, left_sph: -2, right_cyl: -0.75, left_cyl: -1.5 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /→ \*\*无明显参差\*\*/);
+  assert.match(text, /按验光度数配框架镜通常没有额外适应问题/);
+});
+
+test("anisometropia guide detects antimetropia (one myopic, one hyperopic)", () => {
+  const tool = getTool("anisometropia_guide");
+  const result = tool.handler({ right_sph: -1.5, left_sph: 1.5 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /混合性屈光参差/);
+});
+
+test("anisometropia guide warns about a large cylinder difference", () => {
+  const tool = getTool("anisometropia_guide");
+  const result = tool.handler({ right_sph: -2, left_sph: -2, right_cyl: 0, left_cyl: -2 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /两眼柱镜相差约/);
+  assert.match(text, /子午线方向上的影像倾斜/);
+});
+
+test("anisometropia guide rejects an out-of-range sphere", () => {
+  const tool = getTool("anisometropia_guide");
+  assert.throws(() => tool.handler({ right_sph: -99, left_sph: -1 }), /right_sph/);
 });
 
 test("myopia control guide flags high risk and prioritizes outdoor time for a young, fast-progressing child", () => {

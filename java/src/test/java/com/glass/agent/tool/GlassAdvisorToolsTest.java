@@ -188,4 +188,42 @@ class GlassAdvisorToolsTest {
                 () -> tools.myopiaControlGuide(25, -1.0, null, null, null));
         assertTrue(ex.getMessage().contains("age"));
     }
+
+    @Test
+    void anisometropiaGradesLargeDifferenceAsSignificantAndFlagsAniseikonia() {
+        // 等效球镜差 4.00D → 显著；4 * 1.5%/D = 6% > 5% 耐受上限
+        String result = tools.anisometropiaGuide(-1.0, -5.0, null, null);
+        assertTrue(result.contains("等效球镜差：4D → **显著屈光参差**"));
+        assertTrue(result.contains("约 6%"));
+        assertTrue(result.contains("超过一般耐受上限"));
+        assertTrue(result.contains("建议优先考虑隐形眼镜"));
+    }
+
+    @Test
+    void anisometropiaFoldsCylinderIntoEquivalentForMatchedEyes() {
+        // 右 SE=-2.375，左 SE=-2.75，差 0.375 < 1，尽管球镜差 0.75D
+        String result = tools.anisometropiaGuide(-2.0, -2.0, -0.75, -1.5);
+        assertTrue(result.contains("→ **无明显参差**"));
+        assertTrue(result.contains("按验光度数配框架镜通常没有额外适应问题"));
+    }
+
+    @Test
+    void anisometropiaDetectsAntimetropia() {
+        String result = tools.anisometropiaGuide(-1.5, 1.5, null, null);
+        assertTrue(result.contains("混合性屈光参差"));
+    }
+
+    @Test
+    void anisometropiaWarnsAboutLargeCylinderDifference() {
+        String result = tools.anisometropiaGuide(-2.0, -2.0, 0.0, -2.0);
+        assertTrue(result.contains("两眼柱镜相差约"));
+        assertTrue(result.contains("子午线方向上的影像倾斜"));
+    }
+
+    @Test
+    void anisometropiaRejectsOutOfRangeSphere() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.anisometropiaGuide(-99.0, -1.0, null, null));
+        assertTrue(ex.getMessage().contains("right_sph"));
+    }
 }
