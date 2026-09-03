@@ -226,4 +226,42 @@ class GlassAdvisorToolsTest {
                 () -> tools.anisometropiaGuide(-99.0, -1.0, null, null));
         assertTrue(ex.getMessage().contains("right_sph"));
     }
+
+    @Test
+    void contactLensPowerCompensatesStrongMyopeDownAndRoundsToStep() {
+        // -6 / (1 - 0.012 * -6) = -5.597 → 就近 0.25 = -5.50
+        String result = tools.contactLensPower(-6.0, null, 12.0);
+        assertTrue(result.contains("隐形眼镜光度：**SPH -5.5D**"));
+        assertTrue(result.contains("需要顶点补偿的量级"));
+        assertTrue(result.contains("近视换算成隐形后度数会变浅"));
+    }
+
+    @Test
+    void contactLensPowerCompensatesStrongHyperopeUp() {
+        // 5 / (1 - 0.012 * 5) = 5.319 → 就近 0.25 = 5.25
+        String result = tools.contactLensPower(5.0, null, 12.0);
+        assertTrue(result.contains("隐形眼镜光度：**SPH +5.25D**"));
+        assertTrue(result.contains("远视换算成隐形后度数会变深"));
+    }
+
+    @Test
+    void contactLensPowerTreatsLowPowerAsNoMeaningfulCompensation() {
+        String result = tools.contactLensPower(-2.0, null, null);
+        assertTrue(result.contains("隐形眼镜光度：**SPH -2D**"));
+        assertTrue(result.contains("顶点补偿量很小"));
+    }
+
+    @Test
+    void contactLensPowerFoldsAstigmatismAndOffersSphericalEquivalent() {
+        String result = tools.contactLensPower(-6.0, -0.75, 12.0);
+        assertTrue(result.contains("散光隐形"));
+        assertTrue(result.contains("折算等效球镜"));
+    }
+
+    @Test
+    void contactLensPowerRejectsOutOfRangeVertexDistance() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.contactLensPower(-3.0, null, 40.0));
+        assertTrue(ex.getMessage().contains("vertex_distance_mm"));
+    }
 }

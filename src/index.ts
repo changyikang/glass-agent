@@ -407,6 +407,31 @@ export const tools: ToolDefinition[] = [
     sample: { right_sph: -1, left_sph: -3.5, right_cyl: 0, left_cyl: -0.75 },
     handler: handleAnisometropiaGuide,
   },
+  {
+    name: "contact_lens_power",
+    description:
+      "框架镜度数换算隐形眼镜度数：按镜眼距（顶点距离，默认 12mm）做顶点补偿，把框架镜球镜（及可选柱镜）换算成贴近角膜的隐形眼镜等效光度，并按隐形常见的 0.25D 步进取整。说明为何高度数（约 ±4.00D 以上）必须补偿、低度数可直接沿用，散光可否折算等效球镜配普通球镜片，并提醒隐形还需基弧 / 直径 / 试戴等专业验配。仅供科普参考，不替代验光师验配。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sph: {
+          type: "number",
+          description: "框架镜球镜度数，单位D，近视填负数、远视填正数，如 -6.00。",
+        },
+        cyl: {
+          type: "number",
+          description: "框架镜柱镜度数，单位D，负散光记法填负数，无散光可不填（默认0）。",
+        },
+        vertex_distance_mm: {
+          type: "number",
+          description: "镜眼距（框架镜后顶点到角膜的距离），单位mm，常见 10-14，默认 12。",
+        },
+      },
+      required: ["sph"],
+    },
+    sample: { sph: -6, cyl: -0.75, vertex_distance_mm: 12 },
+    handler: handleContactLensPower,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -1607,6 +1632,101 @@ function anisometropiaLevel(seDiff: number): string {
     return "中度屈光参差";
   }
   return "显著屈光参差";
+}
+
+/** 隐形眼镜默认镜眼距（顶点距离，mm）。 */
+const CONTACT_LENS_DEFAULT_VERTEX_MM = 12;
+/** 超过该光度（|D|），框架镜与隐形眼镜的度数差异达到临床需要补偿的量级（约 0.25D 起）。 */
+const CONTACT_LENS_SIGNIFICANT_D = 4;
+/** 隐形眼镜常见的光度步进（D）。 */
+const CONTACT_LENS_STEP_D = 0.25;
+
+/** 顶点距离补偿：把框架镜某子午线光度换算为贴近角膜（隐形眼镜）的等效光度。d 为米。 */
+function vertexCompensate(power: number, distanceMeters: number): number {
+  return power / (1 - distanceMeters * power);
+}
+
+/** 按隐形眼镜常见步进（0.25D）取整。 */
+function roundToContactStep(value: number): number {
+  return Math.round(value / CONTACT_LENS_STEP_D) * CONTACT_LENS_STEP_D;
+}
+
+function handleContactLensPower(args: ToolArgs): ToolResult {
+  const sph = expectNumber(args, "sph", { min: -30, max: 30 });
+  const cyl = optionalNumber(args, "cyl", { min: -10, max: 10 }) ?? 0;
+  const vertexMm =
+    optionalNumber(args, "vertex_distance_mm", { min: 5, max: 20 }) ??
+    CONTACT_LENS_DEFAULT_VERTEX_MM;
+  const d = vertexMm / 1000;
+
+  // 分别换算球镜子午线与「球镜+柱镜」子午线，再按步进取整重组球柱镜。
+  const sphExact = vertexCompensate(sph, d);
+  const cylMeridianExact = vertexCompensate(sph + cyl, d);
+  const contactSph = roundToContactStep(sphExact);
+  const contactCylMeridian = roundToContactStep(cylMeridianExact);
+  const contactCyl = cyl === 0 ? 0 : contactCylMeridian - contactSph;
+
+  // 最强子午线光度，用于判断是否需要补偿。
+  const strongestPower = Math.max(Math.abs(sph), Math.abs(sph + cyl));
+  const significant = strongestPower >= CONTACT_LENS_SIGNIFICANT_D;
+  // 补偿量（球镜子午线上框架镜与隐形眼镜精确度数之差的绝对值）。
+  const sphShift = Math.abs(sphExact - sph);
+
+  // 等效球镜折算（低散光把隐形按球镜片配的常见做法）。
+  const contactSE = roundToContactStep(vertexCompensate(sph + cyl / 2, d));
+
+  const contactLine = renderPrescriptionLine(contactSph, contactCyl);
+
+  const notes: string[] = [];
+  if (significant) {
+    notes.push(
+      `框架镜最强子午线约 ${formatDiopter(strongestPower)}，已达到需要顶点补偿的量级：${
+        sph < 0 ? "近视换算成隐形后度数会变浅" : "远视换算成隐形后度数会变深"
+      }，补偿量约 ${formatDiopter(sphShift)}（球镜子午线）。直接照搬框架镜度数会${
+        sph < 0 ? "过矫" : "欠矫"
+      }。`
+    );
+  } else {
+    notes.push(
+      `框架镜最强子午线约 ${formatDiopter(strongestPower)}，未超过约 ${formatDiopter(
+        CONTACT_LENS_SIGNIFICANT_D
+      )}，顶点补偿量很小（不足半档），隐形眼镜通常可直接按框架镜度数选配。`
+    );
+  }
+  if (cyl !== 0) {
+    notes.push(
+      `含散光：换算后柱镜约 ${formatSignedDiopter(
+        contactCyl
+      )}。散光隐形（Toric / 散光片）度数、轴位步进有限，验配更复杂；低散光（约 ≤0.75D）常折算成等效球镜配普通球镜片——等效球镜隐形约为 ${formatSignedDiopter(
+        contactSE
+      )}。`
+    );
+  }
+
+  return textResult(`## 隐形眼镜度数换算（顶点距离补偿）
+
+> 框架镜离眼约 ${trimTrailingZeros(
+    vertexMm.toFixed(0)
+  )}mm，隐形眼镜贴在角膜上，同一屈光需求所需的镜片光度并不相同。度数越高，差异越大。换算公式：F_隐形 = F_框架 ÷ (1 − d × F_框架)，d 为镜眼距（米）。以下为科普估算，实际以专业验配为准。
+
+**输入（框架镜）**
+- 处方：${renderPrescriptionLine(sph, cyl)}（${describeEye(sph, cyl)}）
+- 镜眼距：${trimTrailingZeros(vertexMm.toFixed(0))} mm
+
+**换算结果（隐形眼镜，按 ${trimTrailingZeros(
+    CONTACT_LENS_STEP_D.toFixed(2)
+  )}D 步进取整）**
+- 隐形眼镜光度：**${contactLine}**${
+    cyl !== 0 ? `\n- 折算等效球镜（低散光配球镜片时）：约 ${formatSignedDiopter(contactSE)}` : ""
+  }
+
+**说明**
+${renderBulletList(notes, "换算完成。")}
+
+**提醒**
+- 隐形眼镜验配除光度外还需确定基弧（BC）、直径（DIA）、品牌和现场试戴，本工具只做光度换算。
+- 首次配戴或更换品牌请到专业机构验配，并规范护理、控制配戴时长，出现红痛畏光要及时停戴就医。
+- 本工具只做科普参考，不替代验光师 / 医生。`);
 }
 
 function handleAnisometropiaGuide(args: ToolArgs): ToolResult {

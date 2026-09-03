@@ -55,7 +55,9 @@ public class ToolController {
                 tool("lens_thickness_estimator", "镜片厚度估算：按度数、折射率和镜圈宽度估算镜片最厚处的厚度与重量倾向，并判断是否值得提高折射率减薄。"),
                 tool("pupillary_distance_guide", "瞳距（PD）助手：校验瞳距、由单眼/双眼互算、按工作距离折算近用瞳距，并提示左右不对称与自测方法。"),
                 tool("lens_coating_advisor", "镜片镀膜与功能顾问：按用眼场景逐项判断减反射、UV、防蓝光、变色片、偏振太阳镜值不值得多花钱，并给出购物清单。"),
-                tool("myopia_control_guide", "青少年近视防控指南：按年龄、度数、进展速度、遗传与户外情况评估近视进展风险，并排序给出户外、用眼习惯、离焦框架镜、OK 镜、低浓度阿托品等方案。"));
+                tool("myopia_control_guide", "青少年近视防控指南：按年龄、度数、进展速度、遗传与户外情况评估近视进展风险，并排序给出户外、用眼习惯、离焦框架镜、OK 镜、低浓度阿托品等方案。"),
+                tool("anisometropia_guide", "屈光参差评估：按左右眼等效球镜之差评估屈光参差程度，估算框架镜下不等像与耐受边界，识别混合性参差和柱镜差异过大，给出框架镜 vs 隐形眼镜等建议。"),
+                tool("contact_lens_power", "隐形眼镜度数换算：按镜眼距（顶点距离）把框架镜球镜/柱镜换算成贴近角膜的隐形眼镜光度并按 0.25D 取整，说明高度数为何要补偿、散光可否折算等效球镜。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -126,6 +128,18 @@ public class ToolController {
                 req.parentMyopia(), req.outdoorHours()));
     }
 
+    @PostMapping("/anisometropia_guide")
+    public ToolResponse anisometropiaGuide(@RequestBody AnisometropiaRequest req) {
+        return run("anisometropia_guide", req, () -> tools.anisometropiaGuide(
+                req.rightSph(), req.leftSph(), req.rightCyl(), req.leftCyl()));
+    }
+
+    @PostMapping("/contact_lens_power")
+    public ToolResponse contactLensPower(@RequestBody ContactLensRequest req) {
+        return run("contact_lens_power", req,
+                () -> tools.contactLensPower(req.sph(), req.cyl(), req.vertexDistanceMm()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -176,5 +190,11 @@ public class ToolController {
 
     public record MyopiaControlRequest(int age, double currentSph, Double annualProgression,
                                        String parentMyopia, Double outdoorHours) {
+    }
+
+    public record AnisometropiaRequest(double rightSph, double leftSph, Double rightCyl, Double leftCyl) {
+    }
+
+    public record ContactLensRequest(double sph, Double cyl, Double vertexDistanceMm) {
     }
 }

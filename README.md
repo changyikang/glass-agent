@@ -27,9 +27,10 @@
 tools that an LLM (or any MCP client) can use. It covers prescription reading,
 lens recommendation, lens-thickness estimation, lens-coating advice, frame
 selection, vision-check guidance, progressive-lens assessment,
-troubleshooting discomfort with new glasses, and children's myopia control.
+troubleshooting discomfort with new glasses, children's myopia control, and
+spectacle-to-contact-lens power conversion.
 
-The project ships **two interchangeable implementations that share the same twelve
+The project ships **two interchangeable implementations that share the same thirteen
 tools**, so you can adopt whichever fits your stack:
 
 | Implementation | Path | Best for |
@@ -39,7 +40,7 @@ tools**, so you can adopt whichever fits your stack:
 
 ### Features
 
-The twelve built-in tools:
+The thirteen built-in tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -55,6 +56,7 @@ The twelve built-in tools:
 | `lens_coating_advisor` | Judges — per your usage profile (screen time, sun exposure, night driving) — whether each coating/function (anti-reflective, UV, blue-light, photochromic, polarized) is worth paying for, and returns a pay / consider / skip shopping list |
 | `myopia_control_guide` | Assesses a child's myopia-progression risk from age, current power, yearly progression, parental myopia and daily outdoor time, then ranks interventions (outdoor time, eye-use habits, defocus spectacle lenses, ortho-K, low-dose atropine) with their eligibility and medical boundaries |
 | `anisometropia_guide` | Grades the anisometropia between two eyes from the spherical-equivalent difference, estimates the spectacle aniseikonia (image-size difference) against tolerance, detects antimetropia and large cylinder gaps, and advises on framed glasses vs. contacts and gradual adaptation |
+| `contact_lens_power` | Converts a spectacle prescription into the equivalent contact-lens power via vertex-distance compensation (rounded to 0.25 D steps), explaining why strong powers (≈ ±4.00 D+) must be compensated, when low powers can be used as-is, and how astigmatism can fold into a spherical equivalent |
 
 The Java agent adds **multi-turn intake**: pass a `conversationId` and it remembers
 the dialogue, so it asks the questions it needs, gives a fitting recommendation, and
@@ -64,7 +66,7 @@ attaches purchase links at the end.
 
 ```
                          ┌──────────────────────────────┐
-        MCP client       │      Twelve shared optical    │      REST client
+        MCP client       │     Thirteen shared optical   │      REST client
    (Claude Desktop, …)   │             tools             │   (curl / your app)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │
@@ -188,9 +190,9 @@ Released under the [MIT License](LICENSE).
 
 ### 项目简介
 
-**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查，以及青少年近视防控。
+**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查、青少年近视防控，以及框架镜到隐形眼镜的度数换算。
 
-项目提供 **两套可互换、共享同一组十二个工具的实现**，你可以按技术栈选用：
+项目提供 **两套可互换、共享同一组十三个工具的实现**，你可以按技术栈选用：
 
 | 实现方式 | 路径 | 适用场景 |
 | --- | --- | --- |
@@ -199,7 +201,7 @@ Released under the [MIT License](LICENSE).
 
 ### 功能
 
-内置十二个工具：
+内置十三个工具：
 
 | 工具 | 作用 |
 | --- | --- |
@@ -215,6 +217,7 @@ Released under the [MIT License](LICENSE).
 | `lens_coating_advisor` | 按用眼场景（屏幕时长、日晒、夜间驾驶）逐项判断减反射、UV、防蓝光、变色片、偏振太阳镜值不值得多花钱，并给出「建议付费 / 可选 / 不必要」购物清单 |
 | `myopia_control_guide` | 按孩子年龄、当前度数、近一年加深速度、父母近视与日均户外时长评估近视进展风险，并排序给出户外活动、科学用眼、离焦框架镜、OK 镜、低浓度阿托品等干预方案及其适用条件与就医边界 |
 | `anisometropia_guide` | 按左右眼等效球镜之差评估屈光参差程度，估算框架镜下两眼影像大小差异（不等像）并与耐受上限比较，识别「一眼近视一眼远视」与柱镜差异过大等特殊情况，给出框架镜 vs 隐形眼镜、逐步适应等建议 |
+| `contact_lens_power` | 按镜眼距（顶点距离）把框架镜球镜/柱镜换算成贴近角膜的隐形眼镜等效光度（按 0.25D 步进取整），说明高度数（约 ±4.00D 以上）为何必须补偿、低度数可直接沿用，以及散光如何折算等效球镜 |
 
 Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可记住对话上下文，
 于是它会主动追问所需信息，给出配镜建议，并在最后附上购买链接。
@@ -223,7 +226,7 @@ Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可�
 
 ```
                          ┌──────────────────────────────┐
-       MCP 客户端         │       十二个共享的配镜工具      │       REST 客户端
+       MCP 客户端         │       十三个共享的配镜工具      │       REST 客户端
    (Claude Desktop 等)   │                              │   (curl / 你的应用)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │

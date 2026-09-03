@@ -25,7 +25,59 @@ test("exports the expected MCP tool set", () => {
     "lens_coating_advisor",
     "myopia_control_guide",
     "anisometropia_guide",
+    "contact_lens_power",
   ]);
+});
+
+test("contact lens power compensates a strong myope down and rounds to 0.25D steps", () => {
+  const tool = getTool("contact_lens_power");
+  const result = tool.handler({ sph: -6, vertex_distance_mm: 12 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // -6 / (1 - 0.012 * -6) = -6 / 1.072 = -5.597 → nearest 0.25 = -5.50
+  assert.match(text, /隐形眼镜光度：\*\*SPH -5\.5D\*\*/);
+  assert.match(text, /需要顶点补偿的量级/);
+  assert.match(text, /近视换算成隐形后度数会变浅/);
+});
+
+test("contact lens power compensates a strong hyperope up", () => {
+  const tool = getTool("contact_lens_power");
+  const result = tool.handler({ sph: 5, vertex_distance_mm: 12 });
+
+  assert.equal(result.isError, undefined);
+  // 5 / (1 - 0.012 * 5) = 5 / 0.94 = 5.319 → nearest 0.25 = 5.25
+  assert.match(result.content[0].text, /隐形眼镜光度：\*\*SPH \+5\.25D\*\*/);
+  assert.match(result.content[0].text, /远视换算成隐形后度数会变深/);
+});
+
+test("contact lens power treats low powers as needing no meaningful compensation", () => {
+  const tool = getTool("contact_lens_power");
+  const result = tool.handler({ sph: -2 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // -2 / 1.024 = -1.953 → -2.00, same as input
+  assert.match(text, /隐形眼镜光度：\*\*SPH -2D\*\*/);
+  assert.match(text, /顶点补偿量很小/);
+});
+
+test("contact lens power folds astigmatism and offers a spherical-equivalent option", () => {
+  const tool = getTool("contact_lens_power");
+  const result = tool.handler({ sph: -6, cyl: -0.75, vertex_distance_mm: 12 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /散光隐形/);
+  assert.match(text, /折算等效球镜/);
+});
+
+test("contact lens power rejects an out-of-range vertex distance", () => {
+  const tool = getTool("contact_lens_power");
+  assert.throws(
+    () => tool.handler({ sph: -3, vertex_distance_mm: 40 }),
+    /vertex_distance_mm/
+  );
 });
 
 test("anisometropia guide grades a large spherical-equivalent difference as significant and flags aniseikonia over tolerance", () => {

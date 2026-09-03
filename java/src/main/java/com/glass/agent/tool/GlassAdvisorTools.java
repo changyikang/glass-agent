@@ -1366,6 +1366,109 @@ public class GlassAdvisorTools {
         return "显著屈光参差";
     }
 
+    /** 隐形眼镜默认镜眼距（顶点距离，mm）。 */
+    private static final double CONTACT_LENS_DEFAULT_VERTEX_MM = 12;
+    /** 超过该光度（|D|），框架镜与隐形眼镜的度数差异达到需要补偿的量级（约 0.25D 起）。 */
+    private static final double CONTACT_LENS_SIGNIFICANT_D = 4;
+    /** 隐形眼镜常见的光度步进（D）。 */
+    private static final double CONTACT_LENS_STEP_D = 0.25;
+
+    @Tool(description = "框架镜度数换算隐形眼镜度数：按镜眼距（顶点距离，默认 12mm）做顶点补偿，把框架镜球镜"
+            + "（及可选柱镜）换算成贴近角膜的隐形眼镜等效光度，并按隐形常见的 0.25D 步进取整。说明为何高度数"
+            + "（约 ±4.00D 以上）必须补偿、低度数可直接沿用，散光可否折算等效球镜配普通球镜片，并提醒隐形还需"
+            + "基弧 / 直径 / 试戴等专业验配。仅供科普参考，不替代验光师验配。")
+    public String contactLensPower(
+            @ToolParam(description = "框架镜球镜度数，单位D，近视填负数、远视填正数，如 -6.00。") double sph,
+            @ToolParam(required = false, description = "框架镜柱镜度数，单位D，负散光记法填负数，无散光可不填（默认0）。")
+            Double cyl,
+            @ToolParam(required = false, description = "镜眼距（框架镜后顶点到角膜的距离），单位mm，常见 10-14，默认 12。")
+            Double vertexDistanceMm) {
+
+        checkRange("sph", sph, -30, 30);
+        double c = cyl == null ? 0 : cyl;
+        if (cyl != null) {
+            checkRange("cyl", c, -10, 10);
+        }
+        double vertexMm = vertexDistanceMm == null ? CONTACT_LENS_DEFAULT_VERTEX_MM : vertexDistanceMm;
+        if (vertexDistanceMm != null) {
+            checkRange("vertex_distance_mm", vertexMm, 5, 20);
+        }
+        double d = vertexMm / 1000;
+
+        // 分别换算球镜子午线与「球镜+柱镜」子午线，再按步进取整重组球柱镜。
+        double sphExact = vertexCompensate(sph, d);
+        double cylMeridianExact = vertexCompensate(sph + c, d);
+        double contactSph = roundToContactStep(sphExact);
+        double contactCylMeridian = roundToContactStep(cylMeridianExact);
+        double contactCyl = c == 0 ? 0 : contactCylMeridian - contactSph;
+
+        double strongestPower = Math.max(Math.abs(sph), Math.abs(sph + c));
+        boolean significant = strongestPower >= CONTACT_LENS_SIGNIFICANT_D;
+        double sphShift = Math.abs(sphExact - sph);
+        double contactSE = roundToContactStep(vertexCompensate(sph + c / 2, d));
+
+        List<String> notes = new ArrayList<>();
+        if (significant) {
+            notes.add("框架镜最强子午线约 " + formatDiopter(strongestPower)
+                    + "，已达到需要顶点补偿的量级："
+                    + (sph < 0 ? "近视换算成隐形后度数会变浅" : "远视换算成隐形后度数会变深")
+                    + "，补偿量约 " + formatDiopter(sphShift) + "（球镜子午线）。直接照搬框架镜度数会"
+                    + (sph < 0 ? "过矫" : "欠矫") + "。");
+        } else {
+            notes.add("框架镜最强子午线约 " + formatDiopter(strongestPower)
+                    + "，未超过约 " + formatDiopter(CONTACT_LENS_SIGNIFICANT_D)
+                    + "，顶点补偿量很小（不足半档），隐形眼镜通常可直接按框架镜度数选配。");
+        }
+        if (c != 0) {
+            notes.add("含散光：换算后柱镜约 " + formatSignedDiopter(contactCyl)
+                    + "。散光隐形（Toric / 散光片）度数、轴位步进有限，验配更复杂；"
+                    + "低散光（约 ≤0.75D）常折算成等效球镜配普通球镜片——等效球镜隐形约为 "
+                    + formatSignedDiopter(contactSE) + "。");
+        }
+
+        String seLine = c != 0
+                ? "\n- 折算等效球镜（低散光配球镜片时）：约 " + formatSignedDiopter(contactSE)
+                : "";
+
+        return """
+                ## 隐形眼镜度数换算（顶点距离补偿）
+
+                > 框架镜离眼约 %smm，隐形眼镜贴在角膜上，同一屈光需求所需的镜片光度并不相同。度数越高，差异越大。换算公式：F_隐形 = F_框架 ÷ (1 − d × F_框架)，d 为镜眼距（米）。以下为科普估算，实际以专业验配为准。
+
+                **输入（框架镜）**
+                - 处方：%s（%s）
+                - 镜眼距：%s mm
+
+                **换算结果（隐形眼镜，按 %sD 步进取整）**
+                - 隐形眼镜光度：**%s**%s
+
+                **说明**
+                %s
+
+                **提醒**
+                - 隐形眼镜验配除光度外还需确定基弧（BC）、直径（DIA）、品牌和现场试戴，本工具只做光度换算。
+                - 首次配戴或更换品牌请到专业机构验配，并规范护理、控制配戴时长，出现红痛畏光要及时停戴就医。
+                - 本工具只做科普参考，不替代验光师 / 医生。""".formatted(
+                trimNumber(vertexMm),
+                renderPrescriptionLine(sph, c, null),
+                describeEye(sph, c),
+                trimNumber(vertexMm),
+                trimNumber(CONTACT_LENS_STEP_D),
+                renderPrescriptionLine(contactSph, contactCyl, null),
+                seLine,
+                bulletJoin(notes));
+    }
+
+    /** 顶点距离补偿：把框架镜某子午线光度换算为贴近角膜（隐形眼镜）的等效光度。d 为米。 */
+    private static double vertexCompensate(double power, double distanceMeters) {
+        return power / (1 - distanceMeters * power);
+    }
+
+    /** 按隐形眼镜常见步进（0.25D）取整。 */
+    private static double roundToContactStep(double value) {
+        return Math.round(value / CONTACT_LENS_STEP_D) * CONTACT_LENS_STEP_D;
+    }
+
     /** 按当前球镜度数给出近视程度描述（负数越小度数越高）。 */
     private static String myopiaDegreeLabel(double sph) {
         if (sph > -0.5) {
