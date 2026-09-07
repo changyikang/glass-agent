@@ -1373,6 +1373,15 @@ public class GlassAdvisorTools {
     /** 隐形眼镜常见的光度步进（D）。 */
     private static final double CONTACT_LENS_STEP_D = 0.25;
 
+    /** 近附加（ADD）常见的度数步进（D）。 */
+    private static final double READING_ADD_STEP_D = 0.25;
+    /** 近附加的参考工作距离（cm）：年龄经验表按此距离标定。 */
+    private static final double READING_ADD_REFERENCE_CM = 40;
+    /** 近附加的常见上限（D），超过后单副老花镜的清晰景深过窄，一般不再加大。 */
+    private static final double READING_ADD_MAX_D = 3.5;
+    /** 老视一般开始出现的年龄（岁）。 */
+    private static final int PRESBYOPIA_ONSET_AGE = 40;
+
     @Tool(description = "框架镜度数换算隐形眼镜度数：按镜眼距（顶点距离，默认 12mm）做顶点补偿，把框架镜球镜"
             + "（及可选柱镜）换算成贴近角膜的隐形眼镜等效光度，并按隐形常见的 0.25D 步进取整。说明为何高度数"
             + "（约 ±4.00D 以上）必须补偿、低度数可直接沿用，散光可否折算等效球镜配普通球镜片，并提醒隐形还需"
@@ -1457,6 +1466,141 @@ public class GlassAdvisorTools {
                 renderPrescriptionLine(contactSph, contactCyl, null),
                 seLine,
                 bulletJoin(notes));
+    }
+
+    @Tool(description = "老花（近附加 ADD）度数估算：随年龄增长调节力下降，40 岁后看近逐渐吃力。按年龄给出典型近附加"
+            + "（下加光）度数，并按实际工作距离（默认 40cm）做增减，可选传入看远球镜度数以算出「看近总度数 = "
+            + "看远度数 + ADD」。说明老视机理、老花镜 / 渐进 / 办公镜片的选择，并按 0.25D 步进取整。"
+            + "仅供科普参考，最终度数以主觉验光和试戴为准。")
+    public String readingAddEstimator(
+            @ToolParam(description = "年龄（岁），整数。老视一般 40 岁后逐渐出现。") int age,
+            @ToolParam(required = false, description = "主要用眼（看近）距离，单位cm，常见看书 33-40、电脑 50-70，默认 40。")
+            Double workingDistanceCm,
+            @ToolParam(required = false, description = "看远球镜度数，单位D，近视填负数、远视填正数（如 -2.00）；"
+                    + "不填则只给近附加 ADD，不算看近总度数。")
+            Double distanceSph) {
+
+        checkRange("age", age, 1, 120);
+        double workingCm = workingDistanceCm == null ? READING_ADD_REFERENCE_CM : workingDistanceCm;
+        if (workingDistanceCm != null) {
+            checkRange("working_distance_cm", workingCm, 20, 200);
+        }
+        if (distanceSph != null) {
+            checkRange("distance_sph", distanceSph, -30, 30);
+        }
+
+        double baseAdd = ageBaseAdd(age);
+        // 工作距离修正：相对 40cm 参考距离的调节需求差（1/距离，单位 D）。越近需求越大 → 需要更多下加光。
+        double distanceAdjust = baseAdd > 0 ? 100 / workingCm - 100 / READING_ADD_REFERENCE_CM : 0;
+        double rawAdd = Math.min(Math.max(baseAdd + distanceAdjust, 0), READING_ADD_MAX_D);
+        double add = roundToReadingStep(rawAdd);
+
+        List<String> notes = new ArrayList<>();
+        if (age < PRESBYOPIA_ONSET_AGE) {
+            notes.add(age + " 岁一般还有充足的调节力，通常不需要近附加。若此年龄已明显看近吃力，"
+                    + "多与远视、调节功能异常或用眼疲劳有关，建议先做主觉验光和调节功能检查，而非直接配老花镜。");
+        } else {
+            notes.add("近附加度数由验光师用「先给暂定下加光、再用交叉圆柱镜 / 红绿视标微调」确定，"
+                    + "本工具只按年龄和距离给经验估算，真实值可能相差约 ±0.25~0.50D。");
+            notes.add("配镜原则是「够用即可、留有余量」——在能看清目标距离的前提下选偏低的下加光，"
+                    + "可保留更宽的清晰景深，不要盲目追高。左右眼近附加通常相同。");
+        }
+
+        if (workingCm <= 33 && baseAdd > 0) {
+            notes.add("工作距离约 " + trimNumber(workingCm) + "cm，比参考的 40cm 更近，已相应加大下加光；"
+                    + "长时间超近距离用眼更累，注意间歇休息。");
+        } else if (workingCm >= 60 && baseAdd > 0) {
+            notes.add("工作距离约 " + trimNumber(workingCm) + "cm 偏远（如台式电脑 / 乐谱），下加光相应减小；"
+                    + "若既要看电脑又要看更近的纸面，单一下加光难以兼顾，可考虑渐进或办公（中近）镜片。");
+        }
+
+        if (add >= READING_ADD_MAX_D) {
+            notes.add("估算下加光已达上限约 " + formatDiopter(READING_ADD_MAX_D)
+                    + "；单副老花镜再加大清晰范围会更窄，若一副难以兼顾各距离，建议渐进多焦点或分距离配镜。");
+        }
+
+        // 看近总度数（每眼）：看远球镜 + 近附加。
+        String nearTotalLine = "";
+        if (distanceSph != null) {
+            double nearTotal = distanceSph + add;
+            nearTotalLine = "\n- 看近总度数（每眼球镜）：看远 " + formatSignedDiopter(distanceSph)
+                    + " + 下加光 " + formatSignedDiopter(add) + " = **" + formatSignedDiopter(nearTotal) + "**";
+            if (distanceSph < 0 && distanceSph + add < 0) {
+                notes.add("你看远是近视，加上下加光后看近仍是负度数：不少中低度近视者看近时摘掉眼镜或戴度数更浅的眼镜即可，"
+                        + "是否需要单独的老花镜要结合裸眼近视力判断。");
+            }
+            notes.add("已有看远度数（近视 / 远视 / 散光）者，多数会选择渐进多焦点或双光镜片，"
+                    + "把看远与看近合到一副，避免频繁换镜。");
+        } else {
+            notes.add("如需算「看近总度数」，请一并提供看远球镜度数（distance_sph）；"
+                    + "只有老花、看远正常者，看近总度数就等于下加光本身。");
+        }
+
+        String addDisplay = add > 0
+                ? "**约 +" + trimNumber(add) + "D**"
+                : "**+0.00D（暂不需要）**";
+        String distanceLine = distanceSph != null
+                ? "\n- 看远球镜：" + formatSignedDiopter(distanceSph)
+                : "";
+
+        return """
+                ## 老花（近附加 ADD）度数估算
+
+                > 随年龄增长，晶状体调节力逐渐下降，约 40 岁起看近费力、易疲劳，这就是老视（老花）。矫正靠在看远度数上叠加一份「近附加 / 下加光（ADD）」。下加光随年龄增大、约 60 岁后趋于稳定（一般不超过约 %sD），并与实际用眼距离有关。以下为科普估算，实际以主觉验光和试戴为准。
+
+                **输入**
+                - 年龄：%d 岁
+                - 主要用眼距离：%s cm（参考距离 %s cm）%s
+
+                **估算结果**
+                - 建议近附加（下加光 ADD）：%s%s
+
+                **说明**
+                %s
+
+                **提醒**
+                - 下加光是双眼看近的叠加度数，需与看远度数、瞳距（近用瞳距会略小）、镜片类型一起确定。
+                - 突然、单眼或快速加重的看近困难，或伴随头痛、视物变形，应先就医排查，而非仅配老花镜。
+                - 本工具只做科普参考，不替代验光师 / 医生。""".formatted(
+                trimNumber(READING_ADD_MAX_D),
+                age,
+                trimNumber(workingCm),
+                trimNumber(READING_ADD_REFERENCE_CM),
+                distanceLine,
+                addDisplay,
+                nearTotalLine,
+                bulletJoin(notes));
+    }
+
+    /** 按年龄给出 40cm 参考距离下的典型近附加（下加光）度数（D）。 */
+    private static double ageBaseAdd(int age) {
+        if (age < PRESBYOPIA_ONSET_AGE) {
+            return 0;
+        }
+        if (age <= 41) {
+            return 1.0;
+        }
+        if (age <= 44) {
+            return 1.25;
+        }
+        if (age <= 47) {
+            return 1.5;
+        }
+        if (age <= 49) {
+            return 1.75;
+        }
+        if (age <= 52) {
+            return 2.0;
+        }
+        if (age <= 55) {
+            return 2.25;
+        }
+        return 2.5;
+    }
+
+    /** 按 0.25D 步进取整。 */
+    private static double roundToReadingStep(double value) {
+        return Math.round(value / READING_ADD_STEP_D) * READING_ADD_STEP_D;
     }
 
     /** 顶点距离补偿：把框架镜某子午线光度换算为贴近角膜（隐形眼镜）的等效光度。d 为米。 */

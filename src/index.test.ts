@@ -26,7 +26,58 @@ test("exports the expected MCP tool set", () => {
     "myopia_control_guide",
     "anisometropia_guide",
     "contact_lens_power",
+    "reading_add_estimator",
   ]);
+});
+
+test("reading add estimator gives a typical add for a 50-year-old at 40cm and computes near total", () => {
+  const tool = getTool("reading_add_estimator");
+  const result = tool.handler({ age: 50, working_distance_cm: 40, distance_sph: -2 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // age 50 → +2.00 base, 40cm reference → no distance adjust
+  assert.match(text, /建议近附加（下加光 ADD）：\*\*约 \+2D\*\*/);
+  // near total = -2.00 + 2.00 = 0.00
+  assert.match(text, /= \*\*0D\*\*/);
+  assert.match(text, /主要用眼距离：40 cm/);
+});
+
+test("reading add estimator increases the add for a closer working distance", () => {
+  const tool = getTool("reading_add_estimator");
+  const result = tool.handler({ age: 50, working_distance_cm: 33 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // base +2.00, adjust = 100/33 - 100/40 = 3.03 - 2.50 = +0.53 → 2.50 rounded to 0.25
+  assert.match(text, /建议近附加（下加光 ADD）：\*\*约 \+2\.5D\*\*/);
+  assert.match(text, /比参考的 40cm 更近/);
+});
+
+test("reading add estimator recommends no add below the presbyopia onset age", () => {
+  const tool = getTool("reading_add_estimator");
+  const result = tool.handler({ age: 32 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /\+0\.00D（暂不需要）/);
+  assert.match(text, /通常不需要近附加/);
+});
+
+test("reading add estimator caps the add at the practical maximum", () => {
+  const tool = getTool("reading_add_estimator");
+  const result = tool.handler({ age: 65, working_distance_cm: 20 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // base 2.50 + (100/20 - 2.50 = 2.50) = 5.00, capped at 3.50
+  assert.match(text, /建议近附加（下加光 ADD）：\*\*约 \+3\.5D\*\*/);
+  assert.match(text, /已达上限/);
+});
+
+test("reading add estimator rejects a non-integer age", () => {
+  const tool = getTool("reading_add_estimator");
+  assert.throws(() => tool.handler({ age: 50.5 }), /age/);
 });
 
 test("contact lens power compensates a strong myope down and rounds to 0.25D steps", () => {

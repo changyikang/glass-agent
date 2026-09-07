@@ -264,4 +264,43 @@ class GlassAdvisorToolsTest {
                 () -> tools.contactLensPower(-3.0, null, 40.0));
         assertTrue(ex.getMessage().contains("vertex_distance_mm"));
     }
+
+    @Test
+    void readingAddGivesTypicalAddForFiftyYearOldAndComputesNearTotal() {
+        // age 50 → +2.00 base，40cm 参考距离无修正；看近总度数 = -2.00 + 2.00 = 0
+        String result = tools.readingAddEstimator(50, 40.0, -2.0);
+        assertTrue(result.contains("建议近附加（下加光 ADD）：**约 +2D**"));
+        assertTrue(result.contains("= **0D**"));
+        assertTrue(result.contains("主要用眼距离：40 cm"));
+    }
+
+    @Test
+    void readingAddIncreasesForCloserWorkingDistance() {
+        // base +2.00, 修正 = 100/33 - 100/40 = +0.53 → 就近 0.25 = +2.50
+        String result = tools.readingAddEstimator(50, 33.0, null);
+        assertTrue(result.contains("建议近附加（下加光 ADD）：**约 +2.5D**"));
+        assertTrue(result.contains("比参考的 40cm 更近"));
+    }
+
+    @Test
+    void readingAddRecommendsNoAddBelowOnsetAge() {
+        String result = tools.readingAddEstimator(32, null, null);
+        assertTrue(result.contains("+0.00D（暂不需要）"));
+        assertTrue(result.contains("通常不需要近附加"));
+    }
+
+    @Test
+    void readingAddCapsAtPracticalMaximum() {
+        // base 2.50 + (100/20 - 2.50 = 2.50) = 5.00，封顶 3.50
+        String result = tools.readingAddEstimator(65, 20.0, null);
+        assertTrue(result.contains("建议近附加（下加光 ADD）：**约 +3.5D**"));
+        assertTrue(result.contains("已达上限"));
+    }
+
+    @Test
+    void readingAddRejectsOutOfRangeAge() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.readingAddEstimator(150, null, null));
+        assertTrue(ex.getMessage().contains("age"));
+    }
 }

@@ -57,7 +57,8 @@ public class ToolController {
                 tool("lens_coating_advisor", "镜片镀膜与功能顾问：按用眼场景逐项判断减反射、UV、防蓝光、变色片、偏振太阳镜值不值得多花钱，并给出购物清单。"),
                 tool("myopia_control_guide", "青少年近视防控指南：按年龄、度数、进展速度、遗传与户外情况评估近视进展风险，并排序给出户外、用眼习惯、离焦框架镜、OK 镜、低浓度阿托品等方案。"),
                 tool("anisometropia_guide", "屈光参差评估：按左右眼等效球镜之差评估屈光参差程度，估算框架镜下不等像与耐受边界，识别混合性参差和柱镜差异过大，给出框架镜 vs 隐形眼镜等建议。"),
-                tool("contact_lens_power", "隐形眼镜度数换算：按镜眼距（顶点距离）把框架镜球镜/柱镜换算成贴近角膜的隐形眼镜光度并按 0.25D 取整，说明高度数为何要补偿、散光可否折算等效球镜。"));
+                tool("contact_lens_power", "隐形眼镜度数换算：按镜眼距（顶点距离）把框架镜球镜/柱镜换算成贴近角膜的隐形眼镜光度并按 0.25D 取整，说明高度数为何要补偿、散光可否折算等效球镜。"),
+                tool("reading_add_estimator", "老花（近附加 ADD）度数估算：按年龄给出典型近附加度数，按工作距离增减，并可结合看远球镜算出看近总度数，说明老花镜/渐进/办公镜片的选择。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -140,6 +141,12 @@ public class ToolController {
                 () -> tools.contactLensPower(req.sph(), req.cyl(), req.vertexDistanceMm()));
     }
 
+    @PostMapping("/reading_add_estimator")
+    public ToolResponse readingAddEstimator(@RequestBody ReadingAddRequest req) {
+        return run("reading_add_estimator", req, () -> tools.readingAddEstimator(
+                req.age(), req.workingDistanceCm(), req.distanceSph()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -196,5 +203,8 @@ public class ToolController {
     }
 
     public record ContactLensRequest(double sph, Double cyl, Double vertexDistanceMm) {
+    }
+
+    public record ReadingAddRequest(int age, Double workingDistanceCm, Double distanceSph) {
     }
 }
