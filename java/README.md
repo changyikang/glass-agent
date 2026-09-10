@@ -1,6 +1,6 @@
 # glass-agent（Java + Spring Boot 版）
 
-配眼镜指南**智能体**，基于 **Spring Boot 3 + Spring AI**。它把原 TypeScript MCP Server 的 14 个配镜工具移植为 Java 实现，并在此之上接入大模型：用户用自然语言提问，大模型通过 **Function Calling** 自动选择并调用工具。智能体会**主动追问必要信息**（度数、用途、预算、脸型等），信息足够后给出配镜建议，并在最后**附上京东 / 淘宝 / 拼多多的购买链接**。
+配眼镜指南**智能体**，基于 **Spring Boot 3 + Spring AI**。它把原 TypeScript MCP Server 的 15 个配镜工具移植为 Java 实现，并在此之上接入大模型：用户用自然语言提问，大模型通过 **Function Calling** 自动选择并调用工具。智能体会**主动追问必要信息**（度数、用途、预算、脸型等），信息足够后给出配镜建议，并在最后**附上京东 / 淘宝 / 拼多多的购买链接**。
 
 原 TypeScript / MCP 版本仍保留在仓库根目录，两者并存。
 
@@ -40,6 +40,7 @@
 - `anisometropia_guide`：按左右眼等效球镜之差评估屈光参差程度，估算框架镜下两眼影像大小差异（不等像）并与耐受上限比较，识别混合性参差与柱镜差异过大等特殊情况
 - `contact_lens_power`：按镜眼距（顶点距离）把框架镜球镜/柱镜换算成贴近角膜的隐形眼镜等效光度（按 0.25D 步进取整），说明高度数为何要补偿、低度数可直接沿用、散光如何折算等效球镜
 - `reading_add_estimator`：按年龄估算老花（近附加 ADD）度数，按实际工作距离（默认 40cm）增减，并可结合看远球镜算出看近总度数，给出老花镜 / 渐进 / 办公镜片的选择建议（按 0.25D 步进取整）
+- `prescription_transpose`：在负柱镜与正柱镜两种等价记法间互换（新球镜 = 原球镜 + 原柱镜，新柱镜 = −原柱镜，新轴位 = 原轴位 ± 90°），展示换算过程并用等效球镜不变量自检
 
 ## 环境要求
 
@@ -148,6 +149,14 @@ curl -X POST http://localhost:8080/api/tools/reading_add_estimator \
   -d '{"age":50,"workingDistanceCm":40,"distanceSph":-2.0}'
 ```
 
+散光记法转换（`sph` / `cyl` 必填，有散光时 `axis` 必填；下例把负柱镜换成正柱镜）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/prescription_transpose \
+  -H 'Content-Type: application/json' \
+  -d '{"sph":-2.0,"cyl":-0.75,"axis":180}'
+```
+
 查看 / 清空工具调用历史（进程内保存最近 50 次，最新在前）：
 
 ```bash
@@ -177,7 +186,7 @@ java/
 └── src/main/java/com/glass/agent/
     ├── GlassAgentApplication.java      # 启动类
     ├── tool/
-    │   ├── GlassAdvisorTools.java      # 14 个工具的业务逻辑 + @Tool 注解
+    │   ├── GlassAdvisorTools.java      # 15 个工具的业务逻辑 + @Tool 注解
     │   ├── ToolCallHistory.java        # 进程内工具调用历史（最近 50 次）
     │   └── Diopters.java               # 度数格式化帮助函数
     ├── agent/

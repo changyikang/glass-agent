@@ -28,10 +28,10 @@ tools that an LLM (or any MCP client) can use. It covers prescription reading,
 lens recommendation, lens-thickness estimation, lens-coating advice, frame
 selection, vision-check guidance, progressive-lens assessment,
 troubleshooting discomfort with new glasses, children's myopia control,
-spectacle-to-contact-lens power conversion, and presbyopia reading-add
-estimation.
+spectacle-to-contact-lens power conversion, presbyopia reading-add
+estimation, and cylinder (plus/minus) prescription transposition.
 
-The project ships **two interchangeable implementations that share the same fourteen
+The project ships **two interchangeable implementations that share the same fifteen
 tools**, so you can adopt whichever fits your stack:
 
 | Implementation | Path | Best for |
@@ -41,7 +41,7 @@ tools**, so you can adopt whichever fits your stack:
 
 ### Features
 
-The fourteen built-in tools:
+The fifteen built-in tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -59,6 +59,7 @@ The fourteen built-in tools:
 | `anisometropia_guide` | Grades the anisometropia between two eyes from the spherical-equivalent difference, estimates the spectacle aniseikonia (image-size difference) against tolerance, detects antimetropia and large cylinder gaps, and advises on framed glasses vs. contacts and gradual adaptation |
 | `contact_lens_power` | Converts a spectacle prescription into the equivalent contact-lens power via vertex-distance compensation (rounded to 0.25 D steps), explaining why strong powers (≈ ±4.00 D+) must be compensated, when low powers can be used as-is, and how astigmatism can fold into a spherical equivalent |
 | `reading_add_estimator` | Estimates the presbyopia reading addition (ADD) from age, adjusts it for the actual working distance (default 40 cm), and — given the distance prescription — computes the near total power, with guidance on reading vs. progressive vs. office lenses |
+| `prescription_transpose` | Converts a prescription between minus-cylinder and plus-cylinder notation (new SPH = SPH + CYL, new CYL = −CYL, new AXIS = AXIS ± 90°), showing the working and using the spherical-equivalent invariant as a self-check |
 
 The Java agent adds **multi-turn intake**: pass a `conversationId` and it remembers
 the dialogue, so it asks the questions it needs, gives a fitting recommendation, and
@@ -68,7 +69,7 @@ attaches purchase links at the end.
 
 ```
                          ┌──────────────────────────────┐
-        MCP client       │     Fourteen shared optical   │      REST client
+        MCP client       │     Fifteen shared optical    │      REST client
    (Claude Desktop, …)   │             tools             │   (curl / your app)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │
@@ -192,9 +193,9 @@ Released under the [MIT License](LICENSE).
 
 ### 项目简介
 
-**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查、青少年近视防控、框架镜到隐形眼镜的度数换算，以及老花（近附加）度数估算。
+**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查、青少年近视防控、框架镜到隐形眼镜的度数换算、老花（近附加）度数估算，以及散光（正/负柱镜）记法转换。
 
-项目提供 **两套可互换、共享同一组十四个工具的实现**，你可以按技术栈选用：
+项目提供 **两套可互换、共享同一组十五个工具的实现**，你可以按技术栈选用：
 
 | 实现方式 | 路径 | 适用场景 |
 | --- | --- | --- |
@@ -203,7 +204,7 @@ Released under the [MIT License](LICENSE).
 
 ### 功能
 
-内置十四个工具：
+内置十五个工具：
 
 | 工具 | 作用 |
 | --- | --- |
@@ -221,6 +222,7 @@ Released under the [MIT License](LICENSE).
 | `anisometropia_guide` | 按左右眼等效球镜之差评估屈光参差程度，估算框架镜下两眼影像大小差异（不等像）并与耐受上限比较，识别「一眼近视一眼远视」与柱镜差异过大等特殊情况，给出框架镜 vs 隐形眼镜、逐步适应等建议 |
 | `contact_lens_power` | 按镜眼距（顶点距离）把框架镜球镜/柱镜换算成贴近角膜的隐形眼镜等效光度（按 0.25D 步进取整），说明高度数（约 ±4.00D 以上）为何必须补偿、低度数可直接沿用，以及散光如何折算等效球镜 |
 | `reading_add_estimator` | 按年龄估算老花（近附加 ADD）度数，按实际工作距离（默认 40cm）增减，并可结合看远球镜算出看近总度数，给出老花镜 / 渐进 / 办公镜片的选择建议（按 0.25D 步进取整） |
+| `prescription_transpose` | 在负柱镜与正柱镜两种等价记法间互换（新球镜 = 原球镜 + 原柱镜，新柱镜 = −原柱镜，新轴位 = 原轴位 ± 90°），展示换算过程并用等效球镜不变量自检 |
 
 Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可记住对话上下文，
 于是它会主动追问所需信息，给出配镜建议，并在最后附上购买链接。
@@ -229,7 +231,7 @@ Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可�
 
 ```
                          ┌──────────────────────────────┐
-       MCP 客户端         │       十四个共享的配镜工具      │       REST 客户端
+       MCP 客户端         │       十五个共享的配镜工具      │       REST 客户端
    (Claude Desktop 等)   │                              │   (curl / 你的应用)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │

@@ -1572,6 +1572,102 @@ public class GlassAdvisorTools {
                 bulletJoin(notes));
     }
 
+    @Tool(description = "散光记法转换（柱镜转换）：同一副镜片可以用「负柱镜」或「正柱镜」两种等价写法表示，"
+            + "验光单在验光师、医院、不同软件之间流转时常需要互换。按标准公式换算：新球镜 = 原球镜 + 原柱镜，"
+            + "新柱镜 = −原柱镜，新轴位 = 原轴位 ± 90°（落在 1–180° 内）。等效球镜（SPH + CYL/2）在转换前后"
+            + "保持不变，可用于自检。仅做记法换算与科普，不改变镜片本身，也不替代验光。")
+    public String prescriptionTranspose(
+            @ToolParam(description = "球镜度数 SPH，单位D，近视填负数、远视填正数，如 -2.00。") double sph,
+            @ToolParam(description = "柱镜度数 CYL，单位D。负散光记法填负数（如 -0.75），正散光记法填正数；"
+                    + "填 0 表示无散光（无需转换）。") double cyl,
+            @ToolParam(required = false, description = "散光轴位 AXIS，0-180 度的整数。有散光（cyl≠0）时必填；无散光时不要填。")
+            Integer axis) {
+
+        checkRange("sph", sph, -30, 30);
+        checkRange("cyl", cyl, -10, 10);
+        if (axis != null) {
+            checkRange("axis", axis, 0, 180);
+        }
+        validateAxis("处方", cyl, axis);
+
+        // 等效球镜是转换前后的不变量，可用于自检。
+        double se = sph + cyl / 2;
+
+        if (cyl == 0) {
+            return """
+                    ## 散光记法转换（柱镜转换）
+
+                    > 「负柱镜」与「正柱镜」是同一副镜片的两种等价写法。转换只是换个记法，镜片本身不变。
+
+                    **输入**
+                    - 处方：%s（%s）
+
+                    **结果**
+                    - 该处方柱镜为 0（无散光），只有球镜，不存在正 / 负柱镜之分，无需转换。
+                    - 等效球镜：%s
+
+                    **提醒**
+                    - 本工具只做记法换算与科普，不改变镜片本身，也不替代验光。""".formatted(
+                    renderPrescriptionLine(sph, cyl, null),
+                    describeEye(sph, cyl),
+                    formatSignedDiopter(se));
+        }
+
+        String currentForm = cyl < 0 ? "负柱镜（负散光）" : "正柱镜（正散光）";
+        String targetForm = cyl < 0 ? "正柱镜（正散光）" : "负柱镜（负散光）";
+
+        double newSph = sph + cyl;
+        double newCyl = -cyl;
+        int newAxis = transposeAxis(axis);
+
+        return """
+                ## 散光记法转换（柱镜转换）
+
+                > 同一副镜片可以用「负柱镜」或「正柱镜」两种等价写法表示，两者矫正效果完全相同。验光单在验光师、医院、镜片加工软件之间流转时，常需要在两种记法间互换。转换公式：新球镜 = 原球镜 + 原柱镜，新柱镜 = −原柱镜，新轴位 = 原轴位 ± 90°（归一化到 1–180°）。
+
+                **输入（%s）**
+                - 处方：%s（%s）
+
+                **转换结果（%s）**
+                - 处方：**%s**
+
+                **换算过程**
+                - 新球镜 = %s + (%s) = %s
+                - 新柱镜 = −(%s) = %s
+                - 新轴位 = %d° %s 90° = %d°
+
+                **自检**
+                - 等效球镜（SPH + CYL/2）转换前后不变，均为 %s，可据此核对换算是否正确。
+
+                **说明**
+                - 两种写法描述的是完全相同的镜片，光学效果一致，不存在「哪种度数更好」。
+                - 临床习惯：验光 / 眼镜行业多用负柱镜记法，部分眼科医生和早期设备用正柱镜记法。
+                - 轴位相差 90° 是转换的固有结果，不是错误；报读处方时务必带上轴位，避免歧义。
+
+                **提醒**
+                - 本工具只做记法换算与科普，不改变镜片本身，也不替代验光。""".formatted(
+                currentForm,
+                renderPrescriptionLine(sph, cyl, axis),
+                describeEye(sph, cyl),
+                targetForm,
+                renderPrescriptionLine(newSph, newCyl, newAxis),
+                formatSignedDiopter(sph),
+                formatSignedDiopter(cyl),
+                formatSignedDiopter(newSph),
+                formatSignedDiopter(cyl),
+                formatSignedDiopter(newCyl),
+                axis,
+                axis + 90 > 180 ? "−" : "+",
+                newAxis,
+                formatSignedDiopter(se));
+    }
+
+    /** 轴位转换：转换柱镜正负号时，轴位旋转 90°，并归一化到 (0, 180]。 */
+    private static int transposeAxis(int axis) {
+        int rotated = axis + 90;
+        return rotated > 180 ? rotated - 180 : rotated;
+    }
+
     /** 按年龄给出 40cm 参考距离下的典型近附加（下加光）度数（D）。 */
     private static double ageBaseAdd(int age) {
         if (age < PRESBYOPIA_ONSET_AGE) {

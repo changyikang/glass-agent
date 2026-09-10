@@ -458,6 +458,32 @@ export const tools: ToolDefinition[] = [
     sample: { age: 50, working_distance_cm: 40, distance_sph: -2 },
     handler: handleReadingAddEstimator,
   },
+  {
+    name: "prescription_transpose",
+    description:
+      "散光记法转换（柱镜转换）：同一副镜片可以用「负柱镜」或「正柱镜」两种等价写法表示，验光单在验光师、医院、不同软件之间流转时常需要互换。按标准公式换算：新球镜 = 原球镜 + 原柱镜，新柱镜 = −原柱镜，新轴位 = 原轴位 ± 90°（落在 1–180° 内）。等效球镜（SPH + CYL/2）在转换前后保持不变，可用于自检。仅做记法换算与科普，不改变镜片本身，也不替代验光。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sph: {
+          type: "number",
+          description: "球镜度数 SPH，单位D，近视填负数、远视填正数，如 -2.00。",
+        },
+        cyl: {
+          type: "number",
+          description:
+            "柱镜度数 CYL，单位D。负散光记法填负数（如 -0.75），正散光记法填正数；填 0 表示无散光（无需转换）。",
+        },
+        axis: {
+          type: "number",
+          description: "散光轴位 AXIS，0-180 度的整数。有散光（cyl≠0）时必填；无散光时不要填。",
+        },
+      },
+      required: ["sph", "cyl"],
+    },
+    sample: { sph: -2, cyl: -0.75, axis: 180 },
+    handler: handlePrescriptionTranspose,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -1958,6 +1984,71 @@ ${renderBulletList(notes, "估算完成。")}
 - 下加光是双眼看近的叠加度数，需与看远度数、瞳距（近用瞳距会略小）、镜片类型一起确定。
 - 突然、单眼或快速加重的看近困难，或伴随头痛、视物变形，应先就医排查，而非仅配老花镜。
 - 本工具只做科普参考，不替代验光师 / 医生。`);
+}
+
+/** 轴位转换：转换柱镜正负号时，轴位旋转 90°，并归一化到 (0, 180]。 */
+function transposeAxis(axis: number): number {
+  const rotated = axis + 90;
+  return rotated > 180 ? rotated - 180 : rotated;
+}
+
+function handlePrescriptionTranspose(args: ToolArgs): ToolResult {
+  const sph = expectNumber(args, "sph", { min: -30, max: 30 });
+  const cyl = expectNumber(args, "cyl", { min: -10, max: 10 });
+  const axis = optionalNumber(args, "axis", { min: 0, max: 180, integer: true });
+  validateAxis("处方", cyl, axis);
+
+  // 等效球镜是转换前后的不变量，可用于自检。
+  const se = sph + cyl / 2;
+
+  if (cyl === 0) {
+    return textResult(`## 散光记法转换（柱镜转换）
+
+> 「负柱镜」与「正柱镜」是同一副镜片的两种等价写法。转换只是换个记法，镜片本身不变。
+
+**输入**
+- 处方：${renderPrescriptionLine(sph, cyl)}（${describeEye(sph, cyl)}）
+
+**结果**
+- 该处方柱镜为 0（无散光），只有球镜，不存在正 / 负柱镜之分，无需转换。
+- 等效球镜：${formatSignedDiopter(se)}
+
+**提醒**
+- 本工具只做记法换算与科普，不改变镜片本身，也不替代验光。`);
+  }
+
+  const currentForm = cyl < 0 ? "负柱镜（负散光）" : "正柱镜（正散光）";
+  const targetForm = cyl < 0 ? "正柱镜（正散光）" : "负柱镜（负散光）";
+
+  const newSph = sph + cyl;
+  const newCyl = -cyl;
+  const newAxis = transposeAxis(axis as number);
+
+  return textResult(`## 散光记法转换（柱镜转换）
+
+> 同一副镜片可以用「负柱镜」或「正柱镜」两种等价写法表示，两者矫正效果完全相同。验光单在验光师、医院、镜片加工软件之间流转时，常需要在两种记法间互换。转换公式：新球镜 = 原球镜 + 原柱镜，新柱镜 = −原柱镜，新轴位 = 原轴位 ± 90°（归一化到 1–180°）。
+
+**输入（${currentForm}）**
+- 处方：${renderPrescriptionLine(sph, cyl, axis)}（${describeEye(sph, cyl)}）
+
+**转换结果（${targetForm}）**
+- 处方：**${renderPrescriptionLine(newSph, newCyl, newAxis)}**
+
+**换算过程**
+- 新球镜 = ${formatSignedDiopter(sph)} + (${formatSignedDiopter(cyl)}) = ${formatSignedDiopter(newSph)}
+- 新柱镜 = −(${formatSignedDiopter(cyl)}) = ${formatSignedDiopter(newCyl)}
+- 新轴位 = ${axis}° ${axis! + 90 > 180 ? "−" : "+"} 90° = ${newAxis}°
+
+**自检**
+- 等效球镜（SPH + CYL/2）转换前后不变，均为 ${formatSignedDiopter(se)}，可据此核对换算是否正确。
+
+**说明**
+- 两种写法描述的是完全相同的镜片，光学效果一致，不存在「哪种度数更好」。
+- 临床习惯：验光 / 眼镜行业多用负柱镜记法，部分眼科医生和早期设备用正柱镜记法。
+- 轴位相差 90° 是转换的固有结果，不是错误；报读处方时务必带上轴位，避免歧义。
+
+**提醒**
+- 本工具只做记法换算与科普，不改变镜片本身，也不替代验光。`);
 }
 
 function ensureObject(value: unknown): ToolArgs {

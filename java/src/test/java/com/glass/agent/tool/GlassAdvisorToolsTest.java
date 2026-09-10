@@ -303,4 +303,36 @@ class GlassAdvisorToolsTest {
                 () -> tools.readingAddEstimator(150, null, null));
         assertTrue(ex.getMessage().contains("age"));
     }
+
+    @Test
+    void prescriptionTransposeConvertsMinusCylToPlusCylAndRotatesAxis() {
+        // 新球镜 = -2 + -0.75 = -2.75，新柱镜 = +0.75，新轴位 = 180 → 90
+        String result = tools.prescriptionTranspose(-2, -0.75, 180);
+        assertTrue(result.contains("**SPH -2.75D / CYL +0.75D / AXIS 90°**"));
+        assertTrue(result.contains("转换结果（正柱镜（正散光））"));
+        // 等效球镜不变量：-2 + -0.75/2 = -2.375 → -2.38
+        assertTrue(result.contains("等效球镜（SPH + CYL/2）转换前后不变，均为 -2.38D"));
+    }
+
+    @Test
+    void prescriptionTransposeConvertsPlusCylToMinusCylAndWrapsAxis() {
+        // 新球镜 = 1 + 1.5 = 2.50，新柱镜 = -1.50，新轴位 = 60 + 90 = 150
+        String result = tools.prescriptionTranspose(1, 1.5, 60);
+        assertTrue(result.contains("**SPH +2.5D / CYL -1.5D / AXIS 150°**"));
+        assertTrue(result.contains("转换结果（负柱镜（负散光））"));
+    }
+
+    @Test
+    void prescriptionTransposeReportsPureSphereHasNoCylinderForm() {
+        String result = tools.prescriptionTranspose(-3, 0, null);
+        assertTrue(result.contains("无散光"));
+        assertTrue(result.contains("无需转换"));
+    }
+
+    @Test
+    void prescriptionTransposeRequiresAxisWhenCylinderPresent() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.prescriptionTranspose(-2, -0.75, null));
+        assertTrue(ex.getMessage().contains("轴位"));
+    }
 }

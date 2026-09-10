@@ -27,7 +27,45 @@ test("exports the expected MCP tool set", () => {
     "anisometropia_guide",
     "contact_lens_power",
     "reading_add_estimator",
+    "prescription_transpose",
   ]);
+});
+
+test("prescription transpose converts minus-cyl to plus-cyl and rotates the axis 90 degrees", () => {
+  const tool = getTool("prescription_transpose");
+  const result = tool.handler({ sph: -2, cyl: -0.75, axis: 180 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // new sph = -2 + -0.75 = -2.75, new cyl = +0.75, new axis = 180 -> 90
+  assert.match(text, /\*\*SPH -2\.75D \/ CYL \+0\.75D \/ AXIS 90°\*\*/);
+  assert.match(text, /转换结果（正柱镜（正散光））/);
+  // spherical equivalent invariant: -2 + -0.75/2 = -2.375
+  assert.match(text, /等效球镜（SPH \+ CYL\/2）转换前后不变，均为 -2\.38D/);
+});
+
+test("prescription transpose converts plus-cyl to minus-cyl and wraps the axis under 90", () => {
+  const tool = getTool("prescription_transpose");
+  const result = tool.handler({ sph: 1, cyl: 1.5, axis: 60 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // new sph = 1 + 1.5 = 2.50, new cyl = -1.50, new axis = 60 + 90 = 150
+  assert.match(text, /\*\*SPH \+2\.5D \/ CYL -1\.5D \/ AXIS 150°\*\*/);
+  assert.match(text, /转换结果（负柱镜（负散光））/);
+});
+
+test("prescription transpose reports that a pure sphere has no cylinder form", () => {
+  const tool = getTool("prescription_transpose");
+  const result = tool.handler({ sph: -3, cyl: 0 });
+
+  assert.equal(result.isError, undefined);
+  assert.match(result.content[0].text, /无散光.*无需转换/s);
+});
+
+test("prescription transpose requires an axis when there is cylinder", () => {
+  const tool = getTool("prescription_transpose");
+  assert.throws(() => tool.handler({ sph: -2, cyl: -0.75 }), /轴位/);
 });
 
 test("reading add estimator gives a typical add for a 50-year-old at 40cm and computes near total", () => {
