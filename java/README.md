@@ -41,6 +41,7 @@
 - `contact_lens_power`：按镜眼距（顶点距离）把框架镜球镜/柱镜换算成贴近角膜的隐形眼镜等效光度（按 0.25D 步进取整），说明高度数为何要补偿、低度数可直接沿用、散光如何折算等效球镜
 - `reading_add_estimator`：按年龄估算老花（近附加 ADD）度数，按实际工作距离（默认 40cm）增减，并可结合看远球镜算出看近总度数，给出老花镜 / 渐进 / 办公镜片的选择建议（按 0.25D 步进取整）
 - `prescription_transpose`：在负柱镜与正柱镜两种等价记法间互换（新球镜 = 原球镜 + 原柱镜，新柱镜 = −原柱镜，新轴位 = 原轴位 ± 90°），展示换算过程并用等效球镜不变量自检
+- `frame_fit_calculator`：解析镜架规格标注（如 `52□18-140`），按盒式标注法算出镜架几何中心距（镜圈宽 + 鼻梁），与瞳距比较得出每片光心移心量与方向，评估镜架与瞳距的贴合度；给定度数时用 Prentice 公式估算「不移心」会产生的水平棱镜
 
 ## 环境要求
 
@@ -157,6 +158,14 @@ curl -X POST http://localhost:8080/api/tools/prescription_transpose \
   -d '{"sph":-2.0,"cyl":-0.75,"axis":180}'
 ```
 
+镜架尺寸适配（`lensWidth` / `bridge` / `pd` 必填，`power` / `templeLength` 可选；下例镜架偏宽需向鼻侧移心）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/frame_fit_calculator \
+  -H 'Content-Type: application/json' \
+  -d '{"lensWidth":52,"bridge":18,"pd":62,"power":-4.0,"templeLength":140}'
+```
+
 查看 / 清空工具调用历史（进程内保存最近 50 次，最新在前）：
 
 ```bash
@@ -186,7 +195,7 @@ java/
 └── src/main/java/com/glass/agent/
     ├── GlassAgentApplication.java      # 启动类
     ├── tool/
-    │   ├── GlassAdvisorTools.java      # 15 个工具的业务逻辑 + @Tool 注解
+    │   ├── GlassAdvisorTools.java      # 16 个工具的业务逻辑 + @Tool 注解
     │   ├── ToolCallHistory.java        # 进程内工具调用历史（最近 50 次）
     │   └── Diopters.java               # 度数格式化帮助函数
     ├── agent/

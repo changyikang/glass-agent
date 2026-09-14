@@ -335,4 +335,41 @@ class GlassAdvisorToolsTest {
                 () -> tools.prescriptionTranspose(-2, -0.75, null));
         assertTrue(ex.getMessage().contains("轴位"));
     }
+
+    @Test
+    void frameFitCalculatorComputesFramePdAndInwardDecentration() {
+        // 框 PD = 52 + 18 = 70；移心 = (70 - 62)/2 = 4，向鼻侧内移
+        String result = tools.frameFitCalculator(52, 18, 62, -4.0, null);
+        assertTrue(result.contains("镜架几何中心距（框 PD）：**70 mm**"));
+        assertTrue(result.contains("每片移心量：**4 mm**（向鼻侧内移）"));
+        assertTrue(result.contains("贴合评估：**偏大**"));
+        // Prentice：0.4cm × 4D = 1.6Δ
+        assertTrue(result.contains("每片约产生 **1.6Δ** 水平棱镜"));
+        assertTrue(result.contains("该棱镜量已不可忽略"));
+    }
+
+    @Test
+    void frameFitCalculatorFlagsNarrowerFrameNeedingOutwardDecentration() {
+        // 框 PD = 64；移心 = (64 - 68)/2 = -2，向颞侧外移
+        String result = tools.frameFitCalculator(48, 16, 68, null, null);
+        assertTrue(result.contains("镜架几何中心距（框 PD）：**64 mm**"));
+        assertTrue(result.contains("每片移心量：**2 mm**（向颞侧外移）"));
+        assertTrue(result.contains("镜架偏窄"));
+    }
+
+    @Test
+    void frameFitCalculatorRatesWellMatchedFrameAndSkipsPrismWithoutPower() {
+        // 框 PD = 62 == PD → 移心 0 → 很合适
+        String result = tools.frameFitCalculator(50, 12, 62, null, null);
+        assertTrue(result.contains("每片移心量：**0 mm**（几乎无需移心）"));
+        assertTrue(result.contains("贴合评估：**很合适**"));
+        assertTrue(!result.contains("水平棱镜"));
+    }
+
+    @Test
+    void frameFitCalculatorRejectsOutOfRangePd() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.frameFitCalculator(52, 18, 30, null, null));
+        assertTrue(ex.getMessage().contains("pd"));
+    }
 }

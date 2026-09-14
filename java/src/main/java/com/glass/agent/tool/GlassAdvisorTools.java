@@ -1662,6 +1662,144 @@ public class GlassAdvisorTools {
                 formatSignedDiopter(se));
     }
 
+    @Tool(description = "镜架尺寸适配（光心偏移评估）：镜架规格常写成「镜圈宽 A□鼻梁 DBL-镜腿」（如 52□18-140）。"
+            + "按盒式标注法，镜架几何中心距 = 镜圈宽 + 鼻梁，它与瞳距（PD）之差决定加工时每片光心要移多少。"
+            + "给定镜圈宽度、鼻梁宽度和瞳距，算出几何中心距、每片移心量与方向、粗略正面宽度，并按移心量评估镜架是否贴合瞳距；"
+            + "若提供度数，用 Prentice 公式估算「若不移心」会产生的水平棱镜。仅做科普估算，实际以视光师现场测量为准。")
+    public String frameFitCalculator(
+            @ToolParam(description = "镜圈宽度（镜片水平宽度 A / eye size），单位mm，常见 48-58，如 52。") double lensWidth,
+            @ToolParam(description = "鼻梁宽度（两镜片间距 DBL / bridge），单位mm，常见 14-22，如 18。") double bridge,
+            @ToolParam(description = "佩戴者双眼远用瞳距 PD，单位mm，成人常见约 54-74，如 62。") double pd,
+            @ToolParam(required = false, description = "单眼球镜（或等效球镜）度数，单位D，近视填负数、远视填正数（如 -4.00）；"
+                    + "用于估算「不移心」会引入的水平棱镜，不填则跳过。")
+            Double power,
+            @ToolParam(required = false, description = "镜腿长度，单位mm，常见 135-150，仅用于展示规格，不参与计算。")
+            Double templeLength) {
+
+        checkRange("lens_width", lensWidth, 30, 70);
+        checkRange("bridge", bridge, 10, 30);
+        checkRange("pd", pd, 40, 85);
+        if (power != null) {
+            checkRange("power", power, -30, 30);
+        }
+        if (templeLength != null) {
+            checkRange("temple_length", templeLength, 100, 160);
+        }
+
+        // 盒式标注法：镜架几何中心距 = 镜圈宽度 + 鼻梁宽度。
+        double framePd = lensWidth + bridge;
+        // 每片光心相对镜架几何中心的移心量；正数=向鼻侧内移，负数=向颞侧外移。
+        double decentration = (framePd - pd) / 2;
+        double absDec = Math.abs(decentration);
+        // 正面宽度粗估（不含铰链/镜腿外张），仅作参考。
+        double frontWidth = 2 * lensWidth + bridge;
+
+        String rating = frameFitRating(absDec);
+        String directionWord = decentration > 0.05 ? "向鼻侧内移"
+                : decentration < -0.05 ? "向颞侧外移" : "几乎无需移心";
+
+        List<String> notes = new ArrayList<>();
+        if (absDec < 2) {
+            notes.add("镜架几何中心距与你的瞳距很接近，光心基本落在瞳孔正前方，几乎不用移心，加工最理想。");
+        } else if (absDec < 4) {
+            notes.add("需要常规量级的移心，正规加工可轻松处理，对中低度数几乎没有影响。");
+        } else if (absDec < 6) {
+            notes.add("移心量偏大：高度数（约 ±4.00D 以上）会使镜片一侧明显偏厚、可能需要更大的镜片毛坯，"
+                    + "建议优先挑选规格更贴合瞳距的镜架。");
+        } else {
+            notes.add("移心量过大：镜架规格与你的瞳距明显不匹配，除非特别中意，否则建议换一副几何中心距更接近瞳距的镜架，"
+                    + "以免镜片偏厚、外观与光学效果打折。");
+        }
+
+        if (decentration > 0.05) {
+            notes.add("镜架几何中心距 " + mm(framePd) + "mm 大于瞳距 " + mm(pd) + "mm（镜架偏宽），"
+                    + "光心需" + directionWord + "每片 " + mm(absDec) + "mm。");
+        } else if (decentration < -0.05) {
+            notes.add("镜架几何中心距 " + mm(framePd) + "mm 小于瞳距 " + mm(pd) + "mm（镜架偏窄），"
+                    + "光心需" + directionWord + "每片 " + mm(absDec) + "mm；外移更依赖大毛坯，度数高时尤其注意。");
+        } else {
+            notes.add("镜架几何中心距 " + mm(framePd) + "mm 与瞳距 " + mm(pd) + "mm 基本一致，光心几乎正对瞳孔。");
+        }
+
+        String prismLine = "";
+        if (power != null) {
+            // Prentice 公式：棱镜量(Δ) = 移心量(cm) × 光度(D)。
+            double perEyePrism = (absDec / 10) * Math.abs(power);
+            prismLine = "\n- 度数 " + formatSignedDiopter(power) + " 时，若把光心留在镜架几何中心而不移心，"
+                    + "每片约产生 **" + trimNumber(round2(perEyePrism)) + "Δ** 水平棱镜"
+                    + "（Prentice：移心 " + mm(absDec) + "mm × " + trimNumber(Math.abs(power)) + "D）。";
+            if (perEyePrism < 0.5) {
+                notes.add("该棱镜量很小，即使不刻意移心通常也可忽略；但正规加工仍会把光心对准瞳孔。");
+            } else {
+                notes.add("该棱镜量已不可忽略：正规加工会把光心移到瞳孔位置消除它，"
+                        + "但移心越大所需毛坯越大、镜片边缘厚度越不对称。");
+            }
+        }
+
+        String templeLine = templeLength != null ? "\n- 镜腿长度：" + mm(templeLength) + " mm" : "";
+
+        return """
+                ## 镜架尺寸适配（光心偏移评估）
+
+                > 镜架规格常写成「镜圈宽 A□鼻梁 DBL-镜腿」（例如 52□18-140）。按盒式标注法，**镜架几何中心距 = 镜圈宽 + 鼻梁**，它与你的瞳距（PD）之差，决定了加工时每片镜片的光心要向内或向外移多少（移心量 = (几何中心距 − 瞳距) ÷ 2）。几何中心距越接近瞳距，光心越正对瞳孔，加工越理想。
+
+                **输入**
+                - 镜圈宽度 A：%s mm
+                - 鼻梁宽度 DBL：%s mm
+                - 双眼瞳距 PD：%s mm%s
+
+                **测算结果**
+                - 镜架几何中心距（框 PD）：**%s mm**（镜圈宽 %s + 鼻梁 %s）
+                - 每片移心量：**%s mm**（%s）
+                - 正面宽度（粗估，不含镜腿外张）：约 %s mm
+                - 贴合评估：**%s**%s
+
+                **说明**
+                %s
+
+                **提醒**
+                - 移心量只反映镜架规格与瞳距的匹配度，不代表镜架戴在脸上是否舒适；镜圈弧度、鼻托、镜腿宽度与脸宽也很重要。
+                - 高度数、渐进 / 多焦点镜片对光心（含瞳高）定位更敏感，务必以视光师现场测量为准。
+                - 本工具只做科普估算，不替代专业验配。""".formatted(
+                mm(lensWidth),
+                mm(bridge),
+                mm(pd),
+                templeLine,
+                mm(framePd),
+                mm(lensWidth),
+                mm(bridge),
+                mm(absDec),
+                directionWord,
+                mm(frontWidth),
+                rating,
+                prismLine,
+                bulletJoin(notes));
+    }
+
+    /** 按每片移心量（mm）评估镜架与瞳距的贴合度。 */
+    private static String frameFitRating(double absDec) {
+        if (absDec < 2) {
+            return "很合适";
+        }
+        if (absDec < 4) {
+            return "合适";
+        }
+        if (absDec < 6) {
+            return "偏大";
+        }
+        return "明显偏大";
+    }
+
+    /** 毫米数值展示：保留一位小数并去掉尾零，与 TS 版本 mm() 对齐。 */
+    private static String mm(double value) {
+        return format1Trim(value);
+    }
+
+    /** 四舍五入到两位小数。 */
+    private static double round2(double value) {
+        return Math.round(value * 100.0) / 100.0;
+    }
+
     /** 轴位转换：转换柱镜正负号时，轴位旋转 90°，并归一化到 (0, 180]。 */
     private static int transposeAxis(int axis) {
         int rotated = axis + 90;

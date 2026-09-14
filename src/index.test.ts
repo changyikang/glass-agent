@@ -28,7 +28,52 @@ test("exports the expected MCP tool set", () => {
     "contact_lens_power",
     "reading_add_estimator",
     "prescription_transpose",
+    "frame_fit_calculator",
   ]);
+});
+
+test("frame fit calculator computes frame PD and inward decentration for a wider frame", () => {
+  const tool = getTool("frame_fit_calculator");
+  const result = tool.handler({ lens_width: 52, bridge: 18, pd: 62, power: -4 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // frame PD = 52 + 18 = 70; decentration = (70 - 62)/2 = 4 per eye, inward
+  assert.match(text, /镜架几何中心距（框 PD）：\*\*70 mm\*\*/);
+  assert.match(text, /每片移心量：\*\*4 mm\*\*（向鼻侧内移）/);
+  assert.match(text, /贴合评估：\*\*偏大\*\*/);
+  // Prentice: 4mm = 0.4cm × 4D = 1.6Δ
+  assert.match(text, /每片约产生 \*\*1\.6Δ\*\* 水平棱镜/);
+  assert.match(text, /该棱镜量已不可忽略/);
+});
+
+test("frame fit calculator flags a narrower frame needing outward decentration", () => {
+  const tool = getTool("frame_fit_calculator");
+  const result = tool.handler({ lens_width: 48, bridge: 16, pd: 68 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // frame PD = 64; decentration = (64 - 68)/2 = -2 per eye, outward
+  assert.match(text, /镜架几何中心距（框 PD）：\*\*64 mm\*\*/);
+  assert.match(text, /每片移心量：\*\*2 mm\*\*（向颞侧外移）/);
+  assert.match(text, /镜架偏窄/);
+});
+
+test("frame fit calculator rates a well-matched frame and skips prism without power", () => {
+  const tool = getTool("frame_fit_calculator");
+  const result = tool.handler({ lens_width: 50, bridge: 12, pd: 62 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // frame PD = 62 == PD → decentration 0 → 很合适
+  assert.match(text, /每片移心量：\*\*0 mm\*\*（几乎无需移心）/);
+  assert.match(text, /贴合评估：\*\*很合适\*\*/);
+  assert.doesNotMatch(text, /水平棱镜/);
+});
+
+test("frame fit calculator requires the frame and PD measurements", () => {
+  const tool = getTool("frame_fit_calculator");
+  assert.throws(() => tool.handler({ lens_width: 52, bridge: 18 }), /pd/);
 });
 
 test("prescription transpose converts minus-cyl to plus-cyl and rotates the axis 90 degrees", () => {

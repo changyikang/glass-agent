@@ -59,7 +59,8 @@ public class ToolController {
                 tool("anisometropia_guide", "屈光参差评估：按左右眼等效球镜之差评估屈光参差程度，估算框架镜下不等像与耐受边界，识别混合性参差和柱镜差异过大，给出框架镜 vs 隐形眼镜等建议。"),
                 tool("contact_lens_power", "隐形眼镜度数换算：按镜眼距（顶点距离）把框架镜球镜/柱镜换算成贴近角膜的隐形眼镜光度并按 0.25D 取整，说明高度数为何要补偿、散光可否折算等效球镜。"),
                 tool("reading_add_estimator", "老花（近附加 ADD）度数估算：按年龄给出典型近附加度数，按工作距离增减，并可结合看远球镜算出看近总度数，说明老花镜/渐进/办公镜片的选择。"),
-                tool("prescription_transpose", "散光记法转换（柱镜转换）：在负柱镜与正柱镜两种等价写法之间互换（新球镜=原球镜+原柱镜，新柱镜=−原柱镜，新轴位=原轴位±90°），并用等效球镜不变量自检。"));
+                tool("prescription_transpose", "散光记法转换（柱镜转换）：在负柱镜与正柱镜两种等价写法之间互换（新球镜=原球镜+原柱镜，新柱镜=−原柱镜，新轴位=原轴位±90°），并用等效球镜不变量自检。"),
+                tool("frame_fit_calculator", "镜架尺寸适配（光心偏移评估）：按盒式标注法用镜圈宽+鼻梁算出镜架几何中心距，与瞳距比较得出每片移心量与方向，评估贴合度，并用 Prentice 公式估算不移心时的水平棱镜。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -154,6 +155,12 @@ public class ToolController {
                 () -> tools.prescriptionTranspose(req.sph(), req.cyl(), req.axis()));
     }
 
+    @PostMapping("/frame_fit_calculator")
+    public ToolResponse frameFitCalculator(@RequestBody FrameFitRequest req) {
+        return run("frame_fit_calculator", req, () -> tools.frameFitCalculator(
+                req.lensWidth(), req.bridge(), req.pd(), req.power(), req.templeLength()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -216,5 +223,8 @@ public class ToolController {
     }
 
     public record TransposeRequest(double sph, double cyl, Integer axis) {
+    }
+
+    public record FrameFitRequest(double lensWidth, double bridge, double pd, Double power, Double templeLength) {
     }
 }

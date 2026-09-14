@@ -484,6 +484,40 @@ export const tools: ToolDefinition[] = [
     sample: { sph: -2, cyl: -0.75, axis: 180 },
     handler: handlePrescriptionTranspose,
   },
+  {
+    name: "frame_fit_calculator",
+    description:
+      "镜架尺寸适配（光心偏移评估）：镜架规格常写成「镜圈宽 A□鼻梁 DBL-镜腿」（如 52□18-140）。按盒式标注法，镜架几何中心距 = 镜圈宽 + 鼻梁，它与你的瞳距（PD）之差决定加工时每片镜片光心要移多少。给定镜圈宽度、鼻梁宽度和瞳距，本工具算出几何中心距、每片移心量与方向、粗略镜架正面宽度，并按移心量评估镜架是否贴合瞳距；若提供度数，用 Prentice 公式估算「若不移心」会产生的水平棱镜。仅做科普估算，实际加工以视光师现场测量为准。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        lens_width: {
+          type: "number",
+          description: "镜圈宽度（镜片水平宽度 A / eye size），单位mm，常见 48-58，如 52。",
+        },
+        bridge: {
+          type: "number",
+          description: "鼻梁宽度（两镜片间距 DBL / bridge），单位mm，常见 14-22，如 18。",
+        },
+        pd: {
+          type: "number",
+          description: "佩戴者双眼远用瞳距 PD，单位mm，成人常见约 54-74，如 62。",
+        },
+        power: {
+          type: "number",
+          description:
+            "单眼球镜（或等效球镜）度数，单位D，近视填负数、远视填正数（如 -4.00）；用于估算「不移心」会引入的水平棱镜，不填则跳过该估算。",
+        },
+        temple_length: {
+          type: "number",
+          description: "镜腿长度，单位mm，常见 135-150，仅用于展示规格，不参与计算。",
+        },
+      },
+      required: ["lens_width", "bridge", "pd"],
+    },
+    sample: { lens_width: 52, bridge: 18, pd: 62, power: -4, temple_length: 140 },
+    handler: handleFrameFitCalculator,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -2049,6 +2083,109 @@ function handlePrescriptionTranspose(args: ToolArgs): ToolResult {
 
 **提醒**
 - 本工具只做记法换算与科普，不改变镜片本身，也不替代验光。`);
+}
+
+function frameFitRating(absDec: number): string {
+  if (absDec < 2) return "很合适";
+  if (absDec < 4) return "合适";
+  if (absDec < 6) return "偏大";
+  return "明显偏大";
+}
+
+function mm(value: number): string {
+  return trimTrailingZeros(value.toFixed(1));
+}
+
+function handleFrameFitCalculator(args: ToolArgs): ToolResult {
+  const lensWidth = expectNumber(args, "lens_width", { min: 30, max: 70 });
+  const bridge = expectNumber(args, "bridge", { min: 10, max: 30 });
+  const pd = expectNumber(args, "pd", { min: 40, max: 85 });
+  const power = optionalNumber(args, "power", { min: -30, max: 30 });
+  const templeLength = optionalNumber(args, "temple_length", { min: 100, max: 160 });
+
+  // 盒式标注法：镜架几何中心距 = 镜圈宽度 + 鼻梁宽度。
+  const framePd = lensWidth + bridge;
+  // 每片光心相对镜架几何中心的移心量；正数=向鼻侧内移，负数=向颞侧外移。
+  const decentration = (framePd - pd) / 2;
+  const absDec = Math.abs(decentration);
+  // 正面宽度粗估（不含铰链/镜腿外张），仅作参考。
+  const frontWidth = 2 * lensWidth + bridge;
+
+  const rating = frameFitRating(absDec);
+  const directionWord =
+    decentration > 0.05 ? "向鼻侧内移" : decentration < -0.05 ? "向颞侧外移" : "几乎无需移心";
+
+  const notes: string[] = [];
+  if (absDec < 2) {
+    notes.push(
+      "镜架几何中心距与你的瞳距很接近，光心基本落在瞳孔正前方，几乎不用移心，加工最理想。"
+    );
+  } else if (absDec < 4) {
+    notes.push(
+      "需要常规量级的移心，正规加工可轻松处理，对中低度数几乎没有影响。"
+    );
+  } else if (absDec < 6) {
+    notes.push(
+      "移心量偏大：高度数（约 ±4.00D 以上）会使镜片一侧明显偏厚、可能需要更大的镜片毛坯，建议优先挑选规格更贴合瞳距的镜架。"
+    );
+  } else {
+    notes.push(
+      "移心量过大：镜架规格与你的瞳距明显不匹配，除非特别中意，否则建议换一副几何中心距更接近瞳距的镜架，以免镜片偏厚、外观与光学效果打折。"
+    );
+  }
+
+  if (decentration > 0.05) {
+    notes.push(
+      `镜架几何中心距 ${mm(framePd)}mm 大于瞳距 ${mm(pd)}mm（镜架偏宽），光心需${directionWord}每片 ${mm(absDec)}mm。`
+    );
+  } else if (decentration < -0.05) {
+    notes.push(
+      `镜架几何中心距 ${mm(framePd)}mm 小于瞳距 ${mm(pd)}mm（镜架偏窄），光心需${directionWord}每片 ${mm(absDec)}mm；外移更依赖大毛坯，度数高时尤其注意。`
+    );
+  } else {
+    notes.push(`镜架几何中心距 ${mm(framePd)}mm 与瞳距 ${mm(pd)}mm 基本一致，光心几乎正对瞳孔。`);
+  }
+
+  let prismLine = "";
+  if (power !== undefined) {
+    // Prentice 公式：棱镜量(Δ) = 移心量(cm) × 光度(D)。
+    const perEyePrism = (absDec / 10) * Math.abs(power);
+    prismLine = `\n- 度数 ${formatSignedDiopter(power)} 时，若把光心留在镜架几何中心而不移心，每片约产生 **${trimTrailingZeros(perEyePrism.toFixed(2))}Δ** 水平棱镜（Prentice：移心 ${mm(absDec)}mm × ${trimTrailingZeros(Math.abs(power).toFixed(2))}D）。`;
+    if (perEyePrism < 0.5) {
+      notes.push(
+        "该棱镜量很小，即使不刻意移心通常也可忽略；但正规加工仍会把光心对准瞳孔。"
+      );
+    } else {
+      notes.push(
+        `该棱镜量已不可忽略：正规加工会把光心移到瞳孔位置消除它，但移心越大所需毛坯越大、镜片边缘厚度越不对称。`
+      );
+    }
+  }
+
+  const templeLine = templeLength !== undefined ? `\n- 镜腿长度：${mm(templeLength)} mm` : "";
+
+  return textResult(`## 镜架尺寸适配（光心偏移评估）
+
+> 镜架规格常写成「镜圈宽 A□鼻梁 DBL-镜腿」（例如 52□18-140）。按盒式标注法，**镜架几何中心距 = 镜圈宽 + 鼻梁**，它与你的瞳距（PD）之差，决定了加工时每片镜片的光心要向内或向外移多少（移心量 = (几何中心距 − 瞳距) ÷ 2）。几何中心距越接近瞳距，光心越正对瞳孔，加工越理想。
+
+**输入**
+- 镜圈宽度 A：${mm(lensWidth)} mm
+- 鼻梁宽度 DBL：${mm(bridge)} mm
+- 双眼瞳距 PD：${mm(pd)} mm${templeLine}
+
+**测算结果**
+- 镜架几何中心距（框 PD）：**${mm(framePd)} mm**（镜圈宽 ${mm(lensWidth)} + 鼻梁 ${mm(bridge)}）
+- 每片移心量：**${mm(absDec)} mm**（${directionWord}）
+- 正面宽度（粗估，不含镜腿外张）：约 ${mm(frontWidth)} mm
+- 贴合评估：**${rating}**${prismLine}
+
+**说明**
+${renderBulletList(notes, "数值看起来合理。")}
+
+**提醒**
+- 移心量只反映镜架规格与瞳距的匹配度，不代表镜架戴在脸上是否舒适；镜圈弧度、鼻托、镜腿宽度与脸宽也很重要。
+- 高度数、渐进 / 多焦点镜片对光心（含瞳高）定位更敏感，务必以视光师现场测量为准。
+- 本工具只做科普估算，不替代专业验配。`);
 }
 
 function ensureObject(value: unknown): ToolArgs {
