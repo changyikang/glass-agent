@@ -25,11 +25,14 @@
 
 **glass-agent** turns the domain knowledge of eyeglasses fitting into callable
 tools that an LLM (or any MCP client) can use. It covers prescription reading,
-lens recommendation, lens-thickness estimation, frame selection, vision-check
-guidance, progressive-lens assessment, and troubleshooting discomfort with new
-glasses.
+lens recommendation, lens-thickness estimation, lens-coating advice, frame
+selection, vision-check guidance, progressive-lens assessment,
+troubleshooting discomfort with new glasses, children's myopia control,
+spectacle-to-contact-lens power conversion, presbyopia reading-add
+estimation, cylinder (plus/minus) prescription transposition, and
+frame-size-to-PD fit checking.
 
-The project ships **two interchangeable implementations that share the same eight
+The project ships **two interchangeable implementations that share the same sixteen
 tools**, so you can adopt whichever fits your stack:
 
 | Implementation | Path | Best for |
@@ -39,7 +42,7 @@ tools**, so you can adopt whichever fits your stack:
 
 ### Features
 
-The eight built-in tools:
+The sixteen built-in tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -51,6 +54,14 @@ The eight built-in tools:
 | `new_glasses_troubleshooting` | Tells adaptation from a real problem needing a re-check |
 | `shopping_links` | Turns a recommendation into ready-to-click JD / Taobao / Pinduoduo search links |
 | `lens_thickness_estimator` | Estimates a lens' thickest point (edge for myopia, center for hyperopia) and weight tendency from power, index and frame width, and flags whether a higher index is worth it |
+| `pupillary_distance_guide` | Validates and cross-checks pupillary distance (binocular vs. monocular), derives the near PD for a working distance, flags left/right asymmetry and explains how to self-measure |
+| `lens_coating_advisor` | Judges — per your usage profile (screen time, sun exposure, night driving) — whether each coating/function (anti-reflective, UV, blue-light, photochromic, polarized) is worth paying for, and returns a pay / consider / skip shopping list |
+| `myopia_control_guide` | Assesses a child's myopia-progression risk from age, current power, yearly progression, parental myopia and daily outdoor time, then ranks interventions (outdoor time, eye-use habits, defocus spectacle lenses, ortho-K, low-dose atropine) with their eligibility and medical boundaries |
+| `anisometropia_guide` | Grades the anisometropia between two eyes from the spherical-equivalent difference, estimates the spectacle aniseikonia (image-size difference) against tolerance, detects antimetropia and large cylinder gaps, and advises on framed glasses vs. contacts and gradual adaptation |
+| `contact_lens_power` | Converts a spectacle prescription into the equivalent contact-lens power via vertex-distance compensation (rounded to 0.25 D steps), explaining why strong powers (≈ ±4.00 D+) must be compensated, when low powers can be used as-is, and how astigmatism can fold into a spherical equivalent |
+| `reading_add_estimator` | Estimates the presbyopia reading addition (ADD) from age, adjusts it for the actual working distance (default 40 cm), and — given the distance prescription — computes the near total power, with guidance on reading vs. progressive vs. office lenses |
+| `prescription_transpose` | Converts a prescription between minus-cylinder and plus-cylinder notation (new SPH = SPH + CYL, new CYL = −CYL, new AXIS = AXIS ± 90°), showing the working and using the spherical-equivalent invariant as a self-check |
+| `frame_fit_calculator` | Decodes a frame's box measurements (`52□18-140` style) into its geometric center distance (lens width + bridge), compares it against the wearer's PD to give the per-eye optical-center decentration and direction, rates the frame-to-PD fit, and — given a lens power — estimates via Prentice's rule the unwanted prism from an un-decentered optical center |
 
 The Java agent adds **multi-turn intake**: pass a `conversationId` and it remembers
 the dialogue, so it asks the questions it needs, gives a fitting recommendation, and
@@ -60,8 +71,8 @@ attaches purchase links at the end.
 
 ```
                          ┌──────────────────────────────┐
-        MCP client       │     Eight shared optical      │      REST client
-   (Claude Desktop, …)   │        fitting tools          │   (curl / your app)
+        MCP client       │     Sixteen shared optical    │      REST client
+   (Claude Desktop, …)   │             tools             │   (curl / your app)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │
             ▼                 │                    │                  ▼
@@ -184,9 +195,9 @@ Released under the [MIT License](LICENSE).
 
 ### 项目简介
 
-**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜框选择、视力检查建议、渐进镜片评估，以及新眼镜佩戴不适排查。
+**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查、青少年近视防控、框架镜到隐形眼镜的度数换算、老花（近附加）度数估算、散光（正/负柱镜）记法转换，以及镜架尺寸与瞳距的适配评估。
 
-项目提供 **两套可互换、共享同一组八个工具的实现**，你可以按技术栈选用：
+项目提供 **两套可互换、共享同一组十六个工具的实现**，你可以按技术栈选用：
 
 | 实现方式 | 路径 | 适用场景 |
 | --- | --- | --- |
@@ -195,7 +206,7 @@ Released under the [MIT License](LICENSE).
 
 ### 功能
 
-内置八个工具：
+内置十六个工具：
 
 | 工具 | 作用 |
 | --- | --- |
@@ -207,6 +218,14 @@ Released under the [MIT License](LICENSE).
 | `new_glasses_troubleshooting` | 区分是适应期还是需要复查的真问题 |
 | `shopping_links` | 把配镜建议转成可直接点击的京东 / 淘宝 / 拼多多搜索购买链接 |
 | `lens_thickness_estimator` | 按度数、折射率和镜圈宽度估算镜片最厚处（近视看边缘、远视看中心）的厚度与重量倾向，并判断是否值得提高折射率减薄 |
+| `pupillary_distance_guide` | 校验并互算瞳距（双眼 / 左右单眼），按工作距离折算近用瞳距，提示左右不对称并给出自测方法 |
+| `lens_coating_advisor` | 按用眼场景（屏幕时长、日晒、夜间驾驶）逐项判断减反射、UV、防蓝光、变色片、偏振太阳镜值不值得多花钱，并给出「建议付费 / 可选 / 不必要」购物清单 |
+| `myopia_control_guide` | 按孩子年龄、当前度数、近一年加深速度、父母近视与日均户外时长评估近视进展风险，并排序给出户外活动、科学用眼、离焦框架镜、OK 镜、低浓度阿托品等干预方案及其适用条件与就医边界 |
+| `anisometropia_guide` | 按左右眼等效球镜之差评估屈光参差程度，估算框架镜下两眼影像大小差异（不等像）并与耐受上限比较，识别「一眼近视一眼远视」与柱镜差异过大等特殊情况，给出框架镜 vs 隐形眼镜、逐步适应等建议 |
+| `contact_lens_power` | 按镜眼距（顶点距离）把框架镜球镜/柱镜换算成贴近角膜的隐形眼镜等效光度（按 0.25D 步进取整），说明高度数（约 ±4.00D 以上）为何必须补偿、低度数可直接沿用，以及散光如何折算等效球镜 |
+| `reading_add_estimator` | 按年龄估算老花（近附加 ADD）度数，按实际工作距离（默认 40cm）增减，并可结合看远球镜算出看近总度数，给出老花镜 / 渐进 / 办公镜片的选择建议（按 0.25D 步进取整） |
+| `prescription_transpose` | 在负柱镜与正柱镜两种等价记法间互换（新球镜 = 原球镜 + 原柱镜，新柱镜 = −原柱镜，新轴位 = 原轴位 ± 90°），展示换算过程并用等效球镜不变量自检 |
+| `frame_fit_calculator` | 解析镜架规格标注（如 `52□18-140`），按盒式标注法算出镜架几何中心距（镜圈宽 + 鼻梁），与瞳距比较得出每片光心移心量与方向，评估镜架与瞳距的贴合度；给定度数时用 Prentice 公式估算「不移心」会产生的水平棱镜 |
 
 Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可记住对话上下文，
 于是它会主动追问所需信息，给出配镜建议，并在最后附上购买链接。
@@ -215,7 +234,7 @@ Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可�
 
 ```
                          ┌──────────────────────────────┐
-       MCP 客户端         │        八个共享的配镜工具       │       REST 客户端
+       MCP 客户端         │       十六个共享的配镜工具      │       REST 客户端
    (Claude Desktop 等)   │                              │   (curl / 你的应用)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │

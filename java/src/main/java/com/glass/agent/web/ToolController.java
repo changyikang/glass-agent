@@ -52,7 +52,15 @@ public class ToolController {
                 tool("progressive_lens_assessment", "渐进镜片适配评估：判断更适合单焦、办公镜还是渐进多焦点镜片。"),
                 tool("new_glasses_troubleshooting", "新眼镜不适排查：根据症状、佩戴时长和镜片类型判断是适应期还是需要复查。"),
                 tool("shopping_links", "购物链接生成：把配镜建议转成京东/淘宝/拼多多的商品搜索购买链接。"),
-                tool("lens_thickness_estimator", "镜片厚度估算：按度数、折射率和镜圈宽度估算镜片最厚处的厚度与重量倾向，并判断是否值得提高折射率减薄。"));
+                tool("lens_thickness_estimator", "镜片厚度估算：按度数、折射率和镜圈宽度估算镜片最厚处的厚度与重量倾向，并判断是否值得提高折射率减薄。"),
+                tool("pupillary_distance_guide", "瞳距（PD）助手：校验瞳距、由单眼/双眼互算、按工作距离折算近用瞳距，并提示左右不对称与自测方法。"),
+                tool("lens_coating_advisor", "镜片镀膜与功能顾问：按用眼场景逐项判断减反射、UV、防蓝光、变色片、偏振太阳镜值不值得多花钱，并给出购物清单。"),
+                tool("myopia_control_guide", "青少年近视防控指南：按年龄、度数、进展速度、遗传与户外情况评估近视进展风险，并排序给出户外、用眼习惯、离焦框架镜、OK 镜、低浓度阿托品等方案。"),
+                tool("anisometropia_guide", "屈光参差评估：按左右眼等效球镜之差评估屈光参差程度，估算框架镜下不等像与耐受边界，识别混合性参差和柱镜差异过大，给出框架镜 vs 隐形眼镜等建议。"),
+                tool("contact_lens_power", "隐形眼镜度数换算：按镜眼距（顶点距离）把框架镜球镜/柱镜换算成贴近角膜的隐形眼镜光度并按 0.25D 取整，说明高度数为何要补偿、散光可否折算等效球镜。"),
+                tool("reading_add_estimator", "老花（近附加 ADD）度数估算：按年龄给出典型近附加度数，按工作距离增减，并可结合看远球镜算出看近总度数，说明老花镜/渐进/办公镜片的选择。"),
+                tool("prescription_transpose", "散光记法转换（柱镜转换）：在负柱镜与正柱镜两种等价写法之间互换（新球镜=原球镜+原柱镜，新柱镜=−原柱镜，新轴位=原轴位±90°），并用等效球镜不变量自检。"),
+                tool("frame_fit_calculator", "镜架尺寸适配（光心偏移评估）：按盒式标注法用镜圈宽+鼻梁算出镜架几何中心距，与瞳距比较得出每片移心量与方向，评估贴合度，并用 Prentice 公式估算不移心时的水平棱镜。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -103,6 +111,56 @@ public class ToolController {
                 () -> tools.lensThicknessEstimator(req.sph(), req.cyl(), req.lensIndex(), req.frameWidth()));
     }
 
+    @PostMapping("/pupillary_distance_guide")
+    public ToolResponse pupillaryDistanceGuide(@RequestBody PupillaryDistanceRequest req) {
+        return run("pupillary_distance_guide", req, () -> tools.pupillaryDistanceGuide(
+                req.binocularPd(), req.pdRight(), req.pdLeft(), req.workingDistanceCm()));
+    }
+
+    @PostMapping("/lens_coating_advisor")
+    public ToolResponse lensCoatingAdvisor(@RequestBody CoatingRequest req) {
+        return run("lens_coating_advisor", req, () -> tools.lensCoatingAdvisor(
+                req.screenHours(), req.outdoorFrequency(), req.nightDriving(),
+                req.lightSensitive(), req.preferOnePair()));
+    }
+
+    @PostMapping("/myopia_control_guide")
+    public ToolResponse myopiaControlGuide(@RequestBody MyopiaControlRequest req) {
+        return run("myopia_control_guide", req, () -> tools.myopiaControlGuide(
+                req.age(), req.currentSph(), req.annualProgression(),
+                req.parentMyopia(), req.outdoorHours()));
+    }
+
+    @PostMapping("/anisometropia_guide")
+    public ToolResponse anisometropiaGuide(@RequestBody AnisometropiaRequest req) {
+        return run("anisometropia_guide", req, () -> tools.anisometropiaGuide(
+                req.rightSph(), req.leftSph(), req.rightCyl(), req.leftCyl()));
+    }
+
+    @PostMapping("/contact_lens_power")
+    public ToolResponse contactLensPower(@RequestBody ContactLensRequest req) {
+        return run("contact_lens_power", req,
+                () -> tools.contactLensPower(req.sph(), req.cyl(), req.vertexDistanceMm()));
+    }
+
+    @PostMapping("/reading_add_estimator")
+    public ToolResponse readingAddEstimator(@RequestBody ReadingAddRequest req) {
+        return run("reading_add_estimator", req, () -> tools.readingAddEstimator(
+                req.age(), req.workingDistanceCm(), req.distanceSph()));
+    }
+
+    @PostMapping("/prescription_transpose")
+    public ToolResponse prescriptionTranspose(@RequestBody TransposeRequest req) {
+        return run("prescription_transpose", req,
+                () -> tools.prescriptionTranspose(req.sph(), req.cyl(), req.axis()));
+    }
+
+    @PostMapping("/frame_fit_calculator")
+    public ToolResponse frameFitCalculator(@RequestBody FrameFitRequest req) {
+        return run("frame_fit_calculator", req, () -> tools.frameFitCalculator(
+                req.lensWidth(), req.bridge(), req.pd(), req.power(), req.templeLength()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -141,5 +199,32 @@ public class ToolController {
     }
 
     public record ThicknessRequest(double sph, Double cyl, String lensIndex, Double frameWidth) {
+    }
+
+    public record PupillaryDistanceRequest(Double binocularPd, Double pdRight, Double pdLeft,
+                                           Double workingDistanceCm) {
+    }
+
+    public record CoatingRequest(double screenHours, String outdoorFrequency, String nightDriving,
+                                 Boolean lightSensitive, Boolean preferOnePair) {
+    }
+
+    public record MyopiaControlRequest(int age, double currentSph, Double annualProgression,
+                                       String parentMyopia, Double outdoorHours) {
+    }
+
+    public record AnisometropiaRequest(double rightSph, double leftSph, Double rightCyl, Double leftCyl) {
+    }
+
+    public record ContactLensRequest(double sph, Double cyl, Double vertexDistanceMm) {
+    }
+
+    public record ReadingAddRequest(int age, Double workingDistanceCm, Double distanceSph) {
+    }
+
+    public record TransposeRequest(double sph, double cyl, Integer axis) {
+    }
+
+    public record FrameFitRequest(double lensWidth, double bridge, double pd, Double power, Double templeLength) {
     }
 }
