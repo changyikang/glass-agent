@@ -60,7 +60,8 @@ public class ToolController {
                 tool("contact_lens_power", "隐形眼镜度数换算：按镜眼距（顶点距离）把框架镜球镜/柱镜换算成贴近角膜的隐形眼镜光度并按 0.25D 取整，说明高度数为何要补偿、散光可否折算等效球镜。"),
                 tool("reading_add_estimator", "老花（近附加 ADD）度数估算：按年龄给出典型近附加度数，按工作距离增减，并可结合看远球镜算出看近总度数，说明老花镜/渐进/办公镜片的选择。"),
                 tool("prescription_transpose", "散光记法转换（柱镜转换）：在负柱镜与正柱镜两种等价写法之间互换（新球镜=原球镜+原柱镜，新柱镜=−原柱镜，新轴位=原轴位±90°），并用等效球镜不变量自检。"),
-                tool("frame_fit_calculator", "镜架尺寸适配（光心偏移评估）：按盒式标注法用镜圈宽+鼻梁算出镜架几何中心距，与瞳距比较得出每片移心量与方向，评估贴合度，并用 Prentice 公式估算不移心时的水平棱镜。"));
+                tool("frame_fit_calculator", "镜架尺寸适配（光心偏移评估）：按盒式标注法用镜圈宽+鼻梁算出镜架几何中心距，与瞳距比较得出每片移心量与方向，评估贴合度，并用 Prentice 公式估算不移心时的水平棱镜。"),
+                tool("visual_acuity_converter", "视力记录法换算：在小数记录法、五分记录法（对数）、Snellen 分数、logMAR 四种等价写法之间互换，并给出该视力的大致水平（五分 L=5+lg(小数)，logMAR=−lg(小数)）。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -161,6 +162,12 @@ public class ToolController {
                 req.lensWidth(), req.bridge(), req.pd(), req.power(), req.templeLength()));
     }
 
+    @PostMapping("/visual_acuity_converter")
+    public ToolResponse visualAcuityConverter(@RequestBody AcuityRequest req) {
+        return run("visual_acuity_converter", req, () -> tools.visualAcuityConverter(
+                req.notation(), req.value(), req.snellenNumerator()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -226,5 +233,8 @@ public class ToolController {
     }
 
     public record FrameFitRequest(double lensWidth, double bridge, double pd, Double power, Double templeLength) {
+    }
+
+    public record AcuityRequest(String notation, double value, Integer snellenNumerator) {
     }
 }

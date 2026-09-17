@@ -1776,6 +1776,126 @@ public class GlassAdvisorTools {
                 bulletJoin(notes));
     }
 
+    @Tool(description = "视力记录法换算：视力表结果常见四种等价写法——小数记录法(decimal，如 1.0)、"
+            + "五分记录法/对数记录法(five_minute，如 5.0，中国 GB 标准)、Snellen 分数(snellen，如 20/20 或 6/6)、"
+            + "logMAR(如 0.00，科研常用)。把任一记法换算成其余三种并给出视力大致水平。换算：五分 L = 5 + lg(小数)，"
+            + "logMAR = −lg(小数)，Snellen = 分子 ÷ 小数。仅做记法换算与科普，不替代验光，也不代表屈光度数。")
+    public String visualAcuityConverter(
+            @ToolParam(description = "输入视力所用的记法：decimal(小数，如 1.0) / five_minute(五分/对数，如 5.0) / "
+                    + "logmar(如 0.00) / snellen(分数，如 20/20，此时 value 填分母)。") String notation,
+            @ToolParam(description = "视力数值：decimal 填小数视力(0.01–2.0)；five_minute 填五分值(3.0–5.5)；"
+                    + "logmar 填 logMAR 值(-0.3–2.5)；snellen 填分数的分母（如 20/40 就填 40）。") double value,
+            @ToolParam(required = false, description = "仅 Snellen 记法用：分子（测试距离），美制 20 或公制 6，默认 20。其它记法忽略。")
+            Integer snellenNumerator) {
+
+        expectEnum("notation", notation, "decimal", "five_minute", "logmar", "snellen");
+        int numerator = snellenNumerator == null ? 20 : snellenNumerator;
+        if (snellenNumerator != null && numerator != 20 && numerator != 6) {
+            throw new IllegalArgumentException("参数 snellen_numerator 必须是 20 或 6");
+        }
+
+        // 先把任一记法统一换算成「小数视力 decimal」，再由它推出其余三种。
+        double decimal;
+        String inputLine;
+        switch (notation) {
+            case "decimal" -> {
+                if (value <= 0 || value > 3) {
+                    throw new IllegalArgumentException("小数视力 value 应在 0 到 3 之间");
+                }
+                decimal = value;
+                inputLine = "小数记录 " + formatDecimalAcuity(value);
+            }
+            case "five_minute" -> {
+                if (value < 3 || value > 5.5) {
+                    throw new IllegalArgumentException("五分记录法 value 应在 3.0 到 5.5 之间");
+                }
+                decimal = Math.pow(10, value - 5);
+                inputLine = "五分记录 " + trimNumber(round1(value));
+            }
+            case "logmar" -> {
+                if (value < -0.5 || value > 2.5) {
+                    throw new IllegalArgumentException("logMAR value 应在 -0.5 到 2.5 之间");
+                }
+                decimal = Math.pow(10, -value);
+                inputLine = "logMAR " + trimNumber(round2(value));
+            }
+            default -> { // snellen
+                if (value <= 0) {
+                    throw new IllegalArgumentException("Snellen 分母 value 必须为正数");
+                }
+                decimal = numerator / value;
+                inputLine = "Snellen " + numerator + "/" + trimNumber(round2(value));
+            }
+        }
+
+        double fiveMinute = 5 + Math.log10(decimal);
+        double logmar = -Math.log10(decimal);
+        long snellen20 = Math.round(20 / decimal);
+        double snellen6 = Math.round((6 / decimal) * 10) / 10.0;
+
+        return """
+                ## 视力记录法换算
+
+                > 同一视力可用四种等价记法表示：**小数记录法**（国内视力表下排，如 1.0）、**五分记录法 / 对数记录法**（国内视力表上排，中国 GB 11533 标准，如 5.0）、**Snellen 分数**（欧美常用，如 20/20 或 6/6）、**logMAR**（科研统计常用，如 0.00）。换算关系：五分 L = 5 + lg(小数)，logMAR = −lg(小数)，Snellen = 分子 ÷ 小数。
+
+                **输入**
+                - %s
+
+                **换算结果（四种等价记法）**
+                - 小数记录法：**%s**
+                - 五分记录法（对数）：**%s**
+                - Snellen（美制/公制）：**20/%d** ≈ **6/%s**
+                - logMAR：**%s**
+                - 视力水平：**%s**
+
+                **常用对照**
+                - 小数 1.0 = 五分 5.0 = 20/20 = 6/6 = logMAR 0.00（标准正常视力）
+                - 小数 0.5 = 五分 4.7 ≈ 20/40 = logMAR 0.30
+                - 小数 0.1 = 五分 4.0 = 20/200 = logMAR 1.00
+
+                **说明**
+                - 视力（矫正或裸眼）反映的是「看清的能力」，与验光度数（近视 / 远视多少度）不是一回事，同样视力可能对应不同度数。
+                - 每个方向的视标每小一行、logMAR 减 0.1，五分记录法每行差 0.1；不同视力表设计略有差异，换算值取近似。
+                - 本工具只做记法换算与科普，不替代专业验光；配镜请以主觉验光和矫正视力为准。""".formatted(
+                inputLine,
+                formatDecimalAcuity(decimal),
+                trimNumber(round1(fiveMinute)),
+                snellen20,
+                trimNumber(snellen6),
+                trimNumber(round2(logmar)),
+                acuityLevelLabel(decimal));
+    }
+
+    /** 视力水平分档，与 TS 版本 acuityLevelLabel() 对齐。 */
+    private static String acuityLevelLabel(double decimal) {
+        if (decimal >= 1.0) {
+            return "正常或以上";
+        }
+        if (decimal >= 0.8) {
+            return "接近正常";
+        }
+        if (decimal >= 0.5) {
+            return "轻度下降";
+        }
+        if (decimal >= 0.3) {
+            return "中度下降";
+        }
+        if (decimal >= 0.1) {
+            return "明显下降";
+        }
+        return "重度下降（低视力范围）";
+    }
+
+    /** 小数视力展示：保留两位小数并去尾零。 */
+    private static String formatDecimalAcuity(double decimal) {
+        return trimNumber(round2(decimal));
+    }
+
+    /** 四舍五入到一位小数。 */
+    private static double round1(double value) {
+        return Math.round(value * 10.0) / 10.0;
+    }
+
     /** 按每片移心量（mm）评估镜架与瞳距的贴合度。 */
     private static String frameFitRating(double absDec) {
         if (absDec < 2) {

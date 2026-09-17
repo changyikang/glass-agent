@@ -372,4 +372,38 @@ class GlassAdvisorToolsTest {
                 () -> tools.frameFitCalculator(52, 18, 30, null, null));
         assertTrue(ex.getMessage().contains("pd"));
     }
+
+    @Test
+    void visualAcuityConverterMapsDecimalToAllNotations() {
+        String result = tools.visualAcuityConverter("decimal", 1.0, null);
+        assertTrue(result.contains("小数记录法：**1**"));
+        assertTrue(result.contains("五分记录法（对数）：**5**"));
+        assertTrue(result.contains("Snellen（美制/公制）：**20/20** ≈ **6/6**"));
+        assertTrue(result.contains("logMAR：**0**"));
+        assertTrue(result.contains("视力水平：**正常或以上**"));
+    }
+
+    @Test
+    void visualAcuityConverterConvertsFiveMinuteToDecimalAndSnellen() {
+        // 五分 4.7 → 小数 10^-0.3 ≈ 0.5 → 20/40
+        String result = tools.visualAcuityConverter("five_minute", 4.7, null);
+        assertTrue(result.contains("小数记录法：**0.5**"));
+        assertTrue(result.contains("Snellen（美制/公制）：**20/40**"));
+        assertTrue(result.contains("轻度下降"));
+    }
+
+    @Test
+    void visualAcuityConverterAcceptsSnellenDenominator() {
+        String result = tools.visualAcuityConverter("snellen", 200, 20);
+        assertTrue(result.contains("小数记录法：**0.1**"));
+        assertTrue(result.contains("五分记录法（对数）：**4**"));
+        assertTrue(result.contains("logMAR：**1**"));
+    }
+
+    @Test
+    void visualAcuityConverterRejectsOutOfRangeDecimal() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.visualAcuityConverter("decimal", 0, null));
+        assertTrue(ex.getMessage().contains("0 到 3"));
+    }
 }

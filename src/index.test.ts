@@ -29,7 +29,49 @@ test("exports the expected MCP tool set", () => {
     "reading_add_estimator",
     "prescription_transpose",
     "frame_fit_calculator",
+    "visual_acuity_converter",
   ]);
+});
+
+test("visual acuity converter maps decimal 1.0 to all four equivalent notations", () => {
+  const tool = getTool("visual_acuity_converter");
+  const result = tool.handler({ notation: "decimal", value: 1.0 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /小数记录法：\*\*1\*\*/);
+  assert.match(text, /五分记录法（对数）：\*\*5\*\*/);
+  assert.match(text, /Snellen（美制\/公制）：\*\*20\/20\*\*/);
+  assert.match(text, /logMAR：\*\*0\*\*/);
+  assert.match(text, /视力水平：\*\*正常或以上\*\*/);
+});
+
+test("visual acuity converter converts a five-minute log reading back to decimal and Snellen", () => {
+  const tool = getTool("visual_acuity_converter");
+  // 五分 4.7 → 小数 10^(-0.3) ≈ 0.5 → 20/40
+  const result = tool.handler({ notation: "five_minute", value: 4.7 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /小数记录法：\*\*0\.5\*\*/);
+  assert.match(text, /Snellen（美制\/公制）：\*\*20\/40\*\*/);
+  assert.match(text, /轻度下降/);
+});
+
+test("visual acuity converter accepts a Snellen fraction via denominator + numerator", () => {
+  const tool = getTool("visual_acuity_converter");
+  const result = tool.handler({ notation: "snellen", value: 200, snellen_numerator: 20 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /小数记录法：\*\*0\.1\*\*/);
+  assert.match(text, /五分记录法（对数）：\*\*4\*\*/);
+  assert.match(text, /logMAR：\*\*1\*\*/);
+});
+
+test("visual acuity converter rejects an out-of-range decimal value", () => {
+  const tool = getTool("visual_acuity_converter");
+  assert.throws(() => tool.handler({ notation: "decimal", value: 0 }), /0 到 3/);
 });
 
 test("frame fit calculator computes frame PD and inward decentration for a wider frame", () => {

@@ -29,10 +29,10 @@ lens recommendation, lens-thickness estimation, lens-coating advice, frame
 selection, vision-check guidance, progressive-lens assessment,
 troubleshooting discomfort with new glasses, children's myopia control,
 spectacle-to-contact-lens power conversion, presbyopia reading-add
-estimation, cylinder (plus/minus) prescription transposition, and
-frame-size-to-PD fit checking.
+estimation, cylinder (plus/minus) prescription transposition,
+frame-size-to-PD fit checking, and visual-acuity notation conversion.
 
-The project ships **two interchangeable implementations that share the same sixteen
+The project ships **two interchangeable implementations that share the same seventeen
 tools**, so you can adopt whichever fits your stack:
 
 | Implementation | Path | Best for |
@@ -42,7 +42,7 @@ tools**, so you can adopt whichever fits your stack:
 
 ### Features
 
-The sixteen built-in tools:
+The seventeen built-in tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -62,6 +62,7 @@ The sixteen built-in tools:
 | `reading_add_estimator` | Estimates the presbyopia reading addition (ADD) from age, adjusts it for the actual working distance (default 40 cm), and — given the distance prescription — computes the near total power, with guidance on reading vs. progressive vs. office lenses |
 | `prescription_transpose` | Converts a prescription between minus-cylinder and plus-cylinder notation (new SPH = SPH + CYL, new CYL = −CYL, new AXIS = AXIS ± 90°), showing the working and using the spherical-equivalent invariant as a self-check |
 | `frame_fit_calculator` | Decodes a frame's box measurements (`52□18-140` style) into its geometric center distance (lens width + bridge), compares it against the wearer's PD to give the per-eye optical-center decentration and direction, rates the frame-to-PD fit, and — given a lens power — estimates via Prentice's rule the unwanted prism from an un-decentered optical center |
+| `visual_acuity_converter` | Converts a visual-acuity reading between the four equivalent notations — decimal, five-minute log (China's GB standard), Snellen fraction (20/20 or 6/6) and logMAR — via `L = 5 + lg(decimal)` and `logMAR = −lg(decimal)`, and labels the rough acuity level |
 
 The Java agent adds **multi-turn intake**: pass a `conversationId` and it remembers
 the dialogue, so it asks the questions it needs, gives a fitting recommendation, and
@@ -71,7 +72,7 @@ attaches purchase links at the end.
 
 ```
                          ┌──────────────────────────────┐
-        MCP client       │     Sixteen shared optical    │      REST client
+        MCP client       │    Seventeen shared optical   │      REST client
    (Claude Desktop, …)   │             tools             │   (curl / your app)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │
@@ -195,9 +196,9 @@ Released under the [MIT License](LICENSE).
 
 ### 项目简介
 
-**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查、青少年近视防控、框架镜到隐形眼镜的度数换算、老花（近附加）度数估算、散光（正/负柱镜）记法转换，以及镜架尺寸与瞳距的适配评估。
+**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查、青少年近视防控、框架镜到隐形眼镜的度数换算、老花（近附加）度数估算、散光（正/负柱镜）记法转换、镜架尺寸与瞳距的适配评估，以及视力记录法换算。
 
-项目提供 **两套可互换、共享同一组十六个工具的实现**，你可以按技术栈选用：
+项目提供 **两套可互换、共享同一组十七个工具的实现**，你可以按技术栈选用：
 
 | 实现方式 | 路径 | 适用场景 |
 | --- | --- | --- |
@@ -206,7 +207,7 @@ Released under the [MIT License](LICENSE).
 
 ### 功能
 
-内置十六个工具：
+内置十七个工具：
 
 | 工具 | 作用 |
 | --- | --- |
@@ -226,6 +227,7 @@ Released under the [MIT License](LICENSE).
 | `reading_add_estimator` | 按年龄估算老花（近附加 ADD）度数，按实际工作距离（默认 40cm）增减，并可结合看远球镜算出看近总度数，给出老花镜 / 渐进 / 办公镜片的选择建议（按 0.25D 步进取整） |
 | `prescription_transpose` | 在负柱镜与正柱镜两种等价记法间互换（新球镜 = 原球镜 + 原柱镜，新柱镜 = −原柱镜，新轴位 = 原轴位 ± 90°），展示换算过程并用等效球镜不变量自检 |
 | `frame_fit_calculator` | 解析镜架规格标注（如 `52□18-140`），按盒式标注法算出镜架几何中心距（镜圈宽 + 鼻梁），与瞳距比较得出每片光心移心量与方向，评估镜架与瞳距的贴合度；给定度数时用 Prentice 公式估算「不移心」会产生的水平棱镜 |
+| `visual_acuity_converter` | 在小数记录法、五分记录法（对数，中国 GB 标准）、Snellen 分数（20/20 或 6/6）、logMAR 四种等价视力记法间互换（五分 L = 5 + lg(小数)，logMAR = −lg(小数)），并给出该视力的大致水平 |
 
 Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可记住对话上下文，
 于是它会主动追问所需信息，给出配镜建议，并在最后附上购买链接。
@@ -234,7 +236,7 @@ Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可�
 
 ```
                          ┌──────────────────────────────┐
-       MCP 客户端         │       十六个共享的配镜工具      │       REST 客户端
+       MCP 客户端         │       十七个共享的配镜工具      │       REST 客户端
    (Claude Desktop 等)   │                              │   (curl / 你的应用)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │

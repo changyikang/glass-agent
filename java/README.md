@@ -42,6 +42,7 @@
 - `reading_add_estimator`：按年龄估算老花（近附加 ADD）度数，按实际工作距离（默认 40cm）增减，并可结合看远球镜算出看近总度数，给出老花镜 / 渐进 / 办公镜片的选择建议（按 0.25D 步进取整）
 - `prescription_transpose`：在负柱镜与正柱镜两种等价记法间互换（新球镜 = 原球镜 + 原柱镜，新柱镜 = −原柱镜，新轴位 = 原轴位 ± 90°），展示换算过程并用等效球镜不变量自检
 - `frame_fit_calculator`：解析镜架规格标注（如 `52□18-140`），按盒式标注法算出镜架几何中心距（镜圈宽 + 鼻梁），与瞳距比较得出每片光心移心量与方向，评估镜架与瞳距的贴合度；给定度数时用 Prentice 公式估算「不移心」会产生的水平棱镜
+- `visual_acuity_converter`：在小数记录法、五分记录法（对数，中国 GB 标准）、Snellen 分数（20/20 或 6/6）、logMAR 四种等价视力记法间互换（五分 L = 5 + lg(小数)，logMAR = −lg(小数)），并给出该视力的大致水平
 
 ## 环境要求
 
@@ -166,6 +167,14 @@ curl -X POST http://localhost:8080/api/tools/frame_fit_calculator \
   -d '{"lensWidth":52,"bridge":18,"pd":62,"power":-4.0,"templeLength":140}'
 ```
 
+视力记录法换算（`notation` = decimal / five_minute / logmar / snellen，`value` 必填；Snellen 时 `value` 填分母，`snellenNumerator` 默认 20）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/visual_acuity_converter \
+  -H 'Content-Type: application/json' \
+  -d '{"notation":"decimal","value":1.0}'
+```
+
 查看 / 清空工具调用历史（进程内保存最近 50 次，最新在前）：
 
 ```bash
@@ -195,7 +204,7 @@ java/
 └── src/main/java/com/glass/agent/
     ├── GlassAgentApplication.java      # 启动类
     ├── tool/
-    │   ├── GlassAdvisorTools.java      # 16 个工具的业务逻辑 + @Tool 注解
+    │   ├── GlassAdvisorTools.java      # 17 个工具的业务逻辑 + @Tool 注解
     │   ├── ToolCallHistory.java        # 进程内工具调用历史（最近 50 次）
     │   └── Diopters.java               # 度数格式化帮助函数
     ├── agent/
