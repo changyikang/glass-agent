@@ -406,4 +406,49 @@ class GlassAdvisorToolsTest {
                 () -> tools.visualAcuityConverter("decimal", 0, null));
         assertTrue(ex.getMessage().contains("0 到 3"));
     }
+
+    @Test
+    void accommodationAmplitudeAppliesHofstetterFormulasAndNearPoint() {
+        // 最小 = 15 - 0.25*45 = 3.75；平均 = 18.5 - 0.30*45 = 5；最大 = 25 - 0.40*45 = 7
+        String result = tools.accommodationAmplitude(45, null);
+        assertTrue(result.contains("最小（Hofstetter 下限）：**3.75D**"));
+        assertTrue(result.contains("平均（预期值）：**5D**"));
+        assertTrue(result.contains("最大（上限）：**7D**"));
+        // 调节近点 = 100/5 = 20cm；舒适最近 = 100/(5/2) = 40cm
+        assertTrue(result.contains("调节近点（按平均调节力）：**20 cm**"));
+        assertTrue(result.contains("舒适持续用眼最近距离（保留一半调节力）：**40 cm**"));
+    }
+
+    @Test
+    void accommodationAmplitudeFlagsStrainedNearWorkAndSuggestsAdd() {
+        // 45 岁平均 5D，储备 2.5D；33cm 需求 100/33≈3.03D > 储备
+        String result = tools.accommodationAmplitude(45, 33.0);
+        assertTrue(result.contains("在 33 cm 处"));
+        assertTrue(result.contains("偏吃力"));
+        // 建议下加光 = round((3.03 - 2.5)/0.25)*0.25 = 0.5
+        assertTrue(result.contains("建议近附加（补足储备）：约 **+0.5D**"));
+    }
+
+    @Test
+    void accommodationAmplitudeMarksComfortableDistanceWithoutAdd() {
+        // 30 岁平均 = 18.5 - 9 = 9.5D，储备 4.75D；40cm 需求 2.5D < 储备
+        String result = tools.accommodationAmplitude(30, 40.0);
+        assertTrue(result.contains("状态：**舒适"));
+        assertTrue(!result.contains("建议近附加"));
+    }
+
+    @Test
+    void accommodationAmplitudeReportsExhaustedAccommodationForTheVeryOld() {
+        // 70 岁平均 = 18.5 - 21 < 0 → 封底为 0 → 近点无法测得
+        String result = tools.accommodationAmplitude(70, null);
+        assertTrue(result.contains("平均（预期值）：**0D**"));
+        assertTrue(result.contains("调节力已近耗竭"));
+    }
+
+    @Test
+    void accommodationAmplitudeRejectsOutOfRangeAge() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.accommodationAmplitude(200, null));
+        assertTrue(ex.getMessage().contains("age"));
+    }
 }

@@ -548,6 +548,28 @@ export const tools: ToolDefinition[] = [
     sample: { notation: "decimal", value: 1.0 },
     handler: handleVisualAcuityConverter,
   },
+  {
+    name: "accommodation_amplitude",
+    description:
+      "调节幅度（Amplitude of Accommodation）评估：眼睛把焦点从远处调到近处的最大屈光能力称为调节力，随年龄下降是老视（老花）的根源。用 Hofstetter 经验公式按年龄估算最小 / 平均 / 最大调节幅度（最小 = 15 − 0.25×年龄，平均 = 18.5 − 0.30×年龄，最大 = 25 − 0.40×年龄，单位D），推算调节近点（眼睛能看清的最近距离）与「保留一半调节力做储备」时的舒适持续用眼最近距离；若提供实际工作距离，判断该距离的调节需求是否落在舒适储备之内，并在不足时给出建议近附加。仅供科普参考，实际以主觉验光和调节功能检查为准。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        age: {
+          type: "number",
+          description: "年龄（岁），整数。调节力随年龄下降，约 40 岁后看近逐渐吃力。",
+        },
+        working_distance_cm: {
+          type: "number",
+          description:
+            "主要用眼（看近）距离，单位cm，常见看书 33-40、电脑 50-70；不填则只给调节幅度与近点，不做该距离的舒适度判断。",
+        },
+      },
+      required: ["age"],
+    },
+    sample: { age: 45, working_distance_cm: 33 },
+    handler: handleAccommodationAmplitude,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -2299,6 +2321,133 @@ function handleVisualAcuityConverter(args: ToolArgs): ToolResult {
 - 视力（矫正或裸眼）反映的是「看清的能力」，与验光度数（近视 / 远视多少度）不是一回事，同样视力可能对应不同度数。
 - 每个方向的视标每小一行、logMAR 减 0.1，五分记录法每行差 0.1；不同视力表设计略有差异，换算值取近似。
 - 本工具只做记法换算与科普，不替代专业验光；配镜请以主觉验光和矫正视力为准。`);
+}
+
+// Hofstetter 调节幅度经验公式系数（单位 D，随年龄线性下降）。
+const HOFSTETTER_MIN_BASE = 15;
+const HOFSTETTER_MIN_SLOPE = 0.25;
+const HOFSTETTER_AVG_BASE = 18.5;
+const HOFSTETTER_AVG_SLOPE = 0.3;
+const HOFSTETTER_MAX_BASE = 25;
+const HOFSTETTER_MAX_SLOPE = 0.4;
+// 舒适持续用眼原则：只动用约一半调节力，另一半留作储备。
+const ACCOMMODATION_RESERVE_FRACTION = 0.5;
+const ACCOMMODATION_STEP_D = 0.25;
+
+/** Hofstetter 公式：给定年龄与系数算出调节幅度（D），并封底到 0。 */
+function hofstetterAmplitude(age: number, base: number, slope: number): number {
+  return Math.max(base - slope * age, 0);
+}
+
+/** 由调节力（D）换算眼睛能看清的最近距离（cm）；调节力≤0 时无法看清。 */
+function amplitudeToDistanceCm(amplitudeD: number): number | undefined {
+  return amplitudeD > 0 ? 100 / amplitudeD : undefined;
+}
+
+function formatAccommodationDistance(distanceCm: number | undefined): string {
+  if (distanceCm === undefined) {
+    return "无法看清（调节力已近耗竭）";
+  }
+  return `${trimTrailingZeros(distanceCm.toFixed(1))} cm`;
+}
+
+function handleAccommodationAmplitude(args: ToolArgs): ToolResult {
+  const age = expectNumber(args, "age", { min: 5, max: 120, integer: true });
+  const workingCm = optionalNumber(args, "working_distance_cm", { min: 10, max: 200 });
+
+  const minAmp = hofstetterAmplitude(age, HOFSTETTER_MIN_BASE, HOFSTETTER_MIN_SLOPE);
+  const avgAmp = hofstetterAmplitude(age, HOFSTETTER_AVG_BASE, HOFSTETTER_AVG_SLOPE);
+  const maxAmp = hofstetterAmplitude(age, HOFSTETTER_MAX_BASE, HOFSTETTER_MAX_SLOPE);
+
+  const npaCm = amplitudeToDistanceCm(avgAmp);
+  const comfortReserveD = avgAmp * ACCOMMODATION_RESERVE_FRACTION;
+  const comfortNearestCm = amplitudeToDistanceCm(comfortReserveD);
+
+  const notes: string[] = [];
+
+  if (age < PRESBYOPIA_ONSET_AGE) {
+    notes.push(
+      `${age} 岁调节力通常仍较充足；随年龄增长，平均调节幅度约每年下降 ${trimTrailingZeros(
+        HOFSTETTER_AVG_SLOPE.toFixed(2)
+      )}D，调节近点会逐渐后移，约 40 岁后看近开始费力，即老视（老花）。`
+    );
+  } else {
+    notes.push(
+      `${age} 岁平均调节幅度已降至约 ${formatDiopter(
+        avgAmp
+      )}，调节近点后移到约 ${formatAccommodationDistance(
+        npaCm
+      )}，看近费力属正常老视表现，可用近附加（老花镜 / 渐进）补偿。`
+    );
+  }
+
+  notes.push(
+    `舒适持续用眼一般只动用约一半调节力（另一半留作储备），因此长时间看清的最近距离（约 ${formatAccommodationDistance(
+      comfortNearestCm
+    )}）比生理近点更远；看得清一时，不代表能久看不累。`
+  );
+
+  let demandBlock = "";
+  if (workingCm !== undefined) {
+    const demandD = 100 / workingCm;
+    let status: string;
+    if (demandD <= comfortReserveD + 1e-9) {
+      status = "舒适（调节需求在「一半调节力」的储备之内，可较久用眼）";
+    } else if (demandD <= avgAmp + 1e-9) {
+      status = "偏吃力（动用了一半以上调节力，储备不足，久看易疲劳）";
+    } else {
+      status = "超出平均调节力（这个距离已难以持续看清）";
+    }
+
+    let addLine = "";
+    if (demandD > comfortReserveD + 1e-9) {
+      const rawAdd = demandD - comfortReserveD;
+      const add = Math.round(rawAdd / ACCOMMODATION_STEP_D) * ACCOMMODATION_STEP_D;
+      if (add > 0) {
+        addLine = `\n- 建议近附加（补足储备）：约 **+${trimTrailingZeros(
+          add.toFixed(2)
+        )}D**，让该距离用眼重新留出约一半调节储备（与 reading_add_estimator 的按年龄估算可互相印证）`;
+        notes.push(
+          "该距离下调节储备不足，可考虑在看近时叠加近附加（下加光）；具体度数仍以主觉验光试戴为准。"
+        );
+      }
+    }
+
+    demandBlock = `
+
+**在 ${trimTrailingZeros(workingCm.toFixed(0))} cm 处**
+- 该距离的调节需求：**${formatDiopter(demandD)}**（需求 = 100 ÷ 距离cm）
+- 状态：**${status}**${addLine}`;
+  } else {
+    notes.push(
+      "如需判断某个用眼距离是否舒适、是否需要近附加，请一并提供 working_distance_cm。"
+    );
+  }
+
+  const workingLine =
+    workingCm !== undefined ? `\n- 主要用眼距离：${trimTrailingZeros(workingCm.toFixed(0))} cm` : "";
+
+  return textResult(`## 调节幅度（Amplitude of Accommodation）评估
+
+> 眼睛把焦点从远处调近的最大屈光能力叫「调节力」，随年龄下降。以下用 Hofstetter 经验公式按年龄估算调节幅度：最小 = 15 − 0.25×年龄，平均 = 18.5 − 0.30×年龄，最大 = 25 − 0.40×年龄（单位 D）。调节近点 = 100 ÷ 调节幅度（cm）。仅供科普参考，实际以主觉验光和调节功能检查为准。
+
+**输入**
+- 年龄：${age} 岁${workingLine}
+
+**估算调节幅度**
+- 最小（Hofstetter 下限）：**${formatDiopter(minAmp)}**
+- 平均（预期值）：**${formatDiopter(avgAmp)}**
+- 最大（上限）：**${formatDiopter(maxAmp)}**
+- 调节近点（按平均调节力）：**${formatAccommodationDistance(npaCm)}**
+- 舒适持续用眼最近距离（保留一半调节力）：**${formatAccommodationDistance(comfortNearestCm)}**${demandBlock}
+
+**说明**
+${renderBulletList(notes, "评估完成。")}
+
+**提醒**
+- 调节幅度是双眼看近的生理能力，个体差异较大，Hofstetter 公式只给人群平均趋势。
+- 突然、单眼或快速加重的看近困难，或伴随头痛、复视、视物变形，应先就医排查，而非仅配老花镜。
+- 本工具只做科普参考，不替代验光师 / 医生。`);
 }
 
 function optionalEnumNumber(

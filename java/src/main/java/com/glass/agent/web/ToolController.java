@@ -61,7 +61,8 @@ public class ToolController {
                 tool("reading_add_estimator", "老花（近附加 ADD）度数估算：按年龄给出典型近附加度数，按工作距离增减，并可结合看远球镜算出看近总度数，说明老花镜/渐进/办公镜片的选择。"),
                 tool("prescription_transpose", "散光记法转换（柱镜转换）：在负柱镜与正柱镜两种等价写法之间互换（新球镜=原球镜+原柱镜，新柱镜=−原柱镜，新轴位=原轴位±90°），并用等效球镜不变量自检。"),
                 tool("frame_fit_calculator", "镜架尺寸适配（光心偏移评估）：按盒式标注法用镜圈宽+鼻梁算出镜架几何中心距，与瞳距比较得出每片移心量与方向，评估贴合度，并用 Prentice 公式估算不移心时的水平棱镜。"),
-                tool("visual_acuity_converter", "视力记录法换算：在小数记录法、五分记录法（对数）、Snellen 分数、logMAR 四种等价写法之间互换，并给出该视力的大致水平（五分 L=5+lg(小数)，logMAR=−lg(小数)）。"));
+                tool("visual_acuity_converter", "视力记录法换算：在小数记录法、五分记录法（对数）、Snellen 分数、logMAR 四种等价写法之间互换，并给出该视力的大致水平（五分 L=5+lg(小数)，logMAR=−lg(小数)）。"),
+                tool("accommodation_amplitude", "调节幅度评估：用 Hofstetter 公式按年龄估算最小/平均/最大调节幅度（平均=18.5−0.30×年龄）与调节近点，判断某个用眼距离是否落在「保留一半调节力」的舒适储备之内，并在不足时给出建议近附加。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -168,6 +169,12 @@ public class ToolController {
                 req.notation(), req.value(), req.snellenNumerator()));
     }
 
+    @PostMapping("/accommodation_amplitude")
+    public ToolResponse accommodationAmplitude(@RequestBody AccommodationRequest req) {
+        return run("accommodation_amplitude", req, () -> tools.accommodationAmplitude(
+                req.age(), req.workingDistanceCm()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -236,5 +243,8 @@ public class ToolController {
     }
 
     public record AcuityRequest(String notation, double value, Integer snellenNumerator) {
+    }
+
+    public record AccommodationRequest(int age, Double workingDistanceCm) {
     }
 }

@@ -30,7 +30,61 @@ test("exports the expected MCP tool set", () => {
     "prescription_transpose",
     "frame_fit_calculator",
     "visual_acuity_converter",
+    "accommodation_amplitude",
   ]);
+});
+
+test("accommodation amplitude applies Hofstetter formulas and near point for a 45-year-old", () => {
+  const tool = getTool("accommodation_amplitude");
+  const result = tool.handler({ age: 45 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // min = 15 - 0.25*45 = 3.75; avg = 18.5 - 0.30*45 = 5; max = 25 - 0.40*45 = 7
+  assert.match(text, /最小（Hofstetter 下限）：\*\*3\.75D\*\*/);
+  assert.match(text, /平均（预期值）：\*\*5D\*\*/);
+  assert.match(text, /最大（上限）：\*\*7D\*\*/);
+  // near point (avg) = 100/5 = 20cm; comfortable nearest = 100/(5/2) = 40cm
+  assert.match(text, /调节近点（按平均调节力）：\*\*20 cm\*\*/);
+  assert.match(text, /舒适持续用眼最近距离（保留一半调节力）：\*\*40 cm\*\*/);
+});
+
+test("accommodation amplitude flags strained near work and suggests a near add", () => {
+  const tool = getTool("accommodation_amplitude");
+  // age 45 → avg 5D, reserve 2.5D; at 33cm demand = 100/33 ≈ 3.03D > reserve
+  const result = tool.handler({ age: 45, working_distance_cm: 33 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /在 33 cm 处/);
+  assert.match(text, /偏吃力/);
+  // add = round((3.03 - 2.5)/0.25)*0.25 = 0.5
+  assert.match(text, /建议近附加（补足储备）：约 \*\*\+0\.5D\*\*/);
+});
+
+test("accommodation amplitude marks a comfortable distance without a near add", () => {
+  const tool = getTool("accommodation_amplitude");
+  // age 30 → avg = 18.5 - 9 = 9.5D, reserve 4.75D; at 40cm demand = 2.5D < reserve
+  const result = tool.handler({ age: 30, working_distance_cm: 40 });
+
+  const text = result.content[0].text;
+  assert.match(text, /状态：\*\*舒适/);
+  assert.doesNotMatch(text, /建议近附加/);
+});
+
+test("accommodation amplitude reports exhausted accommodation for the very old", () => {
+  const tool = getTool("accommodation_amplitude");
+  // age 70 → avg = 18.5 - 21 < 0 → clamped to 0 → near point not measurable
+  const result = tool.handler({ age: 70 });
+
+  const text = result.content[0].text;
+  assert.match(text, /平均（预期值）：\*\*0D\*\*/);
+  assert.match(text, /调节力已近耗竭/);
+});
+
+test("accommodation amplitude rejects an out-of-range age", () => {
+  const tool = getTool("accommodation_amplitude");
+  assert.throws(() => tool.handler({ age: 200 }), /age/);
 });
 
 test("visual acuity converter maps decimal 1.0 to all four equivalent notations", () => {

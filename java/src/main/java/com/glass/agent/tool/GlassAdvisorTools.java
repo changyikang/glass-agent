@@ -1382,6 +1382,18 @@ public class GlassAdvisorTools {
     /** 老视一般开始出现的年龄（岁）。 */
     private static final int PRESBYOPIA_ONSET_AGE = 40;
 
+    // Hofstetter 调节幅度经验公式系数（单位 D，随年龄线性下降）。
+    private static final double HOFSTETTER_MIN_BASE = 15;
+    private static final double HOFSTETTER_MIN_SLOPE = 0.25;
+    private static final double HOFSTETTER_AVG_BASE = 18.5;
+    private static final double HOFSTETTER_AVG_SLOPE = 0.3;
+    private static final double HOFSTETTER_MAX_BASE = 25;
+    private static final double HOFSTETTER_MAX_SLOPE = 0.4;
+    /** 舒适持续用眼原则：只动用约一半调节力，另一半留作储备。 */
+    private static final double ACCOMMODATION_RESERVE_FRACTION = 0.5;
+    /** 近附加度数步进（D）。 */
+    private static final double ACCOMMODATION_STEP_D = 0.25;
+
     @Tool(description = "框架镜度数换算隐形眼镜度数：按镜眼距（顶点距离，默认 12mm）做顶点补偿，把框架镜球镜"
             + "（及可选柱镜）换算成贴近角膜的隐形眼镜等效光度，并按隐形常见的 0.25D 步进取整。说明为何高度数"
             + "（约 ±4.00D 以上）必须补偿、低度数可直接沿用，散光可否折算等效球镜配普通球镜片，并提醒隐形还需"
@@ -1864,6 +1876,131 @@ public class GlassAdvisorTools {
                 trimNumber(snellen6),
                 trimNumber(round2(logmar)),
                 acuityLevelLabel(decimal));
+    }
+
+    @Tool(description = "调节幅度（Amplitude of Accommodation）评估：眼睛把焦点从远处调到近处的最大屈光能力称为调节力，"
+            + "随年龄下降是老视（老花）的根源。用 Hofstetter 经验公式按年龄估算最小 / 平均 / 最大调节幅度"
+            + "（最小 = 15 − 0.25×年龄，平均 = 18.5 − 0.30×年龄，最大 = 25 − 0.40×年龄，单位D），"
+            + "推算调节近点（眼睛能看清的最近距离）与「保留一半调节力做储备」时的舒适持续用眼最近距离；"
+            + "若提供实际工作距离，判断该距离的调节需求是否落在舒适储备之内，并在不足时给出建议近附加。"
+            + "仅供科普参考，实际以主觉验光和调节功能检查为准。")
+    public String accommodationAmplitude(
+            @ToolParam(description = "年龄（岁），整数。调节力随年龄下降，约 40 岁后看近逐渐吃力。") int age,
+            @ToolParam(required = false, description = "主要用眼（看近）距离，单位cm，常见看书 33-40、电脑 50-70；"
+                    + "不填则只给调节幅度与近点，不做该距离的舒适度判断。")
+            Double workingDistanceCm) {
+
+        checkRange("age", age, 5, 120);
+        Double workingCm = workingDistanceCm;
+        if (workingCm != null) {
+            checkRange("working_distance_cm", workingCm, 10, 200);
+        }
+
+        double minAmp = hofstetterAmplitude(age, HOFSTETTER_MIN_BASE, HOFSTETTER_MIN_SLOPE);
+        double avgAmp = hofstetterAmplitude(age, HOFSTETTER_AVG_BASE, HOFSTETTER_AVG_SLOPE);
+        double maxAmp = hofstetterAmplitude(age, HOFSTETTER_MAX_BASE, HOFSTETTER_MAX_SLOPE);
+
+        Double npaCm = amplitudeToDistanceCm(avgAmp);
+        double comfortReserveD = avgAmp * ACCOMMODATION_RESERVE_FRACTION;
+        Double comfortNearestCm = amplitudeToDistanceCm(comfortReserveD);
+
+        List<String> notes = new ArrayList<>();
+        if (age < PRESBYOPIA_ONSET_AGE) {
+            notes.add(age + " 岁调节力通常仍较充足；随年龄增长，平均调节幅度约每年下降 "
+                    + trimNumber(HOFSTETTER_AVG_SLOPE) + "D，调节近点会逐渐后移，约 40 岁后看近开始费力，即老视（老花）。");
+        } else {
+            notes.add(age + " 岁平均调节幅度已降至约 " + formatDiopter(avgAmp)
+                    + "，调节近点后移到约 " + formatAccommodationDistance(npaCm)
+                    + "，看近费力属正常老视表现，可用近附加（老花镜 / 渐进）补偿。");
+        }
+
+        notes.add("舒适持续用眼一般只动用约一半调节力（另一半留作储备），因此长时间看清的最近距离（约 "
+                + formatAccommodationDistance(comfortNearestCm)
+                + "）比生理近点更远；看得清一时，不代表能久看不累。");
+
+        String demandBlock = "";
+        if (workingCm != null) {
+            double demandD = 100 / workingCm;
+            String status;
+            if (demandD <= comfortReserveD + 1e-9) {
+                status = "舒适（调节需求在「一半调节力」的储备之内，可较久用眼）";
+            } else if (demandD <= avgAmp + 1e-9) {
+                status = "偏吃力（动用了一半以上调节力，储备不足，久看易疲劳）";
+            } else {
+                status = "超出平均调节力（这个距离已难以持续看清）";
+            }
+
+            String addLine = "";
+            if (demandD > comfortReserveD + 1e-9) {
+                double rawAdd = demandD - comfortReserveD;
+                double add = Math.round(rawAdd / ACCOMMODATION_STEP_D) * ACCOMMODATION_STEP_D;
+                if (add > 0) {
+                    addLine = "\n- 建议近附加（补足储备）：约 **+" + trimNumber(add)
+                            + "D**，让该距离用眼重新留出约一半调节储备（与 reading_add_estimator 的按年龄估算可互相印证）";
+                    notes.add("该距离下调节储备不足，可考虑在看近时叠加近附加（下加光）；具体度数仍以主觉验光试戴为准。");
+                }
+            }
+
+            demandBlock = "\n\n**在 " + trimNumber(workingCm) + " cm 处**"
+                    + "\n- 该距离的调节需求：**" + formatDiopter(demandD) + "**（需求 = 100 ÷ 距离cm）"
+                    + "\n- 状态：**" + status + "**" + addLine;
+        } else {
+            notes.add("如需判断某个用眼距离是否舒适、是否需要近附加，请一并提供 working_distance_cm。");
+        }
+
+        String workingLine = workingCm != null
+                ? "\n- 主要用眼距离：" + trimNumber(workingCm) + " cm"
+                : "";
+
+        return """
+                ## 调节幅度（Amplitude of Accommodation）评估
+
+                > 眼睛把焦点从远处调近的最大屈光能力叫「调节力」，随年龄下降。以下用 Hofstetter 经验公式按年龄估算调节幅度：最小 = 15 − 0.25×年龄，平均 = 18.5 − 0.30×年龄，最大 = 25 − 0.40×年龄（单位 D）。调节近点 = 100 ÷ 调节幅度（cm）。仅供科普参考，实际以主觉验光和调节功能检查为准。
+
+                **输入**
+                - 年龄：%d 岁%s
+
+                **估算调节幅度**
+                - 最小（Hofstetter 下限）：**%s**
+                - 平均（预期值）：**%s**
+                - 最大（上限）：**%s**
+                - 调节近点（按平均调节力）：**%s**
+                - 舒适持续用眼最近距离（保留一半调节力）：**%s**%s
+
+                **说明**
+                %s
+
+                **提醒**
+                - 调节幅度是双眼看近的生理能力，个体差异较大，Hofstetter 公式只给人群平均趋势。
+                - 突然、单眼或快速加重的看近困难，或伴随头痛、复视、视物变形，应先就医排查，而非仅配老花镜。
+                - 本工具只做科普参考，不替代验光师 / 医生。""".formatted(
+                age,
+                workingLine,
+                formatDiopter(minAmp),
+                formatDiopter(avgAmp),
+                formatDiopter(maxAmp),
+                formatAccommodationDistance(npaCm),
+                formatAccommodationDistance(comfortNearestCm),
+                demandBlock,
+                bulletJoin(notes));
+    }
+
+    /** Hofstetter 公式：给定年龄与系数算出调节幅度（D），并封底到 0。 */
+    private static double hofstetterAmplitude(int age, double base, double slope) {
+        return Math.max(base - slope * age, 0);
+    }
+
+    /** 由调节力（D）换算眼睛能看清的最近距离（cm）；调节力≤0 时返回 null（无法看清）。 */
+    private static Double amplitudeToDistanceCm(double amplitudeD) {
+        return amplitudeD > 0 ? 100 / amplitudeD : null;
+    }
+
+    /** 近距离展示：保留一位小数并去尾零；调节力耗竭（null）时给出说明。 */
+    private static String formatAccommodationDistance(Double distanceCm) {
+        if (distanceCm == null) {
+            return "无法看清（调节力已近耗竭）";
+        }
+        return format1Trim(distanceCm) + " cm";
     }
 
     /** 视力水平分档，与 TS 版本 acuityLevelLabel() 对齐。 */
