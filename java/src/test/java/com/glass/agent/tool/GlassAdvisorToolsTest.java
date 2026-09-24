@@ -451,4 +451,55 @@ class GlassAdvisorToolsTest {
                 () -> tools.accommodationAmplitude(200, null));
         assertTrue(ex.getMessage().contains("age"));
     }
+
+    @Test
+    void sunglassTintGuideRecommendsCategoryThreeForBrightSun() {
+        String result = tools.sunglassTintGuide("bright", null, null, null);
+        assertTrue(result.contains("分类：**3 类（深色）**"));
+        assertTrue(result.contains("可见光透过率（VLT）：**8%–18%**"));
+        assertTrue(!result.contains("白天驾驶：0–3 类"));
+    }
+
+    @Test
+    void sunglassTintGuideBumpsOneCategoryDeeperForLightSensitiveWearer() {
+        // sunny 基准 = 2 类，畏光 → 3 类
+        String result = tools.sunglassTintGuide("sunny", "high", null, null);
+        assertTrue(result.contains("分类：**3 类（深色）**"));
+        assertTrue(result.contains("因畏光 / 对强光敏感"));
+    }
+
+    @Test
+    void sunglassTintGuideCapsDayDrivingAtCategoryThree() {
+        // snow_water 基准 = 4 类，但白天驾驶不允许 4 类
+        String result = tools.sunglassTintGuide("snow_water", null, true, null);
+        assertTrue(result.contains("分类：**3 类（深色）**"));
+        assertTrue(result.contains("4 类（极深）镜片透光过低、法规不允许开车佩戴"));
+        assertTrue(result.contains("白天驾驶：0–3 类"));
+        assertTrue(result.contains("灰色（中性灰）：**首选**"));
+    }
+
+    @Test
+    void sunglassTintGuideTreatsIndoorNightDrivingAsNightDriving() {
+        String result = tools.sunglassTintGuide("indoor_night", null, true, null);
+        assertTrue(result.contains("分类：**0 类（近无色 / 极浅）**"));
+        assertTrue(result.contains("夜间 / 昏暗驾驶"));
+        assertTrue(result.contains("黄色「夜视镜」并不能真正提升夜间安全"));
+        assertTrue(result.contains("偏光：此环境无需偏光"));
+    }
+
+    @Test
+    void sunglassTintGuideRecommendsPolarizedAndPrescriptionOptions() {
+        String result = tools.sunglassTintGuide("snow_water", null, null, true);
+        assertTrue(result.contains("偏光：**建议**"));
+        assertTrue(result.contains("带度数（近视 / 散光 / 老花）选配"));
+        assertTrue(result.contains("多数变色片在车内不会变深"));
+        assertTrue(result.contains("更高折射率"));
+    }
+
+    @Test
+    void sunglassTintGuideRejectsUnknownEnvironment() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.sunglassTintGuide("space", null, null, null));
+        assertTrue(ex.getMessage().contains("environment"));
+    }
 }

@@ -570,6 +570,41 @@ export const tools: ToolDefinition[] = [
     sample: { age: 45, working_distance_cm: 33 },
     handler: handleAccommodationAmplitude,
   },
+  {
+    name: "sunglass_tint_guide",
+    description:
+      "太阳镜镜片色号（透光率）与颜色选择：按主要用光环境推荐镜片的过滤分类（ISO 12312-1 的 0–4 类，对应可见光透过率 VLT 由高到低），并结合是否畏光、是否用于驾驶、是否需要带度数，给出镜片颜色（灰 / 茶棕 / 墨绿 / 黄琥珀）、是否值得选偏光、变色片与带度数太阳镜的建议，同时提醒「镜片深浅 ≠ 防紫外线，任何太阳镜都应达到 UV400」。仅做选购科普，不替代验光与专业验配。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        environment: {
+          type: "string",
+          enum: ["indoor_night", "overcast", "sunny", "bright", "snow_water"],
+          description:
+            "主要用光环境：indoor_night(室内/夜间/黄昏，几乎无强光) / overcast(阴天、多云、光线较弱的白天) / sunny(普通晴天、日常户外) / bright(强烈日照：正午、盛夏、海边城市) / snow_water(雪地、高原、水面、沙漠等极强反射光)。",
+        },
+        light_sensitivity: {
+          type: "string",
+          enum: ["normal", "high"],
+          description:
+            "对强光/眩光的敏感度：normal(一般) / high(畏光、易被强光晃)。high 会在推荐分类上再调深一档（封顶 4 类）。默认 normal。",
+        },
+        driving: {
+          type: "boolean",
+          description:
+            "是否主要用于驾驶。白天驾驶时 4 类（极深）镜片透光过低、法规不允许，会自动改为 3 类；若环境选 indoor_night 则按夜间驾驶处理（只用无色/极浅片）。默认 false。",
+        },
+        has_prescription: {
+          type: "boolean",
+          description:
+            "是否需要带度数（近视 / 散光 / 老花）。为 true 时补充带度数太阳镜、变色片、磁吸夹片等选配建议。默认 false。",
+        },
+      },
+      required: ["environment"],
+    },
+    sample: { environment: "bright", light_sensitivity: "high", driving: true, has_prescription: true },
+    handler: handleSunglassTintGuide,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -2448,6 +2483,188 @@ ${renderBulletList(notes, "评估完成。")}
 - 调节幅度是双眼看近的生理能力，个体差异较大，Hofstetter 公式只给人群平均趋势。
 - 突然、单眼或快速加重的看近困难，或伴随头痛、复视、视物变形，应先就医排查，而非仅配老花镜。
 - 本工具只做科普参考，不替代验光师 / 医生。`);
+}
+
+const SUNGLASS_ENV_BASE_CATEGORY: Record<string, number> = {
+  indoor_night: 0,
+  overcast: 1,
+  sunny: 2,
+  bright: 3,
+  snow_water: 4,
+};
+
+const SUNGLASS_CATEGORY_VLT: Record<number, string> = {
+  0: "80%–100%",
+  1: "43%–80%",
+  2: "18%–43%",
+  3: "8%–18%",
+  4: "3%–8%",
+};
+
+const SUNGLASS_CATEGORY_LABEL: Record<number, string> = {
+  0: "0 类（近无色 / 极浅）",
+  1: "1 类（浅色）",
+  2: "2 类（中等）",
+  3: "3 类（深色）",
+  4: "4 类（极深）",
+};
+
+const SUNGLASS_CATEGORY_SCENE: Record<number, string> = {
+  0: "室内、夜间、黄昏等几乎无强光的场合（更接近防护 / 装饰片）",
+  1: "阴天、多云、光线较弱的白天",
+  2: "一般晴天、日常户外活动",
+  3: "强烈日照：正午、盛夏、海边与开阔水面 / 水泥地反光",
+  4: "极强光：雪地、冰川、高原、沙漠、开阔水面（透光极低，不可开车佩戴）",
+};
+
+const SUNGLASS_ENV_LABEL: Record<string, string> = {
+  indoor_night: "室内 / 夜间 / 黄昏",
+  overcast: "阴天 / 多云 / 光线较弱的白天",
+  sunny: "普通晴天 / 日常户外",
+  bright: "强烈日照（正午、盛夏、海边城市）",
+  snow_water: "雪地 / 高原 / 水面 / 沙漠（极强反射光）",
+};
+
+function handleSunglassTintGuide(args: ToolArgs): ToolResult {
+  const environment = expectEnum(args, "environment", [
+    "indoor_night",
+    "overcast",
+    "sunny",
+    "bright",
+    "snow_water",
+  ] as const);
+  const sensitivity = optionalEnum(args, "light_sensitivity", ["normal", "high"] as const) ?? "normal";
+  const driving = optionalBoolean(args, "driving") ?? false;
+  const hasPrescription = optionalBoolean(args, "has_prescription") ?? false;
+
+  const baseCategory = SUNGLASS_ENV_BASE_CATEGORY[environment];
+  const nightDriving = driving && environment === "indoor_night";
+  const dayDriving = driving && environment !== "indoor_night";
+
+  const adjustNotes: string[] = [];
+  let category = baseCategory;
+
+  if (sensitivity === "high") {
+    const bumped = Math.min(4, baseCategory + 1);
+    if (bumped !== category) {
+      category = bumped;
+      adjustNotes.push(
+        `因畏光 / 对强光敏感，在环境基准（${SUNGLASS_CATEGORY_LABEL[baseCategory]}）上再调深一档到 ${SUNGLASS_CATEGORY_LABEL[category]}，减少刺眼感。`
+      );
+    } else {
+      adjustNotes.push("已是最深的 4 类，畏光也无需再往上调。");
+    }
+  }
+
+  if (dayDriving && category === 4) {
+    category = 3;
+    adjustNotes.push(
+      "驾驶用途：4 类（极深）镜片透光过低、法规不允许开车佩戴，已改为最深可用于白天驾驶的 3 类。"
+    );
+  }
+
+  if (nightDriving) {
+    category = 0;
+    adjustNotes.push(
+      "夜间 / 昏暗驾驶：只用无色（0 类）或很浅的镜片，切勿戴深色太阳镜；黄色「夜视镜」并不能真正提升夜间安全。"
+    );
+  }
+
+  // 镜片颜色建议
+  const colorRecs: string[] = [];
+  if (nightDriving) {
+    colorRecs.push("夜间驾驶不建议任何深色染色片，选无色片（可加减反射膜降低对向车灯眩光）即可。");
+  } else if (environment === "indoor_night") {
+    colorRecs.push("此环境基本用不到太阳镜色片；若为室内防护 / 装饰，选极浅的浅色片即可。");
+  } else {
+    if (dayDriving) {
+      colorRecs.push("灰色（中性灰）：**首选**，真实还原颜色、不改变红绿灯等信号色，最适合驾驶与日常通用。");
+      colorRecs.push("茶 / 棕色：增强对比与层次感、滤蓝光，看清路面与远处更清晰，多云或强反光下尤佳（轻微偏暖色）。");
+    } else if (environment === "snow_water" || environment === "bright") {
+      colorRecs.push("茶 / 棕色：增强对比、压暗强反光，雪地与水面看清地形更从容。");
+      colorRecs.push("灰色（中性灰）：真实还原颜色、通用耐看，强光下同样适用。");
+    } else if (environment === "overcast") {
+      colorRecs.push("茶 / 棕色或黄 / 琥珀色：在阴天、雾天等低照度下提升对比、让画面更「通透」（黄色会明显偏色，仅适合弱光）。");
+      colorRecs.push("灰色：若只想略微减光又不偏色，浅灰也可。");
+    } else {
+      colorRecs.push("灰色（中性灰）：通用首选，真实还原颜色，日常晴天最省心。");
+      colorRecs.push("茶 / 棕色或墨绿色：想要更强对比或更耐看的色调时可选，墨绿色彩还原也不错。");
+    }
+    colorRecs.push("避免：明亮日照或夜间驾驶时用黄 / 琥珀色（偏色且减光有限）；追求还原真实色彩时避免彩色炫彩膜。");
+  }
+
+  // 偏光建议
+  let polarizedBlock: string;
+  const polarizedWorthIt = !nightDriving && environment !== "indoor_night" && category >= 2;
+  if (nightDriving || environment === "indoor_night") {
+    polarizedBlock =
+      "- 偏光：此环境无需偏光（夜间 / 室内没有强反射眩光，偏光还会让本就暗的画面更暗）。";
+  } else if (polarizedWorthIt) {
+    polarizedBlock =
+      "- 偏光：**建议**。能滤掉水面、雪地、湿滑路面与前车玻璃的反射眩光，看得更清也更省眼力。\n- 偏光注意：会让手机 / 汽车中控 / 仪表等液晶屏变暗甚至看不清；需要频繁看液晶屏者、飞行员慎选；部分挡风玻璃 / 车窗会出现应力彩纹。";
+  } else {
+    polarizedBlock =
+      "- 偏光：可选。光线不算强时偏光收益有限；若常遇水面 / 湿路反光也可以选，但注意它会让液晶屏（手机 / 车机 / 仪表）变暗难看清。";
+  }
+
+  // 变色片与带度数选配
+  let prescriptionBlock = "";
+  if (hasPrescription) {
+    const prescLines: string[] = [
+      "定制带度数太阳镜（染色片，可叠加偏光 / 变色）：户外看得清又护眼，最直接。",
+      "变色片（光致变色，一副室内外通用）：方便，但变色偏慢、夏天高温下变得不够深，且**多数变色片在车内不会变深**（挡风玻璃挡掉了触发变色的紫外线），不适合当驾驶太阳镜。",
+      "磁吸太阳镜夹片 / 偏光套镜：保留原近视镜，户外临时加一层，性价比高、便于收纳。",
+    ];
+    if (category >= 3) {
+      prescLines.push("度数较高时深色染色片的边缘会更明显、更重，可选更高折射率（如 1.67 / 1.74）减薄，参考 lens_thickness_estimator。");
+    }
+    prescriptionBlock = `
+
+**带度数（近视 / 散光 / 老花）选配**
+${renderBulletList(prescLines, "按度数与预算在带度数太阳镜、变色片、磁吸夹片间选择。")}`;
+  }
+
+  // 驾驶合规提示
+  let drivingLegalLine = "";
+  if (dayDriving) {
+    drivingLegalLine =
+      "\n- 白天驾驶：0–3 类均可，**切勿使用 4 类**（透光过低、法规不允许开车佩戴）。";
+  } else if (nightDriving) {
+    drivingLegalLine =
+      "\n- 夜间 / 昏暗驾驶：只用无色（0 类）或很浅的镜片，切勿戴深色太阳镜。";
+  }
+
+  const adjustBlock =
+    adjustNotes.length > 0
+      ? `\n\n**推荐分类的调整**\n${renderBulletList(adjustNotes, "无额外调整。")}`
+      : "";
+
+  return textResult(`## 太阳镜镜片色号（透光率）与颜色选择
+
+> 太阳镜镜片按可见光透过率（VLT）分为 ISO 12312-1 的 0–4 类，数字越大越深、透光越低。分类只表示「有多暗」，**不代表防紫外线**——任何太阳镜都应达到 UV400，否则镜片一暗、瞳孔放大，进入眼内的紫外线反而更多。以下为选购科普，不替代验光与专业验配。
+
+**输入**
+- 用光环境：${SUNGLASS_ENV_LABEL[environment]}
+- 光敏感度：${sensitivity === "high" ? "畏光 / 敏感" : "一般"}
+- 用途：${driving ? (nightDriving ? "夜间 / 昏暗驾驶" : "白天驾驶") : "非驾驶（日常 / 户外）"}
+- 是否带度数：${hasPrescription ? "需要带度数" : "无需度数（平光）"}
+
+**推荐镜片分类（色号）**
+- 分类：**${SUNGLASS_CATEGORY_LABEL[category]}**
+- 可见光透过率（VLT）：**${SUNGLASS_CATEGORY_VLT[category]}**
+- 适用场景：${SUNGLASS_CATEGORY_SCENE[category]}${adjustBlock}
+
+**镜片颜色建议**
+${renderBulletList(colorRecs, "按环境与个人喜好选择镜片颜色。")}
+
+**偏光与功能**
+${polarizedBlock}${drivingLegalLine}${prescriptionBlock}
+
+**提醒**
+- 认准 **UV400**（阻隔 400nm 以下紫外线）是硬指标，比颜色深浅更重要；廉价「墨镜」若不防紫外线，戴了比不戴更伤眼。
+- 4 类镜片透光极低，仅用于雪山 / 高原 / 冰川等极端强光，**任何时候都不能开车佩戴**。
+- 儿童、白内障术后、正在做眼病治疗者的太阳镜选择请遵医嘱。
+- 本工具只做选购科普，不替代验光师 / 医生与实际试戴。`);
 }
 
 function optionalEnumNumber(

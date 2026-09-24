@@ -62,7 +62,8 @@ public class ToolController {
                 tool("prescription_transpose", "散光记法转换（柱镜转换）：在负柱镜与正柱镜两种等价写法之间互换（新球镜=原球镜+原柱镜，新柱镜=−原柱镜，新轴位=原轴位±90°），并用等效球镜不变量自检。"),
                 tool("frame_fit_calculator", "镜架尺寸适配（光心偏移评估）：按盒式标注法用镜圈宽+鼻梁算出镜架几何中心距，与瞳距比较得出每片移心量与方向，评估贴合度，并用 Prentice 公式估算不移心时的水平棱镜。"),
                 tool("visual_acuity_converter", "视力记录法换算：在小数记录法、五分记录法（对数）、Snellen 分数、logMAR 四种等价写法之间互换，并给出该视力的大致水平（五分 L=5+lg(小数)，logMAR=−lg(小数)）。"),
-                tool("accommodation_amplitude", "调节幅度评估：用 Hofstetter 公式按年龄估算最小/平均/最大调节幅度（平均=18.5−0.30×年龄）与调节近点，判断某个用眼距离是否落在「保留一半调节力」的舒适储备之内，并在不足时给出建议近附加。"));
+                tool("accommodation_amplitude", "调节幅度评估：用 Hofstetter 公式按年龄估算最小/平均/最大调节幅度（平均=18.5−0.30×年龄）与调节近点，判断某个用眼距离是否落在「保留一半调节力」的舒适储备之内，并在不足时给出建议近附加。"),
+                tool("sunglass_tint_guide", "太阳镜镜片色号（透光率）与颜色选择：按用光环境推荐 ISO 12312-1 的 0–4 类过滤分类与 VLT，结合是否畏光/驾驶/带度数给出镜片颜色（灰/茶棕/墨绿/黄琥珀）、偏光、变色片建议，并提醒镜片深浅≠防紫外线，任何太阳镜都应达到 UV400。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -175,6 +176,12 @@ public class ToolController {
                 req.age(), req.workingDistanceCm()));
     }
 
+    @PostMapping("/sunglass_tint_guide")
+    public ToolResponse sunglassTintGuide(@RequestBody SunglassTintRequest req) {
+        return run("sunglass_tint_guide", req, () -> tools.sunglassTintGuide(
+                req.environment(), req.lightSensitivity(), req.driving(), req.hasPrescription()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -246,5 +253,9 @@ public class ToolController {
     }
 
     public record AccommodationRequest(int age, Double workingDistanceCm) {
+    }
+
+    public record SunglassTintRequest(String environment, String lightSensitivity,
+                                      Boolean driving, Boolean hasPrescription) {
     }
 }

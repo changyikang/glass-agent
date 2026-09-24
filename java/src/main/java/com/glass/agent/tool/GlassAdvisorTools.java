@@ -1985,6 +1985,182 @@ public class GlassAdvisorTools {
                 bulletJoin(notes));
     }
 
+    // ---------------------------------------------------------------------
+    // 19. 太阳镜镜片色号（透光率）与颜色选择
+    // ---------------------------------------------------------------------
+    private static final Map<String, Integer> SUNGLASS_ENV_BASE_CATEGORY = Map.of(
+            "indoor_night", 0, "overcast", 1, "sunny", 2, "bright", 3, "snow_water", 4);
+
+    private static final Map<Integer, String> SUNGLASS_CATEGORY_VLT = Map.of(
+            0, "80%–100%", 1, "43%–80%", 2, "18%–43%", 3, "8%–18%", 4, "3%–8%");
+
+    private static final Map<Integer, String> SUNGLASS_CATEGORY_LABEL = Map.of(
+            0, "0 类（近无色 / 极浅）", 1, "1 类（浅色）", 2, "2 类（中等）",
+            3, "3 类（深色）", 4, "4 类（极深）");
+
+    private static final Map<Integer, String> SUNGLASS_CATEGORY_SCENE = Map.of(
+            0, "室内、夜间、黄昏等几乎无强光的场合（更接近防护 / 装饰片）",
+            1, "阴天、多云、光线较弱的白天",
+            2, "一般晴天、日常户外活动",
+            3, "强烈日照：正午、盛夏、海边与开阔水面 / 水泥地反光",
+            4, "极强光：雪地、冰川、高原、沙漠、开阔水面（透光极低，不可开车佩戴）");
+
+    private static final Map<String, String> SUNGLASS_ENV_LABEL = Map.of(
+            "indoor_night", "室内 / 夜间 / 黄昏",
+            "overcast", "阴天 / 多云 / 光线较弱的白天",
+            "sunny", "普通晴天 / 日常户外",
+            "bright", "强烈日照（正午、盛夏、海边城市）",
+            "snow_water", "雪地 / 高原 / 水面 / 沙漠（极强反射光）");
+
+    @Tool(description = "太阳镜镜片色号（透光率）与颜色选择：按主要用光环境推荐镜片的过滤分类"
+            + "（ISO 12312-1 的 0–4 类，对应可见光透过率 VLT 由高到低），并结合是否畏光、是否用于驾驶、"
+            + "是否需要带度数，给出镜片颜色（灰 / 茶棕 / 墨绿 / 黄琥珀）、是否值得选偏光、变色片与带度数太阳镜的建议，"
+            + "同时提醒「镜片深浅 ≠ 防紫外线，任何太阳镜都应达到 UV400」。仅做选购科普，不替代验光与专业验配。")
+    public String sunglassTintGuide(
+            @ToolParam(description = "主要用光环境：indoor_night(室内/夜间/黄昏，几乎无强光) / overcast(阴天、多云、光线较弱的白天) / "
+                    + "sunny(普通晴天、日常户外) / bright(强烈日照：正午、盛夏、海边城市) / snow_water(雪地、高原、水面、沙漠等极强反射光)。")
+            String environment,
+            @ToolParam(required = false, description = "对强光/眩光的敏感度：normal(一般) / high(畏光、易被强光晃)。"
+                    + "high 会在推荐分类上再调深一档（封顶 4 类）。默认 normal。")
+            String lightSensitivity,
+            @ToolParam(required = false, description = "是否主要用于驾驶。白天驾驶时 4 类（极深）镜片透光过低、法规不允许，会自动改为 3 类；"
+                    + "若环境选 indoor_night 则按夜间驾驶处理（只用无色/极浅片）。默认 false。")
+            Boolean driving,
+            @ToolParam(required = false, description = "是否需要带度数（近视 / 散光 / 老花）。为 true 时补充带度数太阳镜、变色片、磁吸夹片等选配建议。默认 false。")
+            Boolean hasPrescription) {
+
+        expectEnum("environment", environment, "indoor_night", "overcast", "sunny", "bright", "snow_water");
+        String sensitivity = lightSensitivity == null ? "normal"
+                : expectEnum("light_sensitivity", lightSensitivity, "normal", "high");
+        boolean drive = driving != null && driving;
+        boolean prescription = hasPrescription != null && hasPrescription;
+
+        int baseCategory = SUNGLASS_ENV_BASE_CATEGORY.get(environment);
+        boolean nightDriving = drive && environment.equals("indoor_night");
+        boolean dayDriving = drive && !environment.equals("indoor_night");
+
+        List<String> adjustNotes = new ArrayList<>();
+        int category = baseCategory;
+
+        if (sensitivity.equals("high")) {
+            int bumped = Math.min(4, baseCategory + 1);
+            if (bumped != category) {
+                category = bumped;
+                adjustNotes.add("因畏光 / 对强光敏感，在环境基准（" + SUNGLASS_CATEGORY_LABEL.get(baseCategory)
+                        + "）上再调深一档到 " + SUNGLASS_CATEGORY_LABEL.get(category) + "，减少刺眼感。");
+            } else {
+                adjustNotes.add("已是最深的 4 类，畏光也无需再往上调。");
+            }
+        }
+
+        if (dayDriving && category == 4) {
+            category = 3;
+            adjustNotes.add("驾驶用途：4 类（极深）镜片透光过低、法规不允许开车佩戴，已改为最深可用于白天驾驶的 3 类。");
+        }
+
+        if (nightDriving) {
+            category = 0;
+            adjustNotes.add("夜间 / 昏暗驾驶：只用无色（0 类）或很浅的镜片，切勿戴深色太阳镜；黄色「夜视镜」并不能真正提升夜间安全。");
+        }
+
+        List<String> colorRecs = new ArrayList<>();
+        if (nightDriving) {
+            colorRecs.add("夜间驾驶不建议任何深色染色片，选无色片（可加减反射膜降低对向车灯眩光）即可。");
+        } else if (environment.equals("indoor_night")) {
+            colorRecs.add("此环境基本用不到太阳镜色片；若为室内防护 / 装饰，选极浅的浅色片即可。");
+        } else {
+            if (dayDriving) {
+                colorRecs.add("灰色（中性灰）：**首选**，真实还原颜色、不改变红绿灯等信号色，最适合驾驶与日常通用。");
+                colorRecs.add("茶 / 棕色：增强对比与层次感、滤蓝光，看清路面与远处更清晰，多云或强反光下尤佳（轻微偏暖色）。");
+            } else if (environment.equals("snow_water") || environment.equals("bright")) {
+                colorRecs.add("茶 / 棕色：增强对比、压暗强反光，雪地与水面看清地形更从容。");
+                colorRecs.add("灰色（中性灰）：真实还原颜色、通用耐看，强光下同样适用。");
+            } else if (environment.equals("overcast")) {
+                colorRecs.add("茶 / 棕色或黄 / 琥珀色：在阴天、雾天等低照度下提升对比、让画面更「通透」（黄色会明显偏色，仅适合弱光）。");
+                colorRecs.add("灰色：若只想略微减光又不偏色，浅灰也可。");
+            } else {
+                colorRecs.add("灰色（中性灰）：通用首选，真实还原颜色，日常晴天最省心。");
+                colorRecs.add("茶 / 棕色或墨绿色：想要更强对比或更耐看的色调时可选，墨绿色彩还原也不错。");
+            }
+            colorRecs.add("避免：明亮日照或夜间驾驶时用黄 / 琥珀色（偏色且减光有限）；追求还原真实色彩时避免彩色炫彩膜。");
+        }
+
+        String polarizedBlock;
+        boolean polarizedWorthIt = !nightDriving && !environment.equals("indoor_night") && category >= 2;
+        if (nightDriving || environment.equals("indoor_night")) {
+            polarizedBlock = "- 偏光：此环境无需偏光（夜间 / 室内没有强反射眩光，偏光还会让本就暗的画面更暗）。";
+        } else if (polarizedWorthIt) {
+            polarizedBlock = "- 偏光：**建议**。能滤掉水面、雪地、湿滑路面与前车玻璃的反射眩光，看得更清也更省眼力。"
+                    + "\n- 偏光注意：会让手机 / 汽车中控 / 仪表等液晶屏变暗甚至看不清；需要频繁看液晶屏者、飞行员慎选；部分挡风玻璃 / 车窗会出现应力彩纹。";
+        } else {
+            polarizedBlock = "- 偏光：可选。光线不算强时偏光收益有限；若常遇水面 / 湿路反光也可以选，但注意它会让液晶屏（手机 / 车机 / 仪表）变暗难看清。";
+        }
+
+        String prescriptionBlock = "";
+        if (prescription) {
+            List<String> prescLines = new ArrayList<>();
+            prescLines.add("定制带度数太阳镜（染色片，可叠加偏光 / 变色）：户外看得清又护眼，最直接。");
+            prescLines.add("变色片（光致变色，一副室内外通用）：方便，但变色偏慢、夏天高温下变得不够深，且**多数变色片在车内不会变深**"
+                    + "（挡风玻璃挡掉了触发变色的紫外线），不适合当驾驶太阳镜。");
+            prescLines.add("磁吸太阳镜夹片 / 偏光套镜：保留原近视镜，户外临时加一层，性价比高、便于收纳。");
+            if (category >= 3) {
+                prescLines.add("度数较高时深色染色片的边缘会更明显、更重，可选更高折射率（如 1.67 / 1.74）减薄，参考 lens_thickness_estimator。");
+            }
+            prescriptionBlock = "\n\n**带度数（近视 / 散光 / 老花）选配**\n" + bulletJoin(prescLines);
+        }
+
+        String drivingLegalLine = "";
+        if (dayDriving) {
+            drivingLegalLine = "\n- 白天驾驶：0–3 类均可，**切勿使用 4 类**（透光过低、法规不允许开车佩戴）。";
+        } else if (nightDriving) {
+            drivingLegalLine = "\n- 夜间 / 昏暗驾驶：只用无色（0 类）或很浅的镜片，切勿戴深色太阳镜。";
+        }
+
+        String adjustBlock = adjustNotes.isEmpty()
+                ? ""
+                : "\n\n**推荐分类的调整**\n" + bulletJoin(adjustNotes);
+
+        return """
+                ## 太阳镜镜片色号（透光率）与颜色选择
+
+                > 太阳镜镜片按可见光透过率（VLT）分为 ISO 12312-1 的 0–4 类，数字越大越深、透光越低。分类只表示「有多暗」，**不代表防紫外线**——任何太阳镜都应达到 UV400，否则镜片一暗、瞳孔放大，进入眼内的紫外线反而更多。以下为选购科普，不替代验光与专业验配。
+
+                **输入**
+                - 用光环境：%s
+                - 光敏感度：%s
+                - 用途：%s
+                - 是否带度数：%s
+
+                **推荐镜片分类（色号）**
+                - 分类：**%s**
+                - 可见光透过率（VLT）：**%s**
+                - 适用场景：%s%s
+
+                **镜片颜色建议**
+                %s
+
+                **偏光与功能**
+                %s%s%s
+
+                **提醒**
+                - 认准 **UV400**（阻隔 400nm 以下紫外线）是硬指标，比颜色深浅更重要；廉价「墨镜」若不防紫外线，戴了比不戴更伤眼。
+                - 4 类镜片透光极低，仅用于雪山 / 高原 / 冰川等极端强光，**任何时候都不能开车佩戴**。
+                - 儿童、白内障术后、正在做眼病治疗者的太阳镜选择请遵医嘱。
+                - 本工具只做选购科普，不替代验光师 / 医生与实际试戴。""".formatted(
+                SUNGLASS_ENV_LABEL.get(environment),
+                sensitivity.equals("high") ? "畏光 / 敏感" : "一般",
+                drive ? (nightDriving ? "夜间 / 昏暗驾驶" : "白天驾驶") : "非驾驶（日常 / 户外）",
+                prescription ? "需要带度数" : "无需度数（平光）",
+                SUNGLASS_CATEGORY_LABEL.get(category),
+                SUNGLASS_CATEGORY_VLT.get(category),
+                SUNGLASS_CATEGORY_SCENE.get(category),
+                adjustBlock,
+                bulletJoin(colorRecs),
+                polarizedBlock,
+                drivingLegalLine,
+                prescriptionBlock);
+    }
+
     /** Hofstetter 公式：给定年龄与系数算出调节幅度（D），并封底到 0。 */
     private static double hofstetterAmplitude(int age, double base, double slope) {
         return Math.max(base - slope * age, 0);

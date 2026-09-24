@@ -31,7 +31,73 @@ test("exports the expected MCP tool set", () => {
     "frame_fit_calculator",
     "visual_acuity_converter",
     "accommodation_amplitude",
+    "sunglass_tint_guide",
   ]);
+});
+
+test("sunglass tint guide recommends a category 3 dark lens for bright sun with VLT range", () => {
+  const tool = getTool("sunglass_tint_guide");
+  const result = tool.handler({ environment: "bright" });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /分类：\*\*3 类（深色）\*\*/);
+  assert.match(text, /可见光透过率（VLT）：\*\*8%–18%\*\*/);
+  // no driving flag → no driving-legality line
+  assert.doesNotMatch(text, /白天驾驶：0–3 类/);
+});
+
+test("sunglass tint guide bumps one category deeper for a light-sensitive wearer", () => {
+  const tool = getTool("sunglass_tint_guide");
+  // sunny base = category 2, high sensitivity → category 3
+  const result = tool.handler({ environment: "sunny", light_sensitivity: "high" });
+
+  const text = result.content[0].text;
+  assert.match(text, /分类：\*\*3 类（深色）\*\*/);
+  assert.match(text, /畏光 \/ 对强光敏感/);
+});
+
+test("sunglass tint guide caps day driving at category 3 and never allows category 4", () => {
+  const tool = getTool("sunglass_tint_guide");
+  // snow_water base = category 4, but daytime driving is not allowed at 4
+  const result = tool.handler({ environment: "snow_water", driving: true });
+
+  const text = result.content[0].text;
+  assert.match(text, /分类：\*\*3 类（深色）\*\*/);
+  assert.match(text, /4 类（极深）镜片透光过低、法规不允许开车佩戴/);
+  assert.match(text, /白天驾驶：0–3 类/);
+  // grey is the primary driving tint recommendation
+  assert.match(text, /灰色（中性灰）：\*\*首选\*\*/);
+});
+
+test("sunglass tint guide treats indoor_night + driving as night driving with a clear lens", () => {
+  const tool = getTool("sunglass_tint_guide");
+  const result = tool.handler({ environment: "indoor_night", driving: true });
+
+  const text = result.content[0].text;
+  assert.match(text, /分类：\*\*0 类（近无色 \/ 极浅）\*\*/);
+  assert.match(text, /夜间 \/ 昏暗驾驶/);
+  assert.match(text, /黄色「夜视镜」并不能真正提升夜间安全/);
+  // no polarized for night
+  assert.match(text, /偏光：此环境无需偏光/);
+});
+
+test("sunglass tint guide recommends polarized and prescription options when relevant", () => {
+  const tool = getTool("sunglass_tint_guide");
+  const result = tool.handler({ environment: "snow_water", has_prescription: true });
+
+  const text = result.content[0].text;
+  assert.match(text, /偏光：\*\*建议\*\*/);
+  assert.match(text, /带度数（近视 \/ 散光 \/ 老花）选配/);
+  // photochromic-in-car caveat
+  assert.match(text, /多数变色片在车内不会变深/);
+  // high category (4) triggers the higher-index thinning note
+  assert.match(text, /更高折射率/);
+});
+
+test("sunglass tint guide rejects an unknown environment", () => {
+  const tool = getTool("sunglass_tint_guide");
+  assert.throws(() => tool.handler({ environment: "space" }), /environment/);
 });
 
 test("accommodation amplitude applies Hofstetter formulas and near point for a 45-year-old", () => {
