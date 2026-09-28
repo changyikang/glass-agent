@@ -1,6 +1,6 @@
 # glass-agent（Java + Spring Boot 版）
 
-配眼镜指南**智能体**，基于 **Spring Boot 3 + Spring AI**。它把原 TypeScript MCP Server 的 19 个配镜工具移植为 Java 实现，并在此之上接入大模型：用户用自然语言提问，大模型通过 **Function Calling** 自动选择并调用工具。智能体会**主动追问必要信息**（度数、用途、预算、脸型等），信息足够后给出配镜建议，并在最后**附上京东 / 淘宝 / 拼多多的购买链接**。
+配眼镜指南**智能体**，基于 **Spring Boot 3 + Spring AI**。它把原 TypeScript MCP Server 的 20 个配镜工具移植为 Java 实现，并在此之上接入大模型：用户用自然语言提问，大模型通过 **Function Calling** 自动选择并调用工具。智能体会**主动追问必要信息**（度数、用途、预算、脸型等），信息足够后给出配镜建议，并在最后**附上京东 / 淘宝 / 拼多多的购买链接**。
 
 原 TypeScript / MCP 版本仍保留在仓库根目录，两者并存。
 
@@ -45,6 +45,7 @@
 - `visual_acuity_converter`：在小数记录法、五分记录法（对数，中国 GB 标准）、Snellen 分数（20/20 或 6/6）、logMAR 四种等价视力记法间互换（五分 L = 5 + lg(小数)，logMAR = −lg(小数)），并给出该视力的大致水平
 - `accommodation_amplitude`：用 Hofstetter 公式按年龄估算调节幅度（最小 = 15 − 0.25×年龄，平均 = 18.5 − 0.30×年龄，最大 = 25 − 0.40×年龄），推算调节近点与「保留一半调节力」的舒适持续用眼最近距离；给定工作距离时判断该距离的调节需求是否在储备之内，不足时给出建议近附加
 - `sunglass_tint_guide`：按用光环境推荐太阳镜镜片过滤分类（ISO 12312-1 的 0–4 类）与可见光透过率（VLT），结合是否畏光 / 驾驶 / 带度数给出镜片颜色（灰 / 茶棕 / 墨绿 / 黄琥珀）、偏光、变色片与带度数选配建议，并提醒镜片深浅 ≠ 防紫外线、任何太阳镜都应达到 UV400
+- `lens_material_advisor`：按度数、镜框类型（全框 / 半框 / 无框）、使用场景（日常 / 儿童 / 运动 / 安全防护 / 驾驶）与取舍偏好，在 CR-39、Trivex、PC、1.60 / 1.67 / 1.74 高折射树脂、玻璃之间推荐镜片基材，综合抗冲击、阿贝数（边缘色散）、厚度与重量给出首选 / 备选 / 不建议材料，与 `lens_thickness_estimator`、`lens_coating_advisor` 互补
 
 ## 环境要求
 
@@ -185,6 +186,14 @@ curl -X POST http://localhost:8080/api/tools/sunglass_tint_guide \
   -d '{"environment":"bright","lightSensitivity":"high","driving":true,"hasPrescription":true}'
 ```
 
+镜片材料（基材）选择顾问（`sph` 必填；`cyl`、`frameType`（full_rim / half_rim / rimless）、`usage`（general / kids / sports / safety / driving）、`priority`（balanced / thinnest / clarity / lightweight）可选）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/lens_material_advisor \
+  -H 'Content-Type: application/json' \
+  -d '{"sph":-4,"cyl":-1,"frameType":"rimless","usage":"general","priority":"balanced"}'
+```
+
 查看 / 清空工具调用历史（进程内保存最近 50 次，最新在前）：
 
 ```bash
@@ -214,7 +223,7 @@ java/
 └── src/main/java/com/glass/agent/
     ├── GlassAgentApplication.java      # 启动类
     ├── tool/
-    │   ├── GlassAdvisorTools.java      # 19 个工具的业务逻辑 + @Tool 注解
+    │   ├── GlassAdvisorTools.java      # 20 个工具的业务逻辑 + @Tool 注解
     │   ├── ToolCallHistory.java        # 进程内工具调用历史（最近 50 次）
     │   └── Diopters.java               # 度数格式化帮助函数
     ├── agent/

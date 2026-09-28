@@ -2161,6 +2161,262 @@ public class GlassAdvisorTools {
                 prescriptionBlock);
     }
 
+    // ---------------------------------------------------------------------
+    // 20. 镜片材料（基材）选择顾问
+    // ---------------------------------------------------------------------
+
+    /** 镜片基材属性：折射率、阿贝数（越高色散越小）、抗冲击评价与一句话定位。 */
+    private record LensMaterial(String name, String index, int abbe, String impact, String blurb) {
+    }
+
+    private static final Map<String, LensMaterial> LENS_MATERIALS = Map.of(
+            "cr39", new LensMaterial("CR-39 普通树脂", "1.50", 58, "一般",
+                    "光学清晰、阿贝数高、便宜；但同度数下更厚更不耐磨，适合低度数。"),
+            "trivex", new LensMaterial("Trivex", "1.53", 45, "极高（抗冲击）",
+                    "轻、抗冲击强、阿贝数较高、自带 UV；适合无框 / 运动 / 儿童，价格偏高。"),
+            "pc", new LensMaterial("PC 聚碳酸酯", "1.59", 30, "极高（抗冲击）",
+                    "抗冲击最强、轻、自带 UV、性价比高；阿贝数低、边缘色散明显，是安全 / 儿童 / 运动镜片首选。"),
+            "hi160", new LensMaterial("1.60 高折射树脂", "1.60", 42, "中等",
+                    "减薄与性价比的通用甜点，适合中度数，阿贝数尚可。"),
+            "hi167", new LensMaterial("1.67 高折射树脂", "1.67", 32, "偏低（较脆）",
+                    "中高度数明显减薄；阿贝数偏低、材料偏脆。"),
+            "hi174", new LensMaterial("1.74 高折射树脂", "1.74", 33, "低（脆）",
+                    "最薄，适合高度数配小框；材料脆、阿贝数低、价格高。"),
+            "glass", new LensMaterial("玻璃", "1.52+", 59, "极低（易碎）",
+                    "光学最佳、最耐磨；但重且易碎裂，现已基本被树脂取代。"));
+
+    private static final Map<String, String> LENS_MATERIAL_FRAME_LABEL = Map.of(
+            "full_rim", "全框",
+            "half_rim", "半框（尼龙丝）",
+            "rimless", "无框（钻孔）");
+    private static final Map<String, String> LENS_MATERIAL_USAGE_LABEL = Map.of(
+            "general", "日常",
+            "kids", "儿童",
+            "sports", "运动",
+            "safety", "安全防护",
+            "driving", "以驾驶为主");
+    private static final Map<String, String> LENS_MATERIAL_PRIORITY_LABEL = Map.of(
+            "balanced", "均衡",
+            "thinnest", "尽量薄",
+            "clarity", "尽量清晰（看重阿贝数）",
+            "lightweight", "尽量轻");
+
+    /** 低阿贝数（≤35）材料在夜间强光下边缘色散 / 光晕更明显。 */
+    private static final List<String> LOW_ABBE_MATERIALS = List.of("pc", "hi167", "hi174");
+
+    /** 首选 + 原因 + 备选 + 不建议 + 场景提醒。 */
+    private record MaterialDecision(String primary, String reason, List<String> alternatives,
+                                    List<String[]> avoid, List<String> notes) {
+    }
+
+    private static String materialLine(String key) {
+        LensMaterial m = LENS_MATERIALS.get(key);
+        return m.name() + "（折射率 " + m.index() + "、阿贝数 " + m.abbe() + "、抗冲击 " + m.impact() + "）";
+    }
+
+    private static MaterialDecision decideLensMaterial(double power, String frameType, String usage, String priority) {
+        boolean safety = usage.equals("kids") || usage.equals("sports") || usage.equals("safety");
+        List<String> notes = new ArrayList<>();
+
+        if (safety) {
+            String primary;
+            String reason;
+            List<String> alternatives;
+            if (priority.equals("clarity")) {
+                primary = "trivex";
+                alternatives = List.of("pc");
+                reason = "儿童 / 运动 / 安全场景必须抗冲击；Trivex 阿贝数(45)明显高于 PC(30)，边缘色散更少、光学更清晰。";
+            } else if (priority.equals("lightweight")) {
+                primary = "trivex";
+                alternatives = List.of("pc");
+                reason = "抗冲击优先；Trivex 密度更低更轻，阿贝数也高于 PC。";
+            } else {
+                primary = "pc";
+                alternatives = List.of("trivex");
+                reason = "PC 抗冲击最强、轻、自带 UV、性价比高，是儿童 / 运动 / 安全镜片的默认之选；预算充足或看重清晰度可升级 Trivex。";
+            }
+            List<String[]> avoid = new ArrayList<>();
+            avoid.add(new String[] {"glass", "易碎裂溅入眼睛，安全 / 运动 / 儿童场景绝对禁用。"});
+            avoid.add(new String[] {"cr39", "抗冲击性不足，不适合作为安全 / 运动 / 儿童镜片。"});
+            avoid.add(new String[] {"hi167", "材料偏脆，抗冲击不如 PC / Trivex，安全场景不建议。"});
+            avoid.add(new String[] {"hi174", "材料最脆，安全场景不建议。"});
+            if (power >= 5) {
+                notes.add("PC / Trivex 折射率上限约 1.59 / 1.53，高度数下镜片会偏厚，建议缩小镜框、选全框控制厚度；"
+                        + "安全场景仍以抗冲击优先，不要为减薄改用较脆的高折射片。");
+            }
+            return new MaterialDecision(primary, reason, alternatives, avoid, notes);
+        }
+
+        if (frameType.equals("rimless")) {
+            List<String> alternatives = power >= 4 ? List.of("pc", "hi160") : List.of("pc");
+            List<String[]> avoid = new ArrayList<>();
+            avoid.add(new String[] {"glass", "无框需在镜片上钻孔，玻璃极易在钻孔处崩裂。"});
+            avoid.add(new String[] {"hi174", "1.74 偏脆，无框钻孔与装拆时易崩边，不建议。"});
+            if (power >= 4) {
+                notes.add("度数偏高时 Trivex / PC（≤1.59）会略厚；若更看重减薄，可退一步选 1.60（韧性尚可）并接受一定风险，"
+                        + "仍应避开 1.67 / 1.74 等更脆材料，钻孔处务必留足余量。");
+            }
+            return new MaterialDecision("trivex",
+                    "无框镜片靠螺丝在镜片上钻孔固定，需要韧性好、不易在孔位开裂的材料；"
+                            + "Trivex 抗冲击、轻，且阿贝数(45)优于 PC，是无框首选。",
+                    alternatives, avoid, notes);
+        }
+
+        // 全框 / 半框：按度数为主，结合偏好
+        String primary;
+        String reason;
+        List<String> alternatives;
+        if (power < 2) {
+            if (priority.equals("clarity")) {
+                primary = "cr39";
+                alternatives = List.of("trivex");
+                reason = "度数不高，CR-39 阿贝数最高(58)、光学清晰，无需为减薄多花钱。";
+            } else if (priority.equals("lightweight")) {
+                primary = "trivex";
+                alternatives = List.of("hi160", "cr39");
+                reason = "度数不高时厚度不是问题，Trivex 更轻且抗冲击；也可用薄一点的 1.60。";
+            } else {
+                primary = "cr39";
+                alternatives = List.of("hi160");
+                reason = "度数不高，CR-39 清晰便宜、性价比最高，普通树脂即可。";
+            }
+        } else if (power < 4) {
+            primary = "hi160";
+            alternatives = List.of("cr39", "trivex");
+            reason = "中度数：1.60 是减薄与性价比的通用甜点，阿贝数(42)也不错。";
+        } else if (power < 6) {
+            primary = "hi167";
+            alternatives = List.of("hi160");
+            reason = "中高度数：1.67 明显减薄，兼顾厚度与重量。";
+        } else {
+            primary = "hi174";
+            alternatives = List.of("hi167");
+            reason = "高度数：1.74 最薄，配合小而贴合的镜框控制边缘厚度。";
+        }
+
+        List<String[]> avoid = new ArrayList<>();
+        if (frameType.equals("half_rim")) {
+            avoid.add(new String[] {"glass", "半框靠尼龙丝嵌入镜片沟槽，玻璃在开槽处易崩边。"});
+            if (primary.equals("hi174")) {
+                notes.add("半框开槽时 1.74 较脆，务必由熟练技师操作，或退一步选 1.67 更稳妥。");
+            }
+        } else {
+            avoid.add(new String[] {"glass", "玻璃重且易碎，现已基本被树脂取代，仅极端耐磨需求才考虑。"});
+        }
+
+        if (priority.equals("clarity") && LOW_ABBE_MATERIALS.contains(primary)) {
+            notes.add("你更看重清晰度：高折射率片阿贝数偏低（如 1.67≈32、1.74≈33），高度数时边缘可能有轻微色散；"
+                    + "在厚度可接受的前提下，尽量选阿贝数更高的材料（如 1.60≈42 或 Trivex≈45）。");
+        }
+
+        if (usage.equals("driving") && LOW_ABBE_MATERIALS.contains(primary)) {
+            notes.add("夜间驾驶：低阿贝数材料（PC / 1.67 / 1.74）在对向车灯、路灯下边缘色散 / 光晕更明显；"
+                    + "若以夜间驾驶为主且厚度允许，优先阿贝数更高的材料，并配好减反射膜。");
+        }
+
+        return new MaterialDecision(primary, reason, alternatives, avoid, notes);
+    }
+
+    @Tool(description = "镜片材料（基材）选择顾问：按度数、镜框类型（全框 / 半框 / 无框）、使用场景"
+            + "（日常 / 儿童 / 运动 / 安全防护 / 驾驶）与取舍偏好（均衡 / 最薄 / 最清晰 / 最轻），"
+            + "在 CR-39、Trivex、PC（聚碳酸酯）、1.60 / 1.67 / 1.74 高折射树脂、玻璃之间推荐镜片基材，"
+            + "综合抗冲击、阿贝数（边缘色散）、厚度与重量，给出首选材料、备选与不建议材料及原因。"
+            + "与只看减薄的 lens_thickness_estimator、只看镀膜的 lens_coating_advisor 互补。仅做选购科普，不替代专业验配。")
+    public String lensMaterialAdvisor(
+            @ToolParam(description = "球镜度数，单位D，如 -4.00。近视填负数，远视填正数。")
+            double sph,
+            @ToolParam(required = false, description = "柱镜度数，单位D，如 -1.00。无散光可不填（默认0）。")
+            Double cyl,
+            @ToolParam(required = false, description = "镜框类型：full_rim(全框) / half_rim(半框，尼龙丝嵌入镜片沟槽) / "
+                    + "rimless(无框，靠螺丝在镜片上钻孔固定)。无框 / 半框对材料韧性要求更高。默认 full_rim。")
+            String frameType,
+            @ToolParam(required = false, description = "使用场景：general(日常) / kids(儿童) / sports(运动) / "
+                    + "safety(安全防护，如实验室 / 工地) / driving(以驾驶为主)。kids / sports / safety 会强制要求抗冲击材料。默认 general。")
+            String usage,
+            @ToolParam(required = false, description = "取舍偏好：balanced(均衡) / thinnest(尽量薄) / "
+                    + "clarity(尽量清晰、少色散，看重阿贝数) / lightweight(尽量轻)。默认 balanced。")
+            String priority) {
+
+        checkRange("sph", sph, -20, 12);
+        double cylValue = cyl == null ? 0 : cyl;
+        checkRange("cyl", cylValue, -8, 8);
+        String frame = frameType == null ? "full_rim"
+                : expectEnum("frame_type", frameType, "full_rim", "half_rim", "rimless");
+        String use = usage == null ? "general"
+                : expectEnum("usage", usage, "general", "kids", "sports", "safety", "driving");
+        String prio = priority == null ? "balanced"
+                : expectEnum("priority", priority, "balanced", "thinnest", "clarity", "lightweight");
+
+        double power = Math.max(Math.abs(sph), Math.abs(sph + cylValue));
+        MaterialDecision decision = decideLensMaterial(power, frame, use, prio);
+
+        String altBlock;
+        if (decision.alternatives().isEmpty()) {
+            altBlock = "- 无特别备选，首选已覆盖需求。";
+        } else {
+            List<String> lines = new ArrayList<>();
+            for (String key : decision.alternatives()) {
+                lines.add(materialLine(key) + "：" + LENS_MATERIALS.get(key).blurb());
+            }
+            altBlock = bulletJoin(lines);
+        }
+
+        String avoidBlock;
+        if (decision.avoid().isEmpty()) {
+            avoidBlock = "- 无明显禁忌材料。";
+        } else {
+            List<String> lines = new ArrayList<>();
+            for (String[] item : decision.avoid()) {
+                lines.add(LENS_MATERIALS.get(item[0]).name() + "：" + item[1]);
+            }
+            avoidBlock = bulletJoin(lines);
+        }
+
+        String notesBlock = decision.notes().isEmpty()
+                ? ""
+                : "\n\n**场景提醒**\n" + bulletJoin(decision.notes());
+
+        return """
+                ## 镜片材料（基材）选择顾问
+
+                > 镜片材料决定「多厚、多重、多抗摔、边缘色散明显不明显」。折射率越高越薄，但阿贝数（衡量色散，越高越好）往往越低、材料也可能更脆。PC 与 Trivex 抗冲击最好且自带 UV，是儿童 / 运动 / 安全场景的必选。以下为选购科普，最终以验光师与实际试戴为准。
+
+                **输入参数**
+                - 球镜：%s
+                - 柱镜：%s
+                - 参考功率（最大子午线）：%s
+                - 镜框类型：%s
+                - 使用场景：%s
+                - 取舍偏好：%s
+
+                **推荐材料**
+                - 首选：**%s**
+                - 原因：%s
+
+                **备选**
+                %s
+
+                **不建议**
+                %s%s
+
+                **通用提醒**
+                - PC 与 Trivex 本身即阻隔紫外线，无需额外加 UV 镀膜；但耐磨性一般，建议加硬膜。
+                - 材料只决定基材属性；防蓝光、变色、偏振、减反射等是镀膜/功能，另见 lens_coating_advisor；想量化不同折射率的厚度差异见 lens_thickness_estimator。
+                - 高折射率减薄的同时密度通常更高，减重幅度往往小于减薄幅度，别只盯折射率。
+                - 本工具只做选购科普，不替代验光师与实际试戴。""".formatted(
+                formatSignedDiopter(sph),
+                cylValue == 0 ? "无明显散光" : formatSignedDiopter(cylValue),
+                formatDiopter(power),
+                LENS_MATERIAL_FRAME_LABEL.get(frame),
+                LENS_MATERIAL_USAGE_LABEL.get(use),
+                LENS_MATERIAL_PRIORITY_LABEL.get(prio),
+                materialLine(decision.primary()),
+                decision.reason(),
+                altBlock,
+                avoidBlock,
+                notesBlock);
+    }
+
     /** Hofstetter 公式：给定年龄与系数算出调节幅度（D），并封底到 0。 */
     private static double hofstetterAmplitude(int age, double base, double slope) {
         return Math.max(base - slope * age, 0);

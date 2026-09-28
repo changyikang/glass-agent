@@ -502,4 +502,59 @@ class GlassAdvisorToolsTest {
                 () -> tools.sunglassTintGuide("space", null, null, null));
         assertTrue(ex.getMessage().contains("environment"));
     }
+
+    @Test
+    void lensMaterialAdvisorForcesImpactResistantPcForKidsAndBansGlass() {
+        String result = tools.lensMaterialAdvisor(-2, null, null, "kids", null);
+        assertTrue(result.contains("首选：**PC 聚碳酸酯"));
+        assertTrue(result.contains("玻璃：易碎裂溅入眼睛"));
+        assertTrue(result.contains("CR-39 普通树脂：抗冲击性不足"));
+    }
+
+    @Test
+    void lensMaterialAdvisorPrefersTrivexForKidsWhenClarityPrioritized() {
+        String result = tools.lensMaterialAdvisor(-2, null, null, "sports", "clarity");
+        assertTrue(result.contains("首选：**Trivex"));
+        assertTrue(result.contains("阿贝数(45)明显高于 PC"));
+    }
+
+    @Test
+    void lensMaterialAdvisorRecommendsTrivexForRimlessAndWarnsAgainstGlassAnd174() {
+        String result = tools.lensMaterialAdvisor(-3, null, "rimless", null, null);
+        assertTrue(result.contains("首选：**Trivex"));
+        assertTrue(result.contains("玻璃：无框需在镜片上钻孔"));
+        assertTrue(result.contains("1.74 高折射树脂：1.74 偏脆，无框钻孔"));
+    }
+
+    @Test
+    void lensMaterialAdvisorScalesIndexUpWithPowerForFullRim() {
+        assertTrue(tools.lensMaterialAdvisor(-1, null, null, null, null).contains("首选：**CR-39 普通树脂"));
+        assertTrue(tools.lensMaterialAdvisor(-3, null, null, null, null).contains("首选：**1.60 高折射树脂"));
+        assertTrue(tools.lensMaterialAdvisor(-5, null, null, null, null).contains("首选：**1.67 高折射树脂"));
+        String veryHigh = tools.lensMaterialAdvisor(-7, null, null, null, null);
+        assertTrue(veryHigh.contains("首选：**1.74 高折射树脂"));
+        assertTrue(veryHigh.contains("玻璃：玻璃重且易碎"));
+    }
+
+    @Test
+    void lensMaterialAdvisorWarnsAboutLowAbbeHalosForNightDriving() {
+        String result = tools.lensMaterialAdvisor(-5, null, null, "driving", null);
+        assertTrue(result.contains("首选：**1.67 高折射树脂"));
+        assertTrue(result.contains("夜间驾驶：低阿贝数材料"));
+    }
+
+    @Test
+    void lensMaterialAdvisorUsesWorstMeridianAsReferencePower() {
+        // sph -3 alone would be 1.60, but -3 + -3 = -6 pushes to 1.74
+        String result = tools.lensMaterialAdvisor(-3, -3.0, null, null, null);
+        assertTrue(result.contains("参考功率（最大子午线）：6D"));
+        assertTrue(result.contains("首选：**1.74 高折射树脂"));
+    }
+
+    @Test
+    void lensMaterialAdvisorRejectsUnknownFrameType() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.lensMaterialAdvisor(-2, null, "octagon", null, null));
+        assertTrue(ex.getMessage().contains("frame_type"));
+    }
 }

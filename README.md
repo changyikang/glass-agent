@@ -34,7 +34,7 @@ frame-size-to-PD fit checking, visual-acuity notation conversion,
 accommodation-amplitude estimation, and sunglass tint (filter-category)
 selection.
 
-The project ships **two interchangeable implementations that share the same nineteen
+The project ships **two interchangeable implementations that share the same twenty
 tools**, so you can adopt whichever fits your stack:
 
 | Implementation | Path | Best for |
@@ -44,7 +44,7 @@ tools**, so you can adopt whichever fits your stack:
 
 ### Features
 
-The nineteen built-in tools:
+The twenty built-in tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -67,6 +67,7 @@ The nineteen built-in tools:
 | `visual_acuity_converter` | Converts a visual-acuity reading between the four equivalent notations — decimal, five-minute log (China's GB standard), Snellen fraction (20/20 or 6/6) and logMAR — via `L = 5 + lg(decimal)` and `logMAR = −lg(decimal)`, and labels the rough acuity level |
 | `accommodation_amplitude` | Estimates the eye's amplitude of accommodation from age via Hofstetter's formulas (min = 15 − 0.25·age, avg = 18.5 − 0.30·age, max = 25 − 0.40·age), derives the near point of accommodation and the comfortable sustained near distance (keeping half the amplitude in reserve), and — given a working distance — judges whether its demand fits within that reserve and suggests a near add if not |
 | `sunglass_tint_guide` | Recommends a sunglass lens filter category (ISO 12312-1 categories 0–4, with their visible-light-transmission ranges) from the light environment, adjusts it for light sensitivity and driving (day driving never allows category 4; `indoor_night` + driving is treated as night driving needing a clear lens), and advises on tint color (grey / brown / green / amber), polarization and photochromic/prescription options — while stressing that darkness ≠ UV protection and every pair should be UV400 |
+| `lens_material_advisor` | Recommends a lens base material (CR-39 / Trivex / PC / high-index 1.60·1.67·1.74 / glass) from prescription power, frame type (full-rim / half-rim / rimless), usage (general / kids / sports / safety / driving) and priority (balanced / thinnest / clarity / lightweight), weighing impact resistance, Abbe number (chromatic aberration), thickness and weight into a primary pick, alternatives and materials to avoid — forcing impact-resistant PC/Trivex for kids/sports/safety, favoring tough Trivex/PC for rimless drilling, and flagging low-Abbe halos for night driving; complements `lens_thickness_estimator` (thinness) and `lens_coating_advisor` (coatings) |
 
 The Java agent adds **multi-turn intake**: pass a `conversationId` and it remembers
 the dialogue, so it asks the questions it needs, gives a fitting recommendation, and
@@ -76,7 +77,7 @@ attaches purchase links at the end.
 
 ```
                          ┌──────────────────────────────┐
-        MCP client       │    Nineteen shared optical    │      REST client
+        MCP client       │     Twenty shared optical     │      REST client
    (Claude Desktop, …)   │             tools             │   (curl / your app)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │
@@ -200,9 +201,9 @@ Released under the [MIT License](LICENSE).
 
 ### 项目简介
 
-**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查、青少年近视防控、框架镜到隐形眼镜的度数换算、老花（近附加）度数估算、散光（正/负柱镜）记法转换、镜架尺寸与瞳距的适配评估、视力记录法换算、调节幅度评估，以及太阳镜镜片色号（过滤分类）选择。
+**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查、青少年近视防控、框架镜到隐形眼镜的度数换算、老花（近附加）度数估算、散光（正/负柱镜）记法转换、镜架尺寸与瞳距的适配评估、视力记录法换算、调节幅度评估、太阳镜镜片色号（过滤分类）选择，以及镜片材料（基材）选择。
 
-项目提供 **两套可互换、共享同一组十九个工具的实现**，你可以按技术栈选用：
+项目提供 **两套可互换、共享同一组二十个工具的实现**，你可以按技术栈选用：
 
 | 实现方式 | 路径 | 适用场景 |
 | --- | --- | --- |
@@ -211,7 +212,7 @@ Released under the [MIT License](LICENSE).
 
 ### 功能
 
-内置十九个工具：
+内置二十个工具：
 
 | 工具 | 作用 |
 | --- | --- |
@@ -234,6 +235,7 @@ Released under the [MIT License](LICENSE).
 | `visual_acuity_converter` | 在小数记录法、五分记录法（对数，中国 GB 标准）、Snellen 分数（20/20 或 6/6）、logMAR 四种等价视力记法间互换（五分 L = 5 + lg(小数)，logMAR = −lg(小数)），并给出该视力的大致水平 |
 | `accommodation_amplitude` | 用 Hofstetter 公式按年龄估算调节幅度（最小 = 15 − 0.25×年龄，平均 = 18.5 − 0.30×年龄，最大 = 25 − 0.40×年龄），推算调节近点与「保留一半调节力」的舒适持续用眼最近距离；给定工作距离时判断该距离的调节需求是否在储备之内，不足时给出建议近附加 |
 | `sunglass_tint_guide` | 按用光环境推荐太阳镜镜片过滤分类（ISO 12312-1 的 0–4 类及其可见光透过率区间），结合是否畏光、是否驾驶（白天驾驶禁用 4 类；`indoor_night` + 驾驶按夜间驾驶只用无色片），给出镜片颜色（灰 / 茶棕 / 墨绿 / 黄琥珀）、偏光、变色片与带度数选配建议，并强调镜片深浅 ≠ 防紫外线、任何太阳镜都应达到 UV400 |
+| `lens_material_advisor` | 按度数、镜框类型（全框 / 半框 / 无框）、使用场景（日常 / 儿童 / 运动 / 安全防护 / 驾驶）与取舍偏好（均衡 / 最薄 / 最清晰 / 最轻），在 CR-39、Trivex、PC、1.60 / 1.67 / 1.74 高折射树脂、玻璃之间推荐镜片基材，综合抗冲击、阿贝数（边缘色散）、厚度与重量给出首选 / 备选 / 不建议材料——儿童 / 运动 / 安全强制用抗冲击的 PC / Trivex、无框优先韧性好的 Trivex / PC、并对夜间驾驶提示低阿贝数色散/光晕；与 `lens_thickness_estimator`（减薄）、`lens_coating_advisor`（镀膜）互补 |
 
 Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可记住对话上下文，
 于是它会主动追问所需信息，给出配镜建议，并在最后附上购买链接。
@@ -242,7 +244,7 @@ Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可�
 
 ```
                          ┌──────────────────────────────┐
-       MCP 客户端         │       十九个共享的配镜工具      │       REST 客户端
+       MCP 客户端         │       二十个共享的配镜工具      │       REST 客户端
    (Claude Desktop 等)   │                              │   (curl / 你的应用)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │

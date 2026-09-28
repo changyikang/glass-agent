@@ -32,7 +32,79 @@ test("exports the expected MCP tool set", () => {
     "visual_acuity_converter",
     "accommodation_amplitude",
     "sunglass_tint_guide",
+    "lens_material_advisor",
   ]);
+});
+
+test("lens material advisor forces impact-resistant PC/Trivex for kids and bans glass", () => {
+  const tool = getTool("lens_material_advisor");
+  const result = tool.handler({ sph: -2, usage: "kids" });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // default (balanced) safety pick is PC
+  assert.match(text, /首选：\*\*PC 聚碳酸酯/);
+  assert.match(text, /玻璃：易碎裂溅入眼睛/);
+  assert.match(text, /CR-39 普通树脂：抗冲击性不足/);
+});
+
+test("lens material advisor prefers Trivex for kids when clarity is prioritized", () => {
+  const tool = getTool("lens_material_advisor");
+  const result = tool.handler({ sph: -2, usage: "sports", priority: "clarity" });
+
+  const text = result.content[0].text;
+  assert.match(text, /首选：\*\*Trivex/);
+  assert.match(text, /阿贝数\(45\)明显高于 PC/);
+});
+
+test("lens material advisor recommends Trivex for a rimless frame and warns against glass/1.74", () => {
+  const tool = getTool("lens_material_advisor");
+  const result = tool.handler({ sph: -3, frame_type: "rimless" });
+
+  const text = result.content[0].text;
+  assert.match(text, /首选：\*\*Trivex/);
+  assert.match(text, /玻璃：无框需在镜片上钻孔/);
+  assert.match(text, /1\.74 高折射树脂：1\.74 偏脆，无框钻孔/);
+});
+
+test("lens material advisor scales the index up with power for a full-rim frame", () => {
+  const tool = getTool("lens_material_advisor");
+  const low = tool.handler({ sph: -1 }).content[0].text;
+  const mid = tool.handler({ sph: -3 }).content[0].text;
+  const high = tool.handler({ sph: -5 }).content[0].text;
+  const veryHigh = tool.handler({ sph: -7 }).content[0].text;
+
+  assert.match(low, /首选：\*\*CR-39 普通树脂/);
+  assert.match(mid, /首选：\*\*1\.60 高折射树脂/);
+  assert.match(high, /首选：\*\*1\.67 高折射树脂/);
+  assert.match(veryHigh, /首选：\*\*1\.74 高折射树脂/);
+  // full-rim always warns off glass
+  assert.match(mid, /玻璃：玻璃重且易碎/);
+});
+
+test("lens material advisor warns about low-Abbe halos for night-focused driving", () => {
+  const tool = getTool("lens_material_advisor");
+  // high power → 1.67 (low Abbe) + driving usage
+  const result = tool.handler({ sph: -5, usage: "driving" });
+
+  const text = result.content[0].text;
+  assert.match(text, /首选：\*\*1\.67 高折射树脂/);
+  assert.match(text, /夜间驾驶：低阿贝数材料/);
+});
+
+test("lens material advisor uses the worst meridian (sph + cyl) as the reference power", () => {
+  const tool = getTool("lens_material_advisor");
+  // sph -3 alone would be 1.60, but -3 + -3 = -6 pushes to 1.74
+  const result = tool.handler({ sph: -3, cyl: -3 });
+
+  const text = result.content[0].text;
+  assert.match(text, /参考功率（最大子午线）：6D/);
+  assert.match(text, /首选：\*\*1\.74 高折射树脂/);
+});
+
+test("lens material advisor validates the frame_type enum", () => {
+  const tool = getTool("lens_material_advisor");
+  assert.throws(() => tool.handler({ sph: -2, frame_type: "octagon" }), /frame_type/);
 });
 
 test("sunglass tint guide recommends a category 3 dark lens for bright sun with VLT range", () => {
