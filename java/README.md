@@ -46,6 +46,7 @@
 - `accommodation_amplitude`：用 Hofstetter 公式按年龄估算调节幅度（最小 = 15 − 0.25×年龄，平均 = 18.5 − 0.30×年龄，最大 = 25 − 0.40×年龄），推算调节近点与「保留一半调节力」的舒适持续用眼最近距离；给定工作距离时判断该距离的调节需求是否在储备之内，不足时给出建议近附加
 - `sunglass_tint_guide`：按用光环境推荐太阳镜镜片过滤分类（ISO 12312-1 的 0–4 类）与可见光透过率（VLT），结合是否畏光 / 驾驶 / 带度数给出镜片颜色（灰 / 茶棕 / 墨绿 / 黄琥珀）、偏光、变色片与带度数选配建议，并提醒镜片深浅 ≠ 防紫外线、任何太阳镜都应达到 UV400
 - `lens_material_advisor`：按度数、镜框类型（全框 / 半框 / 无框）、使用场景（日常 / 儿童 / 运动 / 安全防护 / 驾驶）与取舍偏好，在 CR-39、Trivex、PC、1.60 / 1.67 / 1.74 高折射树脂、玻璃之间推荐镜片基材，综合抗冲击、阿贝数（边缘色散）、厚度与重量给出首选 / 备选 / 不建议材料，与 `lens_thickness_estimator`、`lens_coating_advisor` 互补
+- `clear_vision_range`：按裸眼屈光度（含柱镜按等效球镜 SE = SPH + CYL/2）推算不戴镜能看清的距离范围（远点 ↔ 近点）：近视远点 = 100 ÷ 度数(cm)，远点以外模糊、近处却清楚（即「近视摘镜看手机反而清楚」），正视清晰到无穷远，远视需动用调节力代偿；可选填年龄按 Hofstetter 平均公式估算调节力算出近点与远视代偿，与 `accommodation_amplitude` 互补
 
 ## 环境要求
 
@@ -194,6 +195,14 @@ curl -X POST http://localhost:8080/api/tools/lens_material_advisor \
   -d '{"sph":-4,"cyl":-1,"frameType":"rimless","usage":"general","priority":"balanced"}'
 ```
 
+裸眼清晰视界估算（远点 / 近点）（`sph` 必填；`cyl`、`age` 可选）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/clear_vision_range \
+  -H 'Content-Type: application/json' \
+  -d '{"sph":-3,"cyl":-0.5,"age":25}'
+```
+
 查看 / 清空工具调用历史（进程内保存最近 50 次，最新在前）：
 
 ```bash
@@ -223,7 +232,7 @@ java/
 └── src/main/java/com/glass/agent/
     ├── GlassAgentApplication.java      # 启动类
     ├── tool/
-    │   ├── GlassAdvisorTools.java      # 20 个工具的业务逻辑 + @Tool 注解
+    │   ├── GlassAdvisorTools.java      # 21 个工具的业务逻辑 + @Tool 注解
     │   ├── ToolCallHistory.java        # 进程内工具调用历史（最近 50 次）
     │   └── Diopters.java               # 度数格式化帮助函数
     ├── agent/

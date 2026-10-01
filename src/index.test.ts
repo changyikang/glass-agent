@@ -33,7 +33,80 @@ test("exports the expected MCP tool set", () => {
     "accommodation_amplitude",
     "sunglass_tint_guide",
     "lens_material_advisor",
+    "clear_vision_range",
   ]);
+});
+
+test("clear vision range gives a myope's far point and the摘镜看近清楚 explanation", () => {
+  const tool = getTool("clear_vision_range");
+  // SE = -2.00 → far point = 100/2 = 50cm
+  const result = tool.handler({ sph: -2 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /低度近视（SE -2D）/);
+  assert.match(text, /远点（能看清的最远处）：\*\*50 cm\*\*/);
+  assert.match(text, /摘镜看手机 \/ 看书反而清楚/);
+  // no age → near point is left to accommodation
+  assert.match(text, /填入 age 可估算最近清晰距离/);
+});
+
+test("clear vision range computes a myope's near point from age", () => {
+  const tool = getTool("clear_vision_range");
+  // SE = -5.00, age 25 → amp = 18.5 - 7.5 = 11; near = 100/(5+11) ≈ 6.3cm; far = 100/5 = 20cm
+  const result = tool.handler({ sph: -5, age: 25 });
+
+  const text = result.content[0].text;
+  assert.match(text, /远点（能看清的最远处）：\*\*20 cm\*\*/);
+  assert.match(text, /近点（能看清的最近处）：\*\*6\.3 cm\*\*/);
+  assert.match(text, /调节幅度约 11D（Hofstetter 平均/);
+});
+
+test("clear vision range uses the spherical equivalent for astigmatism", () => {
+  const tool = getTool("clear_vision_range");
+  // SE = -3 + (-2/2) = -4 → far point = 100/4 = 25cm
+  const result = tool.handler({ sph: -3, cyl: -2 });
+
+  const text = result.content[0].text;
+  assert.match(text, /等效球镜（SE = SPH \+ CYL\/2）：\*\*-4D\*\*/);
+  assert.match(text, /远点（能看清的最远处）：\*\*25 cm\*\*/);
+  assert.match(text, /含散光/);
+});
+
+test("clear vision range shows a young hyperope compensating with accommodation", () => {
+  const tool = getTool("clear_vision_range");
+  // SE = +2, age 20 → amp = 18.5 - 6 = 12.5 >= 2 → can see far; residual 10.5 → near 100/10.5 ≈ 9.5cm
+  const result = tool.handler({ sph: 2, age: 20 });
+
+  const text = result.content[0].text;
+  assert.match(text, /远视/);
+  assert.match(text, /可看清远处\*\*（调节代偿）/);
+});
+
+test("clear vision range flags a hyperope whose accommodation can't compensate", () => {
+  const tool = getTool("clear_vision_range");
+  // SE = +5, age 60 → amp = 18.5 - 18 = 0.5 < 5 → cannot compensate
+  const result = tool.handler({ sph: 5, age: 60 });
+
+  const text = result.content[0].text;
+  assert.match(text, /不足以克服 5D 的远视/);
+  assert.match(text, /裸眼看远也难以看清/);
+});
+
+test("clear vision range keeps an emmetrope clear to infinity", () => {
+  const tool = getTool("clear_vision_range");
+  const result = tool.handler({ sph: 0, age: 30 });
+
+  const text = result.content[0].text;
+  assert.match(text, /正视 \/ 接近平光/);
+  assert.match(text, /清晰到无穷远/);
+  // age 30 → amp 9.5 → near point 100/9.5 ≈ 10.5cm
+  assert.match(text, /近点（能看清的最近处）：\*\*10\.5 cm\*\*/);
+});
+
+test("clear vision range rejects an out-of-range sphere", () => {
+  const tool = getTool("clear_vision_range");
+  assert.throws(() => tool.handler({ sph: 99 }), /sph/);
 });
 
 test("lens material advisor forces impact-resistant PC/Trivex for kids and bans glass", () => {

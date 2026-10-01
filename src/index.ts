@@ -644,6 +644,33 @@ export const tools: ToolDefinition[] = [
     sample: { sph: -4, cyl: -1, frame_type: "rimless", usage: "general", priority: "balanced" },
     handler: handleLensMaterialAdvisor,
   },
+  {
+    name: "clear_vision_range",
+    description:
+      "裸眼清晰视界估算（远点 / 近点）：根据裸眼屈光度（球镜，可含柱镜按等效球镜 SE = SPH + CYL/2）推算不戴镜时能看清的距离范围——近视的「远点」= 100 ÷ 近视度数(cm)，远点以外看远模糊、却能看清很近处；远视要动用调节力把焦点拉回。可选填年龄，按 Hofstetter 平均公式(调节幅度 ≈ 18.5 − 0.30×年龄)估算调节力，进而算出近点、以及「远视裸眼能否看清远处」。解释「为什么近视的人摘镜看手机反而清楚」。仅做科普，不替代专业验光。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sph: {
+          type: "number",
+          description: "裸眼球镜屈光度，单位D，近视填负数（如 -3.00）、远视填正数、正视填0。",
+        },
+        cyl: {
+          type: "number",
+          description:
+            "柱镜度数，单位D，无散光可不填（默认0）。有散光时按等效球镜 SE = SPH + CYL/2 做粗略估算。",
+        },
+        age: {
+          type: "number",
+          description:
+            "年龄（岁，整数），可选。用于按 Hofstetter 平均公式估算调节幅度，进而算出近点与远视代偿；不填则只给远点与定性说明。",
+        },
+      },
+      required: ["sph"],
+    },
+    sample: { sph: -3, cyl: -0.5, age: 25 },
+    handler: handleClearVisionRange,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -2987,6 +3014,148 @@ ${avoidBlock}${notesBlock}
 - 材料只决定基材属性；防蓝光、变色、偏振、减反射等是镀膜/功能，另见 lens_coating_advisor；想量化不同折射率的厚度差异见 lens_thickness_estimator。
 - 高折射率减薄的同时密度通常更高，减重幅度往往小于减薄幅度，别只盯折射率。
 - 本工具只做选购科普，不替代验光师与实际试戴。`);
+}
+
+// |SE| 小于此阈值视为正视（接近平光）。
+const CLEAR_VISION_EMMETROPIA_D = 0.25;
+
+/** 把距离(cm)渲染为易读文本：≥100cm 时同时给出米，保留一位小数去尾零。 */
+function formatRangeDistance(distanceCm: number): string {
+  const cm = `${trimTrailingZeros(distanceCm.toFixed(1))} cm`;
+  if (distanceCm >= 100) {
+    const m = trimTrailingZeros((distanceCm / 100).toFixed(2));
+    return `${m} m（${cm}）`;
+  }
+  return cm;
+}
+
+function handleClearVisionRange(args: ToolArgs): ToolResult {
+  const sph = expectNumber(args, "sph", { min: -30, max: 30 });
+  const cyl = optionalNumber(args, "cyl", { min: -10, max: 10 }) ?? 0;
+  const age = optionalNumber(args, "age", { min: 5, max: 120, integer: true });
+
+  const se = sph + cyl / 2;
+  const hasCyl = cyl !== 0;
+  const amp =
+    age !== undefined ? hofstetterAmplitude(age, HOFSTETTER_AVG_BASE, HOFSTETTER_AVG_SLOPE) : undefined;
+
+  let stateLabel: string;
+  const rangeLines: string[] = [];
+  const notes: string[] = [];
+
+  if (se <= -CLEAR_VISION_EMMETROPIA_D) {
+    // 近视：有真实远点。
+    const m = Math.abs(se);
+    const farPointCm = 100 / m;
+    stateLabel = `${severityLabel(m)}近视（SE ${formatSignedDiopter(se)}）`;
+    rangeLines.push(
+      `远点（能看清的最远处）：**${formatRangeDistance(farPointCm)}**；再远就模糊，看远需要戴镜矫正。`
+    );
+    if (amp !== undefined) {
+      const nearPointCm = 100 / (m + amp);
+      rangeLines.push(
+        `近点（能看清的最近处）：**${formatRangeDistance(nearPointCm)}**（动用全部约 ${formatDiopter(amp)} 调节力）。`
+      );
+      rangeLines.push(
+        `清晰范围：约 **${formatRangeDistance(nearPointCm)} ～ ${formatRangeDistance(farPointCm)}**，这段之内裸眼相对清楚，之外模糊。`
+      );
+    } else {
+      rangeLines.push("近点（最近清晰处）取决于调节力：填入 age 可估算最近清晰距离。");
+    }
+    notes.push(
+      "裸眼在远点以内都相对清楚——这正是「近视的人摘镜看手机 / 看书反而清楚」的原因：近距离恰好落在清晰范围内，看远才需要戴镜。"
+    );
+    notes.push(
+      `近视度数越高远点越近（100 ÷ 度数）：${formatSignedDiopter(se)} 对应远点约 ${formatRangeDistance(farPointCm)}，裸眼能看清的范围越小、越贴近眼前。`
+    );
+    if (amp !== undefined) {
+      notes.push("随年龄增长调节力下降，近点会外移（摘镜能看清的最近处变远）；但远点只由度数决定，不随年龄变化。");
+    }
+  } else if (se >= CLEAR_VISION_EMMETROPIA_D) {
+    // 远视：无真实远点，需动用调节力。
+    const h = se;
+    stateLabel = `${severityLabel(h)}远视（SE ${formatSignedDiopter(se)}）`;
+    if (amp === undefined) {
+      rangeLines.push(
+        `远视没有近视那样的真实远点：焦点落在视网膜之后，裸眼需先动用约 ${formatDiopter(h)} 的调节力才能看清远处。能否看清、以及最近清晰距离都取决于调节力（年龄）——请填入 age 做估算。`
+      );
+      notes.push("年轻人调节力充足时可代偿远视、看似正常，但长时间用眼易疲劳、头痛。");
+      notes.push("隐性远视常在年轻时被调节代偿而漏诊，建议散瞳验光确认真实度数。");
+    } else if (amp >= h) {
+      const residual = amp - h;
+      rangeLines.push(
+        `看远：动用约 ${formatDiopter(h)} 调节力后**可看清远处**（调节代偿）。`
+      );
+      if (residual > 0) {
+        const nearPointCm = 100 / residual;
+        rangeLines.push(
+          `近点（能看清的最近处）：**${formatRangeDistance(nearPointCm)}**（代偿远视后剩余约 ${formatDiopter(residual)} 调节力）。`
+        );
+        rangeLines.push(
+          `清晰范围：约 **${formatRangeDistance(nearPointCm)} 以外**，但全程都在动用调节、容易疲劳。`
+        );
+      } else {
+        rangeLines.push("近点：调节力刚够看清远处，几乎没有余量看近，看近会很吃力。");
+      }
+      notes.push("裸眼看远、看近都要持续动用调节力，容易视疲劳、看久头痛；配远视矫正镜能解放调节、更省力。");
+      notes.push("随年龄调节力下降，原本能代偿的远视会逐渐显现（看远也开始模糊），远视者通常比近视者更早需要戴镜。");
+    } else {
+      rangeLines.push(
+        `当前按年龄估算调节力约 ${formatDiopter(amp)}，不足以克服 ${formatDiopter(h)} 的远视：**裸眼看远也难以看清**，看近更吃力。`
+      );
+      rangeLines.push("建议及时到专业机构验光矫正。");
+      notes.push("调节力不足以代偿远视时，远近都可能模糊，应尽快验光配镜，不要硬撑。");
+    }
+  } else {
+    // 正视：远处清晰到无穷远。
+    stateLabel = `正视 / 接近平光（SE ${formatSignedDiopter(se)}）`;
+    rangeLines.push("看远：**清晰到无穷远**（正视眼裸眼远处清楚）。");
+    if (amp !== undefined && amp > 0) {
+      const nearPointCm = 100 / amp;
+      rangeLines.push(`近点（能看清的最近处）：**${formatRangeDistance(nearPointCm)}**（动用全部约 ${formatDiopter(amp)} 调节力）。`);
+      rangeLines.push(`清晰范围：约 **${formatRangeDistance(nearPointCm)} 以外全部清晰**。`);
+    } else if (amp !== undefined) {
+      rangeLines.push("近点：调节力已近耗竭，裸眼看近困难（老视 / 老花表现）。");
+    } else {
+      rangeLines.push("近点（最近清晰处）取决于调节力：填入 age 可估算最近清晰距离。");
+    }
+    notes.push("正视眼裸眼看远清楚；看近靠调节力，随年龄下降（约 40 岁后）近点外移，即老视（老花）。");
+  }
+
+  if (hasCyl) {
+    notes.push(
+      "含散光：这里按等效球镜 SE = SPH + CYL/2 做粗略估算；散光会让各方向清晰度不一致，实际清晰范围会打折扣。"
+    );
+  }
+
+  const inputLines = [`- 球镜：${formatSignedDiopter(sph)}${hasCyl ? ` / 柱镜 ${formatSignedDiopter(cyl)}` : ""}`];
+  if (hasCyl) {
+    inputLines.push(`- 等效球镜（SE = SPH + CYL/2）：**${formatSignedDiopter(se)}**`);
+  }
+  inputLines.push(`- 屈光状态：**${stateLabel}**`);
+  if (amp !== undefined) {
+    inputLines.push(
+      `- 年龄：${age} 岁 → 估算调节幅度约 ${formatDiopter(amp)}（Hofstetter 平均，与 accommodation_amplitude 一致）`
+    );
+  }
+
+  return textResult(`## 裸眼清晰视界估算（远点 / 近点）
+
+> 不戴镜时，眼睛只有在「远点 ～ 近点」这段距离内能看清。近视的远点 = 100 ÷ 近视度数（cm），远点以外看远模糊，却能看清很近处；远视要靠调节力把焦点拉回。以下按等效球镜做理想化估算，仅供科普，实际以验光为准。
+
+**输入（裸眼）**
+${inputLines.join("\n")}
+
+**裸眼清晰范围**
+${renderBulletList(rangeLines, "无")}
+
+**说明**
+${renderBulletList(notes, "无")}
+
+**提醒**
+- 这是基于等效球镜的理想化估算，散光、瞳孔大小、个体调节差异都会影响实际清晰度与范围。
+- 「能看清」不等于「久看不累」：长时间用眼只宜动用约一半调节力，可配合 accommodation_amplitude 评估舒适用眼距离。
+- 本工具只做科普参考，不替代验光师 / 医生。`);
 }
 
 function optionalEnumNumber(

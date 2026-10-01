@@ -64,7 +64,8 @@ public class ToolController {
                 tool("visual_acuity_converter", "视力记录法换算：在小数记录法、五分记录法（对数）、Snellen 分数、logMAR 四种等价写法之间互换，并给出该视力的大致水平（五分 L=5+lg(小数)，logMAR=−lg(小数)）。"),
                 tool("accommodation_amplitude", "调节幅度评估：用 Hofstetter 公式按年龄估算最小/平均/最大调节幅度（平均=18.5−0.30×年龄）与调节近点，判断某个用眼距离是否落在「保留一半调节力」的舒适储备之内，并在不足时给出建议近附加。"),
                 tool("sunglass_tint_guide", "太阳镜镜片色号（透光率）与颜色选择：按用光环境推荐 ISO 12312-1 的 0–4 类过滤分类与 VLT，结合是否畏光/驾驶/带度数给出镜片颜色（灰/茶棕/墨绿/黄琥珀）、偏光、变色片建议，并提醒镜片深浅≠防紫外线，任何太阳镜都应达到 UV400。"),
-                tool("lens_material_advisor", "镜片材料（基材）选择顾问：按度数、镜框类型（全框/半框/无框）、使用场景（日常/儿童/运动/安全防护/驾驶）与取舍偏好，在 CR-39、Trivex、PC、1.60/1.67/1.74 高折射树脂、玻璃之间推荐基材，综合抗冲击、阿贝数、厚度与重量给出首选/备选/不建议材料，与 lens_thickness_estimator、lens_coating_advisor 互补。"));
+                tool("lens_material_advisor", "镜片材料（基材）选择顾问：按度数、镜框类型（全框/半框/无框）、使用场景（日常/儿童/运动/安全防护/驾驶）与取舍偏好，在 CR-39、Trivex、PC、1.60/1.67/1.74 高折射树脂、玻璃之间推荐基材，综合抗冲击、阿贝数、厚度与重量给出首选/备选/不建议材料，与 lens_thickness_estimator、lens_coating_advisor 互补。"),
+                tool("clear_vision_range", "裸眼清晰视界估算（远点/近点）：按裸眼屈光度（含柱镜按等效球镜）推算不戴镜能看清的距离范围——近视远点=100÷度数(cm)，远点外看远模糊却能看清近处；可选填年龄按 Hofstetter 平均公式估算调节力算出近点与远视代偿，解释「为什么近视的人摘镜看手机反而清楚」。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -189,6 +190,12 @@ public class ToolController {
                 req.sph(), req.cyl(), req.frameType(), req.usage(), req.priority()));
     }
 
+    @PostMapping("/clear_vision_range")
+    public ToolResponse clearVisionRange(@RequestBody ClearVisionRangeRequest req) {
+        return run("clear_vision_range", req,
+                () -> tools.clearVisionRange(req.sph(), req.cyl(), req.age()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -268,5 +275,8 @@ public class ToolController {
 
     public record LensMaterialRequest(double sph, Double cyl, String frameType,
                                       String usage, String priority) {
+    }
+
+    public record ClearVisionRangeRequest(double sph, Double cyl, Integer age) {
     }
 }

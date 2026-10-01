@@ -557,4 +557,64 @@ class GlassAdvisorToolsTest {
                 () -> tools.lensMaterialAdvisor(-2, null, "octagon", null, null));
         assertTrue(ex.getMessage().contains("frame_type"));
     }
+
+    @Test
+    void clearVisionRangeGivesMyopeFarPointAndExplanation() {
+        // SE = -2.00 → far point = 100/2 = 50cm
+        String result = tools.clearVisionRange(-2, null, null);
+        assertTrue(result.contains("低度近视（SE -2D）"));
+        assertTrue(result.contains("远点（能看清的最远处）：**50 cm**"));
+        assertTrue(result.contains("摘镜看手机 / 看书反而清楚"));
+        assertTrue(result.contains("填入 age 可估算最近清晰距离"));
+    }
+
+    @Test
+    void clearVisionRangeComputesMyopeNearPointFromAge() {
+        // SE = -5.00, age 25 → amp = 11; near = 100/16 ≈ 6.3cm; far = 100/5 = 20cm
+        String result = tools.clearVisionRange(-5, null, 25);
+        assertTrue(result.contains("远点（能看清的最远处）：**20 cm**"));
+        assertTrue(result.contains("近点（能看清的最近处）：**6.3 cm**"));
+        assertTrue(result.contains("调节幅度约 11D（Hofstetter 平均"));
+    }
+
+    @Test
+    void clearVisionRangeUsesSphericalEquivalentForAstigmatism() {
+        // SE = -3 + (-2/2) = -4 → far point = 100/4 = 25cm
+        String result = tools.clearVisionRange(-3, -2.0, null);
+        assertTrue(result.contains("等效球镜（SE = SPH + CYL/2）：**-4D**"));
+        assertTrue(result.contains("远点（能看清的最远处）：**25 cm**"));
+        assertTrue(result.contains("含散光"));
+    }
+
+    @Test
+    void clearVisionRangeShowsYoungHyperopeCompensating() {
+        // SE = +2, age 20 → amp = 12.5 >= 2 → can see far
+        String result = tools.clearVisionRange(2, null, 20);
+        assertTrue(result.contains("远视"));
+        assertTrue(result.contains("可看清远处**（调节代偿）"));
+    }
+
+    @Test
+    void clearVisionRangeFlagsHyperopeWhoCannotCompensate() {
+        // SE = +5, age 60 → amp = 0.5 < 5 → cannot compensate
+        String result = tools.clearVisionRange(5, null, 60);
+        assertTrue(result.contains("不足以克服 5D 的远视"));
+        assertTrue(result.contains("裸眼看远也难以看清"));
+    }
+
+    @Test
+    void clearVisionRangeKeepsEmmetropeClearToInfinity() {
+        // age 30 → amp 9.5 → near point 100/9.5 ≈ 10.5cm
+        String result = tools.clearVisionRange(0, null, 30);
+        assertTrue(result.contains("正视 / 接近平光"));
+        assertTrue(result.contains("清晰到无穷远"));
+        assertTrue(result.contains("近点（能看清的最近处）：**10.5 cm**"));
+    }
+
+    @Test
+    void clearVisionRangeRejectsOutOfRangeSphere() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.clearVisionRange(99, null, null));
+        assertTrue(ex.getMessage().contains("sph"));
+    }
 }
