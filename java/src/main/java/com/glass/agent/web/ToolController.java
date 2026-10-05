@@ -65,7 +65,8 @@ public class ToolController {
                 tool("accommodation_amplitude", "调节幅度评估：用 Hofstetter 公式按年龄估算最小/平均/最大调节幅度（平均=18.5−0.30×年龄）与调节近点，判断某个用眼距离是否落在「保留一半调节力」的舒适储备之内，并在不足时给出建议近附加。"),
                 tool("sunglass_tint_guide", "太阳镜镜片色号（透光率）与颜色选择：按用光环境推荐 ISO 12312-1 的 0–4 类过滤分类与 VLT，结合是否畏光/驾驶/带度数给出镜片颜色（灰/茶棕/墨绿/黄琥珀）、偏光、变色片建议，并提醒镜片深浅≠防紫外线，任何太阳镜都应达到 UV400。"),
                 tool("lens_material_advisor", "镜片材料（基材）选择顾问：按度数、镜框类型（全框/半框/无框）、使用场景（日常/儿童/运动/安全防护/驾驶）与取舍偏好，在 CR-39、Trivex、PC、1.60/1.67/1.74 高折射树脂、玻璃之间推荐基材，综合抗冲击、阿贝数、厚度与重量给出首选/备选/不建议材料，与 lens_thickness_estimator、lens_coating_advisor 互补。"),
-                tool("clear_vision_range", "裸眼清晰视界估算（远点/近点）：按裸眼屈光度（含柱镜按等效球镜）推算不戴镜能看清的距离范围——近视远点=100÷度数(cm)，远点外看远模糊却能看清近处；可选填年龄按 Hofstetter 平均公式估算调节力算出近点与远视代偿，解释「为什么近视的人摘镜看手机反而清楚」。"));
+                tool("clear_vision_range", "裸眼清晰视界估算（远点/近点）：按裸眼屈光度（含柱镜按等效球镜）推算不戴镜能看清的距离范围——近视远点=100÷度数(cm)，远点外看远模糊却能看清近处；可选填年龄按 Hofstetter 平均公式估算调节力算出近点与远视代偿，解释「为什么近视的人摘镜看手机反而清楚」。"),
+                tool("near_acuity_converter", "近用视力（近视力表）记法换算：在 M 记法、印刷点数(pt)、近视力小数三种写法间换算，并给出 Snellen/logMAR/五分等效与含 Jaeger 的近视力对照表（小数=测试距离m÷M，点数≈M×8）。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -196,6 +197,12 @@ public class ToolController {
                 () -> tools.clearVisionRange(req.sph(), req.cyl(), req.age()));
     }
 
+    @PostMapping("/near_acuity_converter")
+    public ToolResponse nearAcuityConverter(@RequestBody NearAcuityRequest req) {
+        return run("near_acuity_converter", req,
+                () -> tools.nearAcuityConverter(req.notation(), req.value(), req.testDistanceCm()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -278,5 +285,8 @@ public class ToolController {
     }
 
     public record ClearVisionRangeRequest(double sph, Double cyl, Integer age) {
+    }
+
+    public record NearAcuityRequest(String notation, double value, Double testDistanceCm) {
     }
 }

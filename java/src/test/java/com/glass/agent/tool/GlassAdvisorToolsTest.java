@@ -617,4 +617,48 @@ class GlassAdvisorToolsTest {
                 () -> tools.clearVisionRange(99, null, null));
         assertTrue(ex.getMessage().contains("sph"));
     }
+
+    @Test
+    void nearAcuityConverterReading1MAt40cmIs04Decimal() {
+        // decimal = 0.4 / 1.0 = 0.4 → 20/50, 8pt
+        String result = tools.nearAcuityConverter("m_unit", 1.0, null);
+        assertTrue(result.contains("印张尺寸（M 记法）：**1 M**"));
+        assertTrue(result.contains("印刷点数（约）：**8 pt**"));
+        assertTrue(result.contains("该距离近视力（小数）：**0.4**"));
+        assertTrue(result.contains("Snellen 等效：**20/50**"));
+    }
+
+    @Test
+    void nearAcuityConverterPointInputConvertsToMByDivide8() {
+        // 16pt → 2M; at 40cm decimal = 0.4/2 = 0.2 → 20/100
+        String result = tools.nearAcuityConverter("point", 16, null);
+        assertTrue(result.contains("印张尺寸（M 记法）：**2 M**"));
+        assertTrue(result.contains("该距离近视力（小数）：**0.2**"));
+        assertTrue(result.contains("Snellen 等效：**20/100**"));
+    }
+
+    @Test
+    void nearAcuityConverterNearerDistanceImprovesAcuity() {
+        // 1M at 25cm → decimal = 0.25 → 20/80
+        String result = tools.nearAcuityConverter("m_unit", 1.0, 25.0);
+        assertTrue(result.contains("测试距离 25 cm"));
+        assertTrue(result.contains("该距离近视力（小数）：**0.25**"));
+        assertTrue(result.contains("Snellen 等效：**20/80**"));
+    }
+
+    @Test
+    void nearAcuityConverterDecimalInputGivesEquivalentM() {
+        // decimal 0.5 at 40cm → M = 0.4/0.5 = 0.8
+        String result = tools.nearAcuityConverter("decimal", 0.5, null);
+        assertTrue(result.contains("近视力小数 0.5"));
+        assertTrue(result.contains("印张尺寸（M 记法）：**0.8 M**"));
+        assertTrue(result.contains("该距离近视力（小数）：**0.5**"));
+    }
+
+    @Test
+    void nearAcuityConverterRejectsOutOfRangeValue() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.nearAcuityConverter("m_unit", 50, null));
+        assertTrue(ex.getMessage().contains("M 记法"));
+    }
 }

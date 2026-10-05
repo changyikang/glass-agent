@@ -34,7 +34,60 @@ test("exports the expected MCP tool set", () => {
     "sunglass_tint_guide",
     "lens_material_advisor",
     "clear_vision_range",
+    "near_acuity_converter",
   ]);
+});
+
+test("near acuity converter: reading 1M at 40cm is 0.4 decimal (20/50)", () => {
+  const tool = getTool("near_acuity_converter");
+  // decimal = testDist(m) / M = 0.4 / 1.0 = 0.4 → 20/50, 8pt
+  const result = tool.handler({ notation: "m_unit", value: 1.0 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /印张尺寸（M 记法）：\*\*1 M\*\*/);
+  assert.match(text, /印刷点数（约）：\*\*8 pt\*\*/);
+  assert.match(text, /该距离近视力（小数）：\*\*0\.4\*\*/);
+  assert.match(text, /Snellen 等效：\*\*20\/50\*\*/);
+});
+
+test("near acuity converter: point-size input converts to M via ÷8", () => {
+  const tool = getTool("near_acuity_converter");
+  // 16pt → 2M; at 40cm decimal = 0.4/2 = 0.2 → 20/100
+  const result = tool.handler({ notation: "point", value: 16 });
+
+  const text = result.content[0].text;
+  assert.match(text, /印张尺寸（M 记法）：\*\*2 M\*\*/);
+  assert.match(text, /该距离近视力（小数）：\*\*0\.2\*\*/);
+  assert.match(text, /Snellen 等效：\*\*20\/100\*\*/);
+});
+
+test("near acuity converter: a nearer test distance improves the acuity for the same M", () => {
+  const tool = getTool("near_acuity_converter");
+  // 1M at 25cm → decimal = 0.25/1 = 0.25 → 20/80 (vs 0.4 at 40cm)
+  const result = tool.handler({ notation: "m_unit", value: 1.0, test_distance_cm: 25 });
+
+  const text = result.content[0].text;
+  assert.match(text, /测试距离 25 cm/);
+  assert.match(text, /该距离近视力（小数）：\*\*0\.25\*\*/);
+  assert.match(text, /Snellen 等效：\*\*20\/80\*\*/);
+});
+
+test("near acuity converter: decimal input is echoed back and gives the equivalent M", () => {
+  const tool = getTool("near_acuity_converter");
+  // decimal 0.5 at 40cm → M = 0.4/0.5 = 0.8 → 6.4 ≈ 6pt
+  const result = tool.handler({ notation: "decimal", value: 0.5 });
+
+  const text = result.content[0].text;
+  assert.match(text, /近视力小数 0\.5/);
+  assert.match(text, /印张尺寸（M 记法）：\*\*0\.8 M\*\*/);
+  assert.match(text, /该距离近视力（小数）：\*\*0\.5\*\*/);
+});
+
+test("near acuity converter rejects out-of-range values", () => {
+  const tool = getTool("near_acuity_converter");
+  assert.throws(() => tool.handler({ notation: "m_unit", value: 50 }), /M 记法/);
+  assert.throws(() => tool.handler({ notation: "decimal", value: 5 }), /近视力小数/);
 });
 
 test("clear vision range gives a myope's far point and the摘镜看近清楚 explanation", () => {

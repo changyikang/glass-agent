@@ -671,6 +671,35 @@ export const tools: ToolDefinition[] = [
     sample: { sph: -3, cyl: -0.5, age: 25 },
     handler: handleClearVisionRange,
   },
+  {
+    name: "near_acuity_converter",
+    description:
+      "近用视力（近视力表）记法换算：近视力卡常用三种写法——M 记法（m_unit，国际标准，1M 视标在 1 m 处张角 5′）、印刷点数（point，如 8pt）、以及直接的近视力小数（decimal）。本工具把任一写法按测试距离（默认 40cm）换算成其余写法与 Snellen / logMAR / 五分等效，并给出常用近视力对照表（含 Jaeger J 记法的近似）。核心换算：该距离近视力小数 = 测试距离(m) ÷ M 值，点数 ≈ M × 8。Jaeger 各家视力卡不统一，仅作近似参考。仅做记法换算与科普，不替代验光。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        notation: {
+          type: "string",
+          enum: ["m_unit", "point", "decimal"],
+          description:
+            "输入近视力所用的记法：m_unit(M 记法，如 1.0 表示 1M) / point(印刷点数，如 8 表示 8pt) / decimal(直接给该距离的近视力小数，如 0.5)。",
+        },
+        value: {
+          type: "number",
+          description:
+            "数值：m_unit 填 M 值(0.1–20)；point 填点数(1–160)；decimal 填近视力小数(0.01–2)。",
+        },
+        test_distance_cm: {
+          type: "number",
+          description:
+            "近视力测试距离，单位cm，默认 40（常见近用参考距离）。该距离越远、同一 M 视标对应的视力越好（小数 = 距离m ÷ M）。范围 10–100。",
+        },
+      },
+      required: ["notation", "value"],
+    },
+    sample: { notation: "m_unit", value: 1.0, test_distance_cm: 40 },
+    handler: handleNearAcuityConverter,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -2421,6 +2450,76 @@ function handleVisualAcuityConverter(args: ToolArgs): ToolResult {
 **说明**
 - 视力（矫正或裸眼）反映的是「看清的能力」，与验光度数（近视 / 远视多少度）不是一回事，同样视力可能对应不同度数。
 - 每个方向的视标每小一行、logMAR 减 0.1，五分记录法每行差 0.1；不同视力表设计略有差异，换算值取近似。
+- 本工具只做记法换算与科普，不替代专业验光；配镜请以主觉验光和矫正视力为准。`);
+}
+
+// 近视力换算：1M 视标在 1 m 处张角 5′；某距离近视力小数 = 测试距离(m) ÷ M 值。
+const POINT_PER_M_UNIT = 8; // 印刷点数与 M 记法的常用近似：1M ≈ 8pt。
+
+function handleNearAcuityConverter(args: ToolArgs): ToolResult {
+  const notation = expectEnum(args, "notation", ["m_unit", "point", "decimal"] as const);
+  const value = expectNumber(args, "value");
+  const testDistanceCm = optionalNumber(args, "test_distance_cm", { min: 10, max: 100 }) ?? 40;
+  const testDistM = testDistanceCm / 100;
+
+  // 先把任一记法统一换算成「印张尺寸 M 值」，再由测试距离推出近视力小数与其余等效。
+  let mValue: number;
+  let inputLine: string;
+  switch (notation) {
+    case "m_unit":
+      if (value < 0.1 || value > 20) throw new Error("M 记法 value 应在 0.1 到 20 之间");
+      mValue = value;
+      inputLine = `${trimTrailingZeros(value.toFixed(2))}M 视标`;
+      break;
+    case "point":
+      if (value < 1 || value > 160) throw new Error("印刷点数 value 应在 1 到 160 之间");
+      mValue = value / POINT_PER_M_UNIT;
+      inputLine = `${trimTrailingZeros(value.toFixed(1))} pt 印刷字`;
+      break;
+    case "decimal":
+      if (value <= 0 || value > 2) throw new Error("近视力小数 value 应在 0 到 2 之间");
+      mValue = testDistM / value;
+      inputLine = `近视力小数 ${formatDecimalAcuity(value)}`;
+      break;
+  }
+
+  const decimal = testDistM / mValue;
+  const pointSize = mValue * POINT_PER_M_UNIT;
+  const fiveMinute = 5 + Math.log10(decimal);
+  const logmar = -Math.log10(decimal);
+  const snellen20 = Math.round(20 / decimal);
+
+  return textResult(`## 近用视力（近视力表）记法换算
+
+> 近视力卡常用三种写法：**M 记法**（国际标准，1M 视标在 1 m 处张角 5′）、**印刷点数 pt**（如 8pt，接近报纸正文）、直接的**近视力小数**。看近的清晰与距离有关，所以近视力必须连同测试距离一起看。核心换算：**该距离近视力小数 = 测试距离(m) ÷ M 值**，点数 ≈ M × ${POINT_PER_M_UNIT}。
+
+**输入**
+- ${inputLine} @ 测试距离 ${trimTrailingZeros(testDistanceCm.toFixed(0))} cm
+
+**换算结果（测试距离 ${trimTrailingZeros(testDistanceCm.toFixed(0))} cm）**
+- 印张尺寸（M 记法）：**${trimTrailingZeros(mValue.toFixed(2))} M**
+- 印刷点数（约）：**${trimTrailingZeros(pointSize.toFixed(0))} pt**
+- 该距离近视力（小数）：**${formatDecimalAcuity(decimal)}**
+- Snellen 等效：**20/${snellen20}**
+- logMAR：**${trimTrailingZeros(logmar.toFixed(2))}** ，五分记录：**${trimTrailingZeros(fiveMinute.toFixed(1))}**
+- 近视力水平：**${acuityLevelLabel(decimal)}**
+
+**常用近视力对照（约 40 cm）**
+| M 记法 | 点数(pt) | Jaeger(约) | Snellen 等效 | 小数 |
+| --- | --- | --- | --- | --- |
+| 0.4M | 3pt | J1 | 20/20 | 1.0 |
+| 0.5M | 4pt | J2 | 20/25 | 0.8 |
+| 0.6M | 5pt | J3 | 20/30 | 0.67 |
+| 0.8M | 6pt | J5 | 20/40 | 0.5 |
+| 1.0M | 8pt | J6 | 20/50 | 0.4 |
+| 1.6M | 12pt | J10 | 20/80 | 0.25 |
+| 2.0M | 16pt | J12 | 20/100 | 0.2 |
+
+**说明**
+- M 记法最标准、可换算：某测试距离的近视力小数 = 测试距离(m) ÷ M 值，所以同一 M 视标测得越远、视力数值越好。
+- 点数由 1M ≈ ${POINT_PER_M_UNIT}pt 的常用近似推得，仅供粗略参考。
+- Jaeger（J1–J16）各家近视力卡并不统一，上表仅为常见近似，换用不同卡片时以卡片自带的 M / Snellen 标注为准。
+- 近视力与远视力（见 visual_acuity_converter）可能不同；中老年看近变差多与老花（调节力不足）有关，可配合 reading_add_estimator、accommodation_amplitude 评估。
 - 本工具只做记法换算与科普，不替代专业验光；配镜请以主觉验光和矫正视力为准。`);
 }
 
