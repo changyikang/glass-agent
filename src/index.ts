@@ -700,6 +700,57 @@ export const tools: ToolDefinition[] = [
     sample: { notation: "m_unit", value: 1.0, test_distance_cm: 40 },
     handler: handleNearAcuityConverter,
   },
+  {
+    name: "prism_resolver",
+    description:
+      "棱镜合成与分解（Prentice 棱镜向量运算）：处方中的棱镜可拆成水平（基底朝鼻侧 base-in / 颞侧 base-out）与垂直（基底朝上 base-up / 下 base-down）两个分量，它们按向量相加。本工具两种模式：combine 把水平 + 垂直分量合成为单一「合棱镜」（大小 Δ 与基底方向角）；resolve 把一个合棱镜（大小 + 方向角）分解回水平、垂直分量。合成大小 = √(水平² + 垂直²)；方向角采用「颞侧(base-out)=0°、上=90°、鼻侧(base-in)=180°、下=270°，逆时针」的几何约定（临床 360° 基底记法左右眼不同，这里改用 in/out/up/down 分量表述避免歧义）。常用于合并两条处方棱镜、把斜向棱镜拆给磨房加工。仅做棱镜换算与科普，不替代验光与处方。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        mode: {
+          type: "string",
+          enum: ["combine", "resolve"],
+          description:
+            "模式：combine(把水平+垂直分量合成为合棱镜) / resolve(把合棱镜分解为水平+垂直分量)。",
+        },
+        horizontal: {
+          type: "number",
+          description:
+            "【combine】水平棱镜大小，单位Δ（棱镜度，≥0）；为 0 或不填表示无水平分量。范围 0–50。",
+        },
+        horizontal_base: {
+          type: "string",
+          enum: ["in", "out"],
+          description:
+            "【combine】水平棱镜基底方向：in=基底朝鼻侧(base-in)，out=基底朝颞侧(base-out)。当 horizontal>0 时必填。",
+        },
+        vertical: {
+          type: "number",
+          description:
+            "【combine】垂直棱镜大小，单位Δ（≥0）；为 0 或不填表示无垂直分量。范围 0–50。",
+        },
+        vertical_base: {
+          type: "string",
+          enum: ["up", "down"],
+          description:
+            "【combine】垂直棱镜基底方向：up=基底朝上(base-up)，down=基底朝下(base-down)。当 vertical>0 时必填。",
+        },
+        magnitude: {
+          type: "number",
+          description:
+            "【resolve】合棱镜大小，单位Δ（>0）。范围 0.01–50。",
+        },
+        angle: {
+          type: "number",
+          description:
+            "【resolve】合棱镜方向角，单位度（0–360）。约定：颞侧 base-out=0°、上=90°、鼻侧 base-in=180°、下=270°，逆时针为正。",
+        },
+      },
+      required: ["mode"],
+    },
+    sample: { mode: "combine", horizontal: 3, horizontal_base: "out", vertical: 4, vertical_base: "up" },
+    handler: handlePrismResolver,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -2521,6 +2572,143 @@ function handleNearAcuityConverter(args: ToolArgs): ToolResult {
 - Jaeger（J1–J16）各家近视力卡并不统一，上表仅为常见近似，换用不同卡片时以卡片自带的 M / Snellen 标注为准。
 - 近视力与远视力（见 visual_acuity_converter）可能不同；中老年看近变差多与老花（调节力不足）有关，可配合 reading_add_estimator、accommodation_amplitude 评估。
 - 本工具只做记法换算与科普，不替代专业验光；配镜请以主觉验光和矫正视力为准。`);
+}
+
+// 低于该阈值的分量视为 0，避免浮点误差把 90°/180° 等纯方向算出极小的杂散分量。
+const PRISM_COMPONENT_EPSILON = 0.005;
+// 处方棱镜常用的最小步进（Δ），用于给出便于书写的取整值。
+const PRISM_STEP = 0.25;
+
+function formatPrism(value: number): string {
+  return `${trimTrailingZeros(value.toFixed(2))}Δ`;
+}
+
+function roundToStep(value: number, step: number): number {
+  return Math.round(value / step) * step;
+}
+
+/** 由有符号分量 (x=颞侧为正, y=上为正) 给出中文基底方向描述。 */
+function describePrismBase(x: number, y: number): string {
+  const hz = Math.abs(x) < PRISM_COMPONENT_EPSILON ? "" : x > 0 ? "颞侧(base-out)" : "鼻侧(base-in)";
+  const vt = Math.abs(y) < PRISM_COMPONENT_EPSILON ? "" : y > 0 ? "上方(base-up)" : "下方(base-down)";
+  if (hz && vt) return `${hz} 偏 ${vt}`;
+  return hz || vt || "无（棱镜为 0）";
+}
+
+function handlePrismResolver(args: ToolArgs): ToolResult {
+  const mode = expectEnum(args, "mode", ["combine", "resolve"] as const);
+  return mode === "combine" ? prismCombine(args) : prismResolve(args);
+}
+
+function prismCombine(args: ToolArgs): ToolResult {
+  const horizontal = optionalNumber(args, "horizontal", { min: 0, max: 50 }) ?? 0;
+  const vertical = optionalNumber(args, "vertical", { min: 0, max: 50 }) ?? 0;
+  const horizontalBase = optionalEnum(args, "horizontal_base", ["in", "out"] as const);
+  const verticalBase = optionalEnum(args, "vertical_base", ["up", "down"] as const);
+
+  if (horizontal === 0 && vertical === 0) {
+    throw new Error("水平与垂直棱镜不能同时为 0，至少提供一个非零分量");
+  }
+  if (horizontal > 0 && horizontalBase === undefined) {
+    throw new Error("提供水平棱镜时必须指定基底方向 horizontal_base（in=鼻侧 / out=颞侧）");
+  }
+  if (vertical > 0 && verticalBase === undefined) {
+    throw new Error("提供垂直棱镜时必须指定基底方向 vertical_base（up=上 / down=下）");
+  }
+
+  // x：颞侧(base-out)为正、鼻侧(base-in)为负；y：上(base-up)为正、下(base-down)为负。
+  const x = horizontal * (horizontalBase === "in" ? -1 : 1);
+  const y = vertical * (verticalBase === "down" ? -1 : 1);
+  const magnitude = Math.hypot(x, y);
+  let angle = (Math.atan2(y, x) * 180) / Math.PI;
+  if (angle < 0) angle += 360;
+
+  const roundedMag = roundToStep(magnitude, PRISM_STEP);
+  const inputParts: string[] = [];
+  if (horizontal > 0) {
+    inputParts.push(`水平 ${formatPrism(horizontal)} 基底朝${horizontalBase === "in" ? "鼻侧(base-in)" : "颞侧(base-out)"}`);
+  }
+  if (vertical > 0) {
+    inputParts.push(`垂直 ${formatPrism(vertical)} 基底朝${verticalBase === "up" ? "上(base-up)" : "下(base-down)"}`);
+  }
+
+  const bothNonZero = horizontal > 0 && vertical > 0;
+  const notes: string[] = [];
+  if (bothNonZero) {
+    notes.push(
+      `合成大小 = √(${trimTrailingZeros(horizontal.toFixed(2))}² + ${trimTrailingZeros(vertical.toFixed(2))}²) = ${trimTrailingZeros(magnitude.toFixed(4))} ≈ **${formatPrism(magnitude)}**。`
+    );
+    notes.push(
+      `方向角 = atan2(${trimTrailingZeros(y.toFixed(2))}, ${trimTrailingZeros(x.toFixed(2))}) = **${trimTrailingZeros(angle.toFixed(1))}°**（约定：颞侧=0°、上=90°、鼻侧=180°、下=270°，逆时针）。`
+    );
+    notes.push(
+      `写处方多把斜向棱镜拆成水平 + 垂直两项分别书写（即此处的输入），合棱镜主要用于理解实际的棱镜方向与总量。`
+    );
+  } else {
+    notes.push("只有单一方向的分量，合棱镜大小与方向即等于该分量本身。");
+  }
+
+  return textResult(`## 棱镜合成（水平 + 垂直 → 合棱镜）
+
+> 处方棱镜可拆成水平分量（基底朝鼻侧 base-in / 颞侧 base-out）与垂直分量（基底朝上 base-up / 下 base-down），两者按**向量相加**。合棱镜大小 = √(水平² + 垂直²)，方向角按「颞侧=0°、上=90°、鼻侧=180°、下=270°，逆时针」几何约定度量。
+
+**输入**
+- ${inputParts.join("\n- ")}
+
+**合成结果**
+- 合棱镜大小：**${formatPrism(magnitude)}**（取 0.25Δ 步进约 ${formatPrism(roundedMag)}）
+- 方向角：**${trimTrailingZeros(angle.toFixed(1))}°**
+- 基底方向：**${describePrismBase(x, y)}**
+
+**计算过程**
+${renderBulletList(notes, "—")}
+
+**说明**
+- base-in / base-out 以鼻子为参照，左右眼含义一致，不存在歧义；而临床 360° 基底角记法左右眼起算方向不同，故此处改用 in/out/up/down 分量 + 本工具的几何角一并表述。
+- 实际书写处方时棱镜多按 0.25Δ 取整；分别标注水平与垂直分量比只写合棱镜更不易出错。
+- 本工具只做棱镜向量换算与科普，不替代验光与处方，棱镜处方须由专业人员开具。`);
+}
+
+function prismResolve(args: ToolArgs): ToolResult {
+  const magnitude = expectNumber(args, "magnitude", { min: 0.01, max: 50 });
+  const angle = expectNumber(args, "angle", { min: 0, max: 360 });
+
+  const rad = (angle * Math.PI) / 180;
+  const x = magnitude * Math.cos(rad); // 颞侧为正
+  const y = magnitude * Math.sin(rad); // 上为正
+  const horizontal = Math.abs(x);
+  const vertical = Math.abs(y);
+
+  const hzLine =
+    horizontal < PRISM_COMPONENT_EPSILON
+      ? "水平分量：**0**（纯垂直棱镜）"
+      : `水平分量：**${formatPrism(horizontal)}** 基底朝${x > 0 ? "颞侧(base-out)" : "鼻侧(base-in)"}（取 0.25Δ 步进约 ${formatPrism(roundToStep(horizontal, PRISM_STEP))}）`;
+  const vtLine =
+    vertical < PRISM_COMPONENT_EPSILON
+      ? "垂直分量：**0**（纯水平棱镜）"
+      : `垂直分量：**${formatPrism(vertical)}** 基底朝${y > 0 ? "上(base-up)" : "下(base-down)"}（取 0.25Δ 步进约 ${formatPrism(roundToStep(vertical, PRISM_STEP))}）`;
+
+  return textResult(`## 棱镜分解（合棱镜 → 水平 + 垂直）
+
+> 把一个斜向的合棱镜按方向角分解回水平、垂直两个分量，便于磨房分别加工或书写处方。水平分量 = 大小 × cos(角度)，垂直分量 = 大小 × sin(角度)；角度约定「颞侧=0°、上=90°、鼻侧=180°、下=270°，逆时针」。
+
+**输入**
+- 合棱镜大小：${formatPrism(magnitude)}
+- 方向角：${trimTrailingZeros(angle.toFixed(1))}°（基底朝 ${describePrismBase(x, y)}）
+
+**分解结果**
+- ${hzLine}
+- ${vtLine}
+
+**计算过程**
+- 水平 = ${formatPrism(magnitude)} × cos(${trimTrailingZeros(angle.toFixed(1))}°) = ${trimTrailingZeros(x.toFixed(4))}（${x >= 0 ? "颞侧 base-out" : "鼻侧 base-in"}）
+- 垂直 = ${formatPrism(magnitude)} × sin(${trimTrailingZeros(angle.toFixed(1))}°) = ${trimTrailingZeros(y.toFixed(4))}（${y >= 0 ? "上 base-up" : "下 base-down"}）
+- 自检：√(水平² + 垂直²) = ${trimTrailingZeros(Math.hypot(x, y).toFixed(2))} 应等于合棱镜大小 ${trimTrailingZeros(magnitude.toFixed(2))}。
+
+**说明**
+- base-in / base-out 以鼻子为参照，左右眼含义一致；临床 360° 基底角记法左右眼起算不同，使用时请结合是左眼还是右眼。
+- 处方棱镜通常按 0.25Δ 取整书写。
+- 本工具只做棱镜向量换算与科普，不替代验光与处方。`);
 }
 
 // Hofstetter 调节幅度经验公式系数（单位 D，随年龄线性下降）。

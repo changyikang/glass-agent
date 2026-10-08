@@ -36,7 +36,7 @@ selection, lens base-material selection, naked-eye clear-range
 (far-point / near-point) estimation, and near-vision acuity
 notation conversion.
 
-The project ships **two interchangeable implementations that share the same twenty-two
+The project ships **two interchangeable implementations that share the same twenty-three
 tools**, so you can adopt whichever fits your stack:
 
 | Implementation | Path | Best for |
@@ -46,7 +46,7 @@ tools**, so you can adopt whichever fits your stack:
 
 ### Features
 
-The twenty-two built-in tools:
+The twenty-three built-in tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -72,6 +72,7 @@ The twenty-two built-in tools:
 | `lens_material_advisor` | Recommends a lens base material (CR-39 / Trivex / PC / high-index 1.60·1.67·1.74 / glass) from prescription power, frame type (full-rim / half-rim / rimless), usage (general / kids / sports / safety / driving) and priority (balanced / thinnest / clarity / lightweight), weighing impact resistance, Abbe number (chromatic aberration), thickness and weight into a primary pick, alternatives and materials to avoid — forcing impact-resistant PC/Trivex for kids/sports/safety, favoring tough Trivex/PC for rimless drilling, and flagging low-Abbe halos for night driving; complements `lens_thickness_estimator` (thinness) and `lens_coating_advisor` (coatings) |
 | `clear_vision_range` | Estimates the range of distances the naked eye sees clearly (far point ↔ near point) from the uncorrected refractive error (spherical equivalent SE = SPH + CYL/2): a myope's far point = 100 ÷ power (cm) — beyond it blurs, nearer stays clear, which is why a myope sees a phone clearly with glasses off; an emmetrope is clear to infinity; a hyperope must spend accommodation to clear distance. Given age it derives accommodation amplitude via Hofstetter's average (18.5 − 0.30·age) to compute the near point and whether a hyperope can compensate; complements `accommodation_amplitude` |
 | `near_acuity_converter` | Converts a near-vision reading between the notations used on reading cards — M-units (standard; a 1M optotype subtends 5′ at 1 m), print point size (≈ M × 8) and a direct near-acuity decimal — at a given test distance (default 40 cm): near decimal = test distance (m) ÷ M, from which it derives the Snellen / logMAR / five-minute equivalents and an acuity level, plus a common near-acuity reference table (including an approximate Jaeger J column). Complements the distance-chart `visual_acuity_converter` |
+| `prism_resolver` | Prism vector math (Prentice). `combine` adds a horizontal (base-in / base-out) and a vertical (base-up / base-down) prism into a single resultant — magnitude = √(H² + V²) and a base-direction angle (convention: base-out 0°, up 90°, base-in 180°, down 270°, counterclockwise); `resolve` decomposes a resultant (magnitude + angle) back into its horizontal and vertical components. Uses base-in/out (nose-referenced, so unambiguous per eye) rather than the eye-specific 360° notation, and notes the 0.25 Δ prescription rounding |
 
 The Java agent adds **multi-turn intake**: pass a `conversationId` and it remembers
 the dialogue, so it asks the questions it needs, gives a fitting recommendation, and
@@ -81,7 +82,7 @@ attaches purchase links at the end.
 
 ```
                          ┌──────────────────────────────┐
-        MCP client       │   Twenty-two shared optical   │      REST client
+        MCP client       │  Twenty-three shared optical  │      REST client
    (Claude Desktop, …)   │             tools             │   (curl / your app)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │
@@ -205,9 +206,9 @@ Released under the [MIT License](LICENSE).
 
 ### 项目简介
 
-**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查、青少年近视防控、框架镜到隐形眼镜的度数换算、老花（近附加）度数估算、散光（正/负柱镜）记法转换、镜架尺寸与瞳距的适配评估、视力记录法换算、调节幅度评估、太阳镜镜片色号（过滤分类）选择、镜片材料（基材）选择、裸眼清晰视界（远点 / 近点）估算，以及近用视力（近视力表）记法换算。
+**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查、青少年近视防控、框架镜到隐形眼镜的度数换算、老花（近附加）度数估算、散光（正/负柱镜）记法转换、镜架尺寸与瞳距的适配评估、视力记录法换算、调节幅度评估、太阳镜镜片色号（过滤分类）选择、镜片材料（基材）选择、裸眼清晰视界（远点 / 近点）估算、近用视力（近视力表）记法换算，以及棱镜合成与分解（Prentice 向量运算）。
 
-项目提供 **两套可互换、共享同一组二十二个工具的实现**，你可以按技术栈选用：
+项目提供 **两套可互换、共享同一组二十三个工具的实现**，你可以按技术栈选用：
 
 | 实现方式 | 路径 | 适用场景 |
 | --- | --- | --- |
@@ -216,7 +217,7 @@ Released under the [MIT License](LICENSE).
 
 ### 功能
 
-内置二十二个工具：
+内置二十三个工具：
 
 | 工具 | 作用 |
 | --- | --- |
@@ -242,6 +243,7 @@ Released under the [MIT License](LICENSE).
 | `lens_material_advisor` | 按度数、镜框类型（全框 / 半框 / 无框）、使用场景（日常 / 儿童 / 运动 / 安全防护 / 驾驶）与取舍偏好（均衡 / 最薄 / 最清晰 / 最轻），在 CR-39、Trivex、PC、1.60 / 1.67 / 1.74 高折射树脂、玻璃之间推荐镜片基材，综合抗冲击、阿贝数（边缘色散）、厚度与重量给出首选 / 备选 / 不建议材料——儿童 / 运动 / 安全强制用抗冲击的 PC / Trivex、无框优先韧性好的 Trivex / PC、并对夜间驾驶提示低阿贝数色散/光晕；与 `lens_thickness_estimator`（减薄）、`lens_coating_advisor`（镀膜）互补 |
 | `clear_vision_range` | 按裸眼屈光度（含柱镜按等效球镜 SE = SPH + CYL/2）推算不戴镜能看清的距离范围（远点 ↔ 近点）：近视远点 = 100 ÷ 度数(cm)，远点以外模糊、近处却清楚——这正是「近视摘镜看手机反而清楚」的原因；正视清晰到无穷远；远视需动用调节力把焦点拉回。可选填年龄，按 Hofstetter 平均公式（18.5 − 0.30×年龄）估算调节力算出近点、判断远视能否代偿；与 `accommodation_amplitude` 互补 |
 | `near_acuity_converter` | 近用视力（近视力表）记法换算：在近视力卡常用的 M 记法（国际标准，1M 视标在 1m 处张角 5′）、印刷点数（≈ M × 8）、直接的近视力小数三种写法间换算，按测试距离（默认 40cm）算出该距离的近视力小数（= 测试距离m ÷ M），并推出 Snellen / logMAR / 五分等效与视力水平，附含 Jaeger（J 记法）近似的近视力对照表；与看远的 `visual_acuity_converter` 互补 |
+| `prism_resolver` | 棱镜合成与分解（Prentice 向量运算）：`combine` 把水平（基底朝鼻侧 base-in / 颞侧 base-out）与垂直（base-up / base-down）两个棱镜分量合成为单一合棱镜——大小 = √(水平² + 垂直²)，方向角（约定：颞侧 0°、上 90°、鼻侧 180°、下 270°，逆时针）；`resolve` 把合棱镜（大小 + 方向角）分解回水平、垂直分量。采用以鼻子为参照、左右眼含义一致的 base-in/out 表述（而非左右眼不同的 360° 记法），并提示 0.25Δ 处方取整 |
 
 Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可记住对话上下文，
 于是它会主动追问所需信息，给出配镜建议，并在最后附上购买链接。
@@ -250,7 +252,7 @@ Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可�
 
 ```
                          ┌──────────────────────────────┐
-       MCP 客户端         │      二十二个共享的配镜工具     │       REST 客户端
+       MCP 客户端         │     二十三个共享的配镜工具     │       REST 客户端
    (Claude Desktop 等)   │                              │   (curl / 你的应用)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │

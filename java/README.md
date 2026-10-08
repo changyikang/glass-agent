@@ -48,6 +48,7 @@
 - `lens_material_advisor`：按度数、镜框类型（全框 / 半框 / 无框）、使用场景（日常 / 儿童 / 运动 / 安全防护 / 驾驶）与取舍偏好，在 CR-39、Trivex、PC、1.60 / 1.67 / 1.74 高折射树脂、玻璃之间推荐镜片基材，综合抗冲击、阿贝数（边缘色散）、厚度与重量给出首选 / 备选 / 不建议材料，与 `lens_thickness_estimator`、`lens_coating_advisor` 互补
 - `clear_vision_range`：按裸眼屈光度（含柱镜按等效球镜 SE = SPH + CYL/2）推算不戴镜能看清的距离范围（远点 ↔ 近点）：近视远点 = 100 ÷ 度数(cm)，远点以外模糊、近处却清楚（即「近视摘镜看手机反而清楚」），正视清晰到无穷远，远视需动用调节力代偿；可选填年龄按 Hofstetter 平均公式估算调节力算出近点与远视代偿，与 `accommodation_amplitude` 互补
 - `near_acuity_converter`：近用视力（近视力表）记法换算——在 M 记法（1M 视标在 1m 处张角 5′）、印刷点数（≈ M × 8）、近视力小数三种写法间换算，按测试距离（默认 40cm）算出该距离的近视力小数（= 测试距离m ÷ M）并推出 Snellen / logMAR / 五分等效与对照表（含 Jaeger 近似），与看远的 `visual_acuity_converter` 互补
+- `prism_resolver`：棱镜合成与分解（Prentice 向量运算）——`combine` 把水平（base-in/out）与垂直（base-up/down）两个棱镜分量合成为单一合棱镜（大小 = √(水平² + 垂直²)，方向角：颞侧 0°、上 90°、鼻侧 180°、下 270°，逆时针）；`resolve` 把合棱镜（大小 + 方向角）分解回水平、垂直分量。采用以鼻子为参照、左右眼一致的 base-in/out 表述，提示 0.25Δ 处方取整
 
 ## 环境要求
 
@@ -212,6 +213,14 @@ curl -X POST http://localhost:8080/api/tools/near_acuity_converter \
   -d '{"notation":"m_unit","value":1.0,"testDistanceCm":40}'
 ```
 
+棱镜合成与分解（`mode` 取 `combine` / `resolve`；combine 填 `horizontal`+`horizontalBase`(in/out) 与 `vertical`+`verticalBase`(up/down)，resolve 填 `magnitude`+`angle`）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/prism_resolver \
+  -H 'Content-Type: application/json' \
+  -d '{"mode":"combine","horizontal":3,"horizontalBase":"out","vertical":4,"verticalBase":"up"}'
+```
+
 查看 / 清空工具调用历史（进程内保存最近 50 次，最新在前）：
 
 ```bash
@@ -241,7 +250,7 @@ java/
 └── src/main/java/com/glass/agent/
     ├── GlassAgentApplication.java      # 启动类
     ├── tool/
-    │   ├── GlassAdvisorTools.java      # 22 个工具的业务逻辑 + @Tool 注解
+    │   ├── GlassAdvisorTools.java      # 23 个工具的业务逻辑 + @Tool 注解
     │   ├── ToolCallHistory.java        # 进程内工具调用历史（最近 50 次）
     │   └── Diopters.java               # 度数格式化帮助函数
     ├── agent/

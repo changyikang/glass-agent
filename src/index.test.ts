@@ -35,7 +35,77 @@ test("exports the expected MCP tool set", () => {
     "lens_material_advisor",
     "clear_vision_range",
     "near_acuity_converter",
+    "prism_resolver",
   ]);
+});
+
+test("prism resolver combine: 3Δ out + 4Δ up → 5Δ at 53.1°", () => {
+  const tool = getTool("prism_resolver");
+  const result = tool.handler({
+    mode: "combine",
+    horizontal: 3,
+    horizontal_base: "out",
+    vertical: 4,
+    vertical_base: "up",
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // 3-4-5 直角三角形：合棱镜 5Δ，角度 atan2(4,3)=53.1°，基底颞侧偏上。
+  assert.match(text, /合棱镜大小：\*\*5Δ\*\*/);
+  assert.match(text, /方向角：\*\*53\.1°\*\*/);
+  assert.match(text, /基底方向：\*\*颞侧\(base-out\) 偏 上方\(base-up\)\*\*/);
+});
+
+test("prism resolver combine: base-in + base-down lands in the 180–270° quadrant", () => {
+  const tool = getTool("prism_resolver");
+  const result = tool.handler({
+    mode: "combine",
+    horizontal: 1,
+    horizontal_base: "in",
+    vertical: 1,
+    vertical_base: "down",
+  });
+
+  const text = result.content[0].text;
+  // atan2(-1,-1) = 225°
+  assert.match(text, /方向角：\*\*225°\*\*/);
+  assert.match(text, /基底方向：\*\*鼻侧\(base-in\) 偏 下方\(base-down\)\*\*/);
+});
+
+test("prism resolver resolve: 5Δ at 53.13° → ~3Δ out + ~4Δ up (round-trips combine)", () => {
+  const tool = getTool("prism_resolver");
+  const result = tool.handler({ mode: "resolve", magnitude: 5, angle: 53.13 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /水平分量：\*\*3Δ\*\* 基底朝颞侧\(base-out\)/);
+  assert.match(text, /垂直分量：\*\*4Δ\*\* 基底朝上\(base-up\)/);
+});
+
+test("prism resolver resolve: 90° is a pure vertical (base-up) prism", () => {
+  const tool = getTool("prism_resolver");
+  const result = tool.handler({ mode: "resolve", magnitude: 2.5, angle: 90 });
+
+  const text = result.content[0].text;
+  assert.match(text, /水平分量：\*\*0\*\*（纯垂直棱镜）/);
+  assert.match(text, /垂直分量：\*\*2\.5Δ\*\* 基底朝上\(base-up\)/);
+});
+
+test("prism resolver combine requires a base direction for a non-zero component", () => {
+  const tool = getTool("prism_resolver");
+  assert.throws(
+    () => tool.handler({ mode: "combine", horizontal: 2 }),
+    /horizontal_base/
+  );
+});
+
+test("prism resolver combine rejects two zero components", () => {
+  const tool = getTool("prism_resolver");
+  assert.throws(
+    () => tool.handler({ mode: "combine", horizontal: 0, vertical: 0 }),
+    /至少提供一个非零分量/
+  );
 });
 
 test("near acuity converter: reading 1M at 40cm is 0.4 decimal (20/50)", () => {

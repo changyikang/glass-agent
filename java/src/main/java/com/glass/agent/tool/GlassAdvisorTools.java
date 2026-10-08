@@ -2669,6 +2669,180 @@ public class GlassAdvisorTools {
                 POINT_PER_M_UNIT);
     }
 
+    @Tool(description = "棱镜合成与分解（Prentice 棱镜向量运算）：处方棱镜可拆成水平（基底朝鼻侧 base-in / 颞侧 base-out）与"
+            + "垂直（基底朝上 base-up / 下 base-down）两个分量，按向量相加。两种模式：combine 把水平+垂直分量合成为单一"
+            + "「合棱镜」（大小 Δ 与基底方向角）；resolve 把合棱镜（大小+方向角）分解回水平、垂直分量。合成大小 = √(水平² + 垂直²)；"
+            + "方向角约定「颞侧(base-out)=0°、上=90°、鼻侧(base-in)=180°、下=270°，逆时针」。仅做棱镜换算与科普，不替代验光与处方。")
+    public String prismResolver(
+            @ToolParam(description = "模式：combine(把水平+垂直分量合成为合棱镜) / resolve(把合棱镜分解为水平+垂直分量)。")
+            String mode,
+            @ToolParam(required = false, description = "【combine】水平棱镜大小，单位Δ（≥0）；为 0 或不填表示无水平分量。范围 0–50。")
+            Double horizontal,
+            @ToolParam(required = false, description = "【combine】水平棱镜基底方向：in=鼻侧(base-in)，out=颞侧(base-out)。"
+                    + "horizontal>0 时必填。") String horizontalBase,
+            @ToolParam(required = false, description = "【combine】垂直棱镜大小，单位Δ（≥0）；为 0 或不填表示无垂直分量。范围 0–50。")
+            Double vertical,
+            @ToolParam(required = false, description = "【combine】垂直棱镜基底方向：up=上(base-up)，down=下(base-down)。"
+                    + "vertical>0 时必填。") String verticalBase,
+            @ToolParam(required = false, description = "【resolve】合棱镜大小，单位Δ（>0）。范围 0.01–50。") Double magnitude,
+            @ToolParam(required = false, description = "【resolve】合棱镜方向角，单位度（0–360）。约定：颞侧 base-out=0°、上=90°、"
+                    + "鼻侧 base-in=180°、下=270°，逆时针为正。") Double angle) {
+
+        expectEnum("mode", mode, "combine", "resolve");
+        return "combine".equals(mode)
+                ? prismCombine(horizontal, horizontalBase, vertical, verticalBase)
+                : prismResolve(magnitude, angle);
+    }
+
+    private String prismCombine(Double horizontal, String horizontalBase, Double vertical, String verticalBase) {
+        double hz = horizontal == null ? 0 : horizontal;
+        double vt = vertical == null ? 0 : vertical;
+        if (horizontal != null) {
+            checkRange("horizontal", hz, 0, 50);
+        }
+        if (vertical != null) {
+            checkRange("vertical", vt, 0, 50);
+        }
+        if (horizontalBase != null) {
+            expectEnum("horizontal_base", horizontalBase, "in", "out");
+        }
+        if (verticalBase != null) {
+            expectEnum("vertical_base", verticalBase, "up", "down");
+        }
+        if (hz == 0 && vt == 0) {
+            throw new IllegalArgumentException("水平与垂直棱镜不能同时为 0，至少提供一个非零分量");
+        }
+        if (hz > 0 && horizontalBase == null) {
+            throw new IllegalArgumentException("提供水平棱镜时必须指定基底方向 horizontal_base（in=鼻侧 / out=颞侧）");
+        }
+        if (vt > 0 && verticalBase == null) {
+            throw new IllegalArgumentException("提供垂直棱镜时必须指定基底方向 vertical_base（up=上 / down=下）");
+        }
+
+        // x：颞侧(base-out)为正、鼻侧(base-in)为负；y：上(base-up)为正、下(base-down)为负。
+        double x = hz * ("in".equals(horizontalBase) ? -1 : 1);
+        double y = vt * ("down".equals(verticalBase) ? -1 : 1);
+        double magnitude = Math.hypot(x, y);
+        double angle = Math.toDegrees(Math.atan2(y, x));
+        if (angle < 0) {
+            angle += 360;
+        }
+        double roundedMag = roundToStep(magnitude, PRISM_STEP);
+
+        List<String> inputParts = new ArrayList<>();
+        if (hz > 0) {
+            inputParts.add("水平 " + formatPrism(hz) + " 基底朝"
+                    + ("in".equals(horizontalBase) ? "鼻侧(base-in)" : "颞侧(base-out)"));
+        }
+        if (vt > 0) {
+            inputParts.add("垂直 " + formatPrism(vt) + " 基底朝"
+                    + ("up".equals(verticalBase) ? "上(base-up)" : "下(base-down)"));
+        }
+
+        boolean bothNonZero = hz > 0 && vt > 0;
+        List<String> notes = new ArrayList<>();
+        if (bothNonZero) {
+            notes.add("合成大小 = √(" + trimNumber(round2(hz)) + "² + " + trimNumber(round2(vt)) + "²) = "
+                    + trim4(magnitude) + " ≈ **" + formatPrism(magnitude) + "**。");
+            notes.add("方向角 = atan2(" + trimNumber(round2(y)) + ", " + trimNumber(round2(x)) + ") = **"
+                    + trimNumber(round1(angle)) + "°**（约定：颞侧=0°、上=90°、鼻侧=180°、下=270°，逆时针）。");
+            notes.add("写处方多把斜向棱镜拆成水平 + 垂直两项分别书写（即此处的输入），合棱镜主要用于理解实际的棱镜方向与总量。");
+        } else {
+            notes.add("只有单一方向的分量，合棱镜大小与方向即等于该分量本身。");
+        }
+
+        return """
+                ## 棱镜合成（水平 + 垂直 → 合棱镜）
+
+                > 处方棱镜可拆成水平分量（基底朝鼻侧 base-in / 颞侧 base-out）与垂直分量（基底朝上 base-up / 下 base-down），两者按**向量相加**。合棱镜大小 = √(水平² + 垂直²)，方向角按「颞侧=0°、上=90°、鼻侧=180°、下=270°，逆时针」几何约定度量。
+
+                **输入**
+                - %s
+
+                **合成结果**
+                - 合棱镜大小：**%s**（取 0.25Δ 步进约 %s）
+                - 方向角：**%s°**
+                - 基底方向：**%s**
+
+                **计算过程**
+                %s
+
+                **说明**
+                - base-in / base-out 以鼻子为参照，左右眼含义一致，不存在歧义；而临床 360° 基底角记法左右眼起算方向不同，故此处改用 in/out/up/down 分量 + 本工具的几何角一并表述。
+                - 实际书写处方时棱镜多按 0.25Δ 取整；分别标注水平与垂直分量比只写合棱镜更不易出错。
+                - 本工具只做棱镜向量换算与科普，不替代验光与处方，棱镜处方须由专业人员开具。""".formatted(
+                String.join("\n- ", inputParts),
+                formatPrism(magnitude),
+                formatPrism(roundedMag),
+                trimNumber(round1(angle)),
+                describePrismBase(x, y),
+                bulletJoin(notes));
+    }
+
+    private String prismResolve(Double magnitude, Double angle) {
+        if (magnitude == null) {
+            throw new IllegalArgumentException("resolve 模式必须提供合棱镜大小 magnitude");
+        }
+        if (angle == null) {
+            throw new IllegalArgumentException("resolve 模式必须提供方向角 angle");
+        }
+        checkRange("magnitude", magnitude, 0.01, 50);
+        checkRange("angle", angle, 0, 360);
+
+        double rad = Math.toRadians(angle);
+        double x = magnitude * Math.cos(rad); // 颞侧为正
+        double y = magnitude * Math.sin(rad); // 上为正
+        double horizontal = Math.abs(x);
+        double vertical = Math.abs(y);
+
+        String hzLine = horizontal < PRISM_COMPONENT_EPSILON
+                ? "水平分量：**0**（纯垂直棱镜）"
+                : "水平分量：**" + formatPrism(horizontal) + "** 基底朝" + (x > 0 ? "颞侧(base-out)" : "鼻侧(base-in)")
+                        + "（取 0.25Δ 步进约 " + formatPrism(roundToStep(horizontal, PRISM_STEP)) + "）";
+        String vtLine = vertical < PRISM_COMPONENT_EPSILON
+                ? "垂直分量：**0**（纯水平棱镜）"
+                : "垂直分量：**" + formatPrism(vertical) + "** 基底朝" + (y > 0 ? "上(base-up)" : "下(base-down)")
+                        + "（取 0.25Δ 步进约 " + formatPrism(roundToStep(vertical, PRISM_STEP)) + "）";
+
+        return """
+                ## 棱镜分解（合棱镜 → 水平 + 垂直）
+
+                > 把一个斜向的合棱镜按方向角分解回水平、垂直两个分量，便于磨房分别加工或书写处方。水平分量 = 大小 × cos(角度)，垂直分量 = 大小 × sin(角度)；角度约定「颞侧=0°、上=90°、鼻侧=180°、下=270°，逆时针」。
+
+                **输入**
+                - 合棱镜大小：%s
+                - 方向角：%s°（基底朝 %s）
+
+                **分解结果**
+                - %s
+                - %s
+
+                **计算过程**
+                - 水平 = %s × cos(%s°) = %s（%s）
+                - 垂直 = %s × sin(%s°) = %s（%s）
+                - 自检：√(水平² + 垂直²) = %s 应等于合棱镜大小 %s。
+
+                **说明**
+                - base-in / base-out 以鼻子为参照，左右眼含义一致；临床 360° 基底角记法左右眼起算不同，使用时请结合是左眼还是右眼。
+                - 处方棱镜通常按 0.25Δ 取整书写。
+                - 本工具只做棱镜向量换算与科普，不替代验光与处方。""".formatted(
+                formatPrism(magnitude),
+                trimNumber(round1(angle)),
+                describePrismBase(x, y),
+                hzLine,
+                vtLine,
+                formatPrism(magnitude),
+                trimNumber(round1(angle)),
+                trim4(x),
+                x >= 0 ? "颞侧 base-out" : "鼻侧 base-in",
+                formatPrism(magnitude),
+                trimNumber(round1(angle)),
+                trim4(y),
+                y >= 0 ? "上 base-up" : "下 base-down",
+                trimNumber(round2(Math.hypot(x, y))),
+                trimNumber(round2(magnitude)));
+    }
+
     /** 把距离(cm)渲染为易读文本：≥100cm 时同时给出米，保留一位小数去尾零。 */
     private static String formatRangeDistance(double distanceCm) {
         String cm = format1Trim(distanceCm) + " cm";
@@ -2749,6 +2923,42 @@ public class GlassAdvisorTools {
     /** 四舍五入到两位小数。 */
     private static double round2(double value) {
         return Math.round(value * 100.0) / 100.0;
+    }
+
+    // 低于该阈值的棱镜分量视为 0，避免浮点误差把 90°/180° 等纯方向算出极小的杂散分量。
+    private static final double PRISM_COMPONENT_EPSILON = 0.005;
+    // 处方棱镜常用的最小步进（Δ），用于给出便于书写的取整值。
+    private static final double PRISM_STEP = 0.25;
+
+    /** 棱镜值展示：保留两位小数去尾零并附单位 Δ。 */
+    private static String formatPrism(double value) {
+        return trimNumber(round2(value)) + "Δ";
+    }
+
+    /** 按指定步进四舍五入取整。 */
+    private static double roundToStep(double value, double step) {
+        return Math.round(value / step) * step;
+    }
+
+    /** 保留四位小数去尾零（用于展示合成/分解的中间计算值）。 */
+    private static String trim4(double value) {
+        return Diopters.trimTrailingZeros(String.format("%.4f", value));
+    }
+
+    /** 由有符号分量 (x=颞侧为正, y=上为正) 给出中文基底方向描述。 */
+    private static String describePrismBase(double x, double y) {
+        String hz = Math.abs(x) < PRISM_COMPONENT_EPSILON ? "" : x > 0 ? "颞侧(base-out)" : "鼻侧(base-in)";
+        String vt = Math.abs(y) < PRISM_COMPONENT_EPSILON ? "" : y > 0 ? "上方(base-up)" : "下方(base-down)";
+        if (!hz.isEmpty() && !vt.isEmpty()) {
+            return hz + " 偏 " + vt;
+        }
+        if (!hz.isEmpty()) {
+            return hz;
+        }
+        if (!vt.isEmpty()) {
+            return vt;
+        }
+        return "无（棱镜为 0）";
     }
 
     /** 轴位转换：转换柱镜正负号时，轴位旋转 90°，并归一化到 (0, 180]。 */

@@ -66,7 +66,8 @@ public class ToolController {
                 tool("sunglass_tint_guide", "太阳镜镜片色号（透光率）与颜色选择：按用光环境推荐 ISO 12312-1 的 0–4 类过滤分类与 VLT，结合是否畏光/驾驶/带度数给出镜片颜色（灰/茶棕/墨绿/黄琥珀）、偏光、变色片建议，并提醒镜片深浅≠防紫外线，任何太阳镜都应达到 UV400。"),
                 tool("lens_material_advisor", "镜片材料（基材）选择顾问：按度数、镜框类型（全框/半框/无框）、使用场景（日常/儿童/运动/安全防护/驾驶）与取舍偏好，在 CR-39、Trivex、PC、1.60/1.67/1.74 高折射树脂、玻璃之间推荐基材，综合抗冲击、阿贝数、厚度与重量给出首选/备选/不建议材料，与 lens_thickness_estimator、lens_coating_advisor 互补。"),
                 tool("clear_vision_range", "裸眼清晰视界估算（远点/近点）：按裸眼屈光度（含柱镜按等效球镜）推算不戴镜能看清的距离范围——近视远点=100÷度数(cm)，远点外看远模糊却能看清近处；可选填年龄按 Hofstetter 平均公式估算调节力算出近点与远视代偿，解释「为什么近视的人摘镜看手机反而清楚」。"),
-                tool("near_acuity_converter", "近用视力（近视力表）记法换算：在 M 记法、印刷点数(pt)、近视力小数三种写法间换算，并给出 Snellen/logMAR/五分等效与含 Jaeger 的近视力对照表（小数=测试距离m÷M，点数≈M×8）。"));
+                tool("near_acuity_converter", "近用视力（近视力表）记法换算：在 M 记法、印刷点数(pt)、近视力小数三种写法间换算，并给出 Snellen/logMAR/五分等效与含 Jaeger 的近视力对照表（小数=测试距离m÷M，点数≈M×8）。"),
+                tool("prism_resolver", "棱镜合成与分解（Prentice 向量运算）：combine 把水平(base-in/out)+垂直(base-up/down)分量合成为单一合棱镜（大小√(h²+v²)与方向角），resolve 把合棱镜按方向角分解回水平、垂直分量。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -203,6 +204,13 @@ public class ToolController {
                 () -> tools.nearAcuityConverter(req.notation(), req.value(), req.testDistanceCm()));
     }
 
+    @PostMapping("/prism_resolver")
+    public ToolResponse prismResolver(@RequestBody PrismResolverRequest req) {
+        return run("prism_resolver", req,
+                () -> tools.prismResolver(req.mode(), req.horizontal(), req.horizontalBase(),
+                        req.vertical(), req.verticalBase(), req.magnitude(), req.angle()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -288,5 +296,10 @@ public class ToolController {
     }
 
     public record NearAcuityRequest(String notation, double value, Double testDistanceCm) {
+    }
+
+    public record PrismResolverRequest(String mode, Double horizontal, String horizontalBase,
+                                       Double vertical, String verticalBase,
+                                       Double magnitude, Double angle) {
     }
 }

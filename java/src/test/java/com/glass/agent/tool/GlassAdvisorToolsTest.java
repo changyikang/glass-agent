@@ -661,4 +661,56 @@ class GlassAdvisorToolsTest {
                 () -> tools.nearAcuityConverter("m_unit", 50, null));
         assertTrue(ex.getMessage().contains("M 记法"));
     }
+
+    @Test
+    void prismResolverCombinesThreeAndFourIntoFiveAt53Degrees() {
+        // 3-4-5 直角三角形：合棱镜 5Δ，角度 atan2(4,3)=53.1°，基底颞侧偏上。
+        String result = tools.prismResolver("combine", 3.0, "out", 4.0, "up", null, null);
+        assertTrue(result.contains("合棱镜大小：**5Δ**"));
+        assertTrue(result.contains("方向角：**53.1°**"));
+        assertTrue(result.contains("基底方向：**颞侧(base-out) 偏 上方(base-up)**"));
+    }
+
+    @Test
+    void prismResolverCombineBaseInAndDownLandsInThirdQuadrant() {
+        // atan2(-1,-1) = 225°
+        String result = tools.prismResolver("combine", 1.0, "in", 1.0, "down", null, null);
+        assertTrue(result.contains("方向角：**225°**"));
+        assertTrue(result.contains("基底方向：**鼻侧(base-in) 偏 下方(base-down)**"));
+    }
+
+    @Test
+    void prismResolverResolvesFiveAt53BackIntoThreeAndFour() {
+        String result = tools.prismResolver("resolve", null, null, null, null, 5.0, 53.13);
+        assertTrue(result.contains("水平分量：**3Δ** 基底朝颞侧(base-out)"));
+        assertTrue(result.contains("垂直分量：**4Δ** 基底朝上(base-up)"));
+    }
+
+    @Test
+    void prismResolverResolveNinetyDegreesIsPureVertical() {
+        String result = tools.prismResolver("resolve", null, null, null, null, 2.5, 90.0);
+        assertTrue(result.contains("水平分量：**0**（纯垂直棱镜）"));
+        assertTrue(result.contains("垂直分量：**2.5Δ** 基底朝上(base-up)"));
+    }
+
+    @Test
+    void prismResolverCombineRequiresBaseForNonZeroComponent() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.prismResolver("combine", 2.0, null, null, null, null, null));
+        assertTrue(ex.getMessage().contains("horizontal_base"));
+    }
+
+    @Test
+    void prismResolverCombineRejectsTwoZeroComponents() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.prismResolver("combine", 0.0, null, 0.0, null, null, null));
+        assertTrue(ex.getMessage().contains("至少提供一个非零分量"));
+    }
+
+    @Test
+    void prismResolverRejectsUnknownMode() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.prismResolver("bogus", null, null, null, null, null, null));
+        assertTrue(ex.getMessage().contains("mode"));
+    }
 }
