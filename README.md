@@ -33,10 +33,11 @@ estimation, cylinder (plus/minus) prescription transposition,
 frame-size-to-PD fit checking, visual-acuity notation conversion,
 accommodation-amplitude estimation, sunglass tint (filter-category)
 selection, lens base-material selection, naked-eye clear-range
-(far-point / near-point) estimation, and near-vision acuity
-notation conversion.
+(far-point / near-point) estimation, near-vision acuity
+notation conversion, prism vector math, and astigmatism-type
+classification.
 
-The project ships **two interchangeable implementations that share the same twenty-three
+The project ships **two interchangeable implementations that share the same twenty-four
 tools**, so you can adopt whichever fits your stack:
 
 | Implementation | Path | Best for |
@@ -46,7 +47,7 @@ tools**, so you can adopt whichever fits your stack:
 
 ### Features
 
-The twenty-three built-in tools:
+The twenty-four built-in tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -73,6 +74,7 @@ The twenty-three built-in tools:
 | `clear_vision_range` | Estimates the range of distances the naked eye sees clearly (far point ↔ near point) from the uncorrected refractive error (spherical equivalent SE = SPH + CYL/2): a myope's far point = 100 ÷ power (cm) — beyond it blurs, nearer stays clear, which is why a myope sees a phone clearly with glasses off; an emmetrope is clear to infinity; a hyperope must spend accommodation to clear distance. Given age it derives accommodation amplitude via Hofstetter's average (18.5 − 0.30·age) to compute the near point and whether a hyperope can compensate; complements `accommodation_amplitude` |
 | `near_acuity_converter` | Converts a near-vision reading between the notations used on reading cards — M-units (standard; a 1M optotype subtends 5′ at 1 m), print point size (≈ M × 8) and a direct near-acuity decimal — at a given test distance (default 40 cm): near decimal = test distance (m) ÷ M, from which it derives the Snellen / logMAR / five-minute equivalents and an acuity level, plus a common near-acuity reference table (including an approximate Jaeger J column). Complements the distance-chart `visual_acuity_converter` |
 | `prism_resolver` | Prism vector math (Prentice). `combine` adds a horizontal (base-in / base-out) and a vertical (base-up / base-down) prism into a single resultant — magnitude = √(H² + V²) and a base-direction angle (convention: base-out 0°, up 90°, base-in 180°, down 270°, counterclockwise); `resolve` decomposes a resultant (magnitude + angle) back into its horizontal and vertical components. Uses base-in/out (nose-referenced, so unambiguous per eye) rather than the eye-specific 360° notation, and notes the 0.25 Δ prescription rounding |
+| `astigmatism_type_guide` | Classifies an astigmatic prescription by **refractive type** — from the signs of the two principal-meridian powers (P₁ = SPH, P₂ = SPH + CYL): both minus → compound myopic, both plus → compound hyperopic, one plano → simple myopic/hyperopic, opposite signs → mixed — and by **axis rule** from the minus-cylinder axis (±30° window: 0–30°/150–180° with-the-rule, 60–120° against-the-rule, else oblique), transposing a plus-cyl input first so the verdict is notation-independent. Reports both principal meridians, the spherical equivalent and rule-specific adaptation notes; complements `prescription_interpreter` and `prescription_transpose` |
 
 The Java agent adds **multi-turn intake**: pass a `conversationId` and it remembers
 the dialogue, so it asks the questions it needs, gives a fitting recommendation, and
@@ -82,7 +84,7 @@ attaches purchase links at the end.
 
 ```
                          ┌──────────────────────────────┐
-        MCP client       │  Twenty-three shared optical  │      REST client
+        MCP client       │  Twenty-four shared optical   │      REST client
    (Claude Desktop, …)   │             tools             │   (curl / your app)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │
@@ -206,9 +208,9 @@ Released under the [MIT License](LICENSE).
 
 ### 项目简介
 
-**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查、青少年近视防控、框架镜到隐形眼镜的度数换算、老花（近附加）度数估算、散光（正/负柱镜）记法转换、镜架尺寸与瞳距的适配评估、视力记录法换算、调节幅度评估、太阳镜镜片色号（过滤分类）选择、镜片材料（基材）选择、裸眼清晰视界（远点 / 近点）估算、近用视力（近视力表）记法换算，以及棱镜合成与分解（Prentice 向量运算）。
+**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查、青少年近视防控、框架镜到隐形眼镜的度数换算、老花（近附加）度数估算、散光（正/负柱镜）记法转换、镜架尺寸与瞳距的适配评估、视力记录法换算、调节幅度评估、太阳镜镜片色号（过滤分类）选择、镜片材料（基材）选择、裸眼清晰视界（远点 / 近点）估算、近用视力（近视力表）记法换算、棱镜合成与分解（Prentice 向量运算），以及散光类型判定。
 
-项目提供 **两套可互换、共享同一组二十三个工具的实现**，你可以按技术栈选用：
+项目提供 **两套可互换、共享同一组二十四个工具的实现**，你可以按技术栈选用：
 
 | 实现方式 | 路径 | 适用场景 |
 | --- | --- | --- |
@@ -217,7 +219,7 @@ Released under the [MIT License](LICENSE).
 
 ### 功能
 
-内置二十三个工具：
+内置二十四个工具：
 
 | 工具 | 作用 |
 | --- | --- |
@@ -244,6 +246,7 @@ Released under the [MIT License](LICENSE).
 | `clear_vision_range` | 按裸眼屈光度（含柱镜按等效球镜 SE = SPH + CYL/2）推算不戴镜能看清的距离范围（远点 ↔ 近点）：近视远点 = 100 ÷ 度数(cm)，远点以外模糊、近处却清楚——这正是「近视摘镜看手机反而清楚」的原因；正视清晰到无穷远；远视需动用调节力把焦点拉回。可选填年龄，按 Hofstetter 平均公式（18.5 − 0.30×年龄）估算调节力算出近点、判断远视能否代偿；与 `accommodation_amplitude` 互补 |
 | `near_acuity_converter` | 近用视力（近视力表）记法换算：在近视力卡常用的 M 记法（国际标准，1M 视标在 1m 处张角 5′）、印刷点数（≈ M × 8）、直接的近视力小数三种写法间换算，按测试距离（默认 40cm）算出该距离的近视力小数（= 测试距离m ÷ M），并推出 Snellen / logMAR / 五分等效与视力水平，附含 Jaeger（J 记法）近似的近视力对照表；与看远的 `visual_acuity_converter` 互补 |
 | `prism_resolver` | 棱镜合成与分解（Prentice 向量运算）：`combine` 把水平（基底朝鼻侧 base-in / 颞侧 base-out）与垂直（base-up / base-down）两个棱镜分量合成为单一合棱镜——大小 = √(水平² + 垂直²)，方向角（约定：颞侧 0°、上 90°、鼻侧 180°、下 270°，逆时针）；`resolve` 把合棱镜（大小 + 方向角）分解回水平、垂直分量。采用以鼻子为参照、左右眼含义一致的 base-in/out 表述（而非左右眼不同的 360° 记法），并提示 0.25Δ 处方取整 |
+| `astigmatism_type_guide` | 散光类型判定：按两条主子午线光度（P₁ = SPH、P₂ = SPH + CYL）的正负判定**屈光类型**（都为负→复性近视散光、都为正→复性远视散光、一条平光→单纯近视/远视散光、一正一负→混合散光），按**负柱镜轴位**（±30° 窗口：0–30°/150–180° 顺规、60–120° 逆规、其余斜轴）判定**轴向规则**，正柱镜输入会先转成负柱镜轴位以保证与记法无关。报出两条主子午线、等效球镜与按轴向规则给出的适应提示，与 `prescription_interpreter`、`prescription_transpose` 互补 |
 
 Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可记住对话上下文，
 于是它会主动追问所需信息，给出配镜建议，并在最后附上购买链接。
@@ -252,7 +255,7 @@ Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可�
 
 ```
                          ┌──────────────────────────────┐
-       MCP 客户端         │     二十三个共享的配镜工具     │       REST 客户端
+       MCP 客户端         │     二十四个共享的配镜工具     │       REST 客户端
    (Claude Desktop 等)   │                              │   (curl / 你的应用)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │

@@ -36,6 +36,7 @@ test("exports the expected MCP tool set", () => {
     "clear_vision_range",
     "near_acuity_converter",
     "prism_resolver",
+    "astigmatism_type_guide",
   ]);
 });
 
@@ -541,6 +542,70 @@ test("prescription transpose reports that a pure sphere has no cylinder form", (
 test("prescription transpose requires an axis when there is cylinder", () => {
   const tool = getTool("prescription_transpose");
   assert.throws(() => tool.handler({ sph: -2, cyl: -0.75 }), /轴位/);
+});
+
+test("astigmatism type guide: both meridians minus at axis 180 → compound myopic, with-the-rule", () => {
+  const tool = getTool("astigmatism_type_guide");
+  const result = tool.handler({ sph: -2, cyl: -1, axis: 180 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // 主子午线：-2.00 @180、-3.00 @90，两条都为负 → 复性近视散光
+  assert.match(text, /屈光类型：\*\*复性近视散光/);
+  assert.match(text, /轴向规则：\*\*顺规散光/);
+  assert.match(text, /沿轴位 180° 方向：光度 -2D/);
+  assert.match(text, /沿 90° 方向.*光度 -3D/);
+});
+
+test("astigmatism type guide: one plano and one plus meridian → simple hyperopic", () => {
+  const tool = getTool("astigmatism_type_guide");
+  const result = tool.handler({ sph: 0, cyl: 1.5, axis: 90 });
+
+  const text = result.content[0].text;
+  // p1=0 @90, p2=+1.50 @180 → 单纯远视散光
+  assert.match(text, /屈光类型：\*\*单纯远视散光/);
+});
+
+test("astigmatism type guide: opposite-sign meridians → mixed astigmatism", () => {
+  const tool = getTool("astigmatism_type_guide");
+  const result = tool.handler({ sph: 1, cyl: -3, axis: 90 });
+
+  const text = result.content[0].text;
+  // p1=+1.00 @90, p2=-2.00 @180 → 混合散光；负柱镜轴位 90° → 逆规
+  assert.match(text, /屈光类型：\*\*混合散光/);
+  assert.match(text, /轴向规则：\*\*逆规散光/);
+});
+
+test("astigmatism type guide: rule is notation-independent (plus-cyl input transposes to minus axis)", () => {
+  const tool = getTool("astigmatism_type_guide");
+  // -3.00 / -1.00 x 180 等价写法为 -4.00 / +1.00 x 90；两者判定应一致（复性近视 + 顺规）
+  const minus = tool.handler({ sph: -3, cyl: -1, axis: 180 });
+  const plus = tool.handler({ sph: -4, cyl: 1, axis: 90 });
+
+  for (const text of [minus.content[0].text, plus.content[0].text]) {
+    assert.match(text, /屈光类型：\*\*复性近视散光/);
+    assert.match(text, /轴向规则：\*\*顺规散光/);
+  }
+});
+
+test("astigmatism type guide: oblique axis is flagged", () => {
+  const tool = getTool("astigmatism_type_guide");
+  const result = tool.handler({ sph: -1, cyl: -0.75, axis: 45 });
+
+  assert.match(result.content[0].text, /轴向规则：\*\*斜轴散光/);
+});
+
+test("astigmatism type guide: no cylinder means no astigmatism", () => {
+  const tool = getTool("astigmatism_type_guide");
+  const result = tool.handler({ sph: -3, cyl: 0 });
+
+  assert.equal(result.isError, undefined);
+  assert.match(result.content[0].text, /无散光/);
+});
+
+test("astigmatism type guide requires an axis when there is cylinder", () => {
+  const tool = getTool("astigmatism_type_guide");
+  assert.throws(() => tool.handler({ sph: -2, cyl: -1 }), /轴位/);
 });
 
 test("reading add estimator gives a typical add for a 50-year-old at 40cm and computes near total", () => {

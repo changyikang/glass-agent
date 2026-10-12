@@ -713,4 +713,59 @@ class GlassAdvisorToolsTest {
                 () -> tools.prismResolver("bogus", null, null, null, null, null, null));
         assertTrue(ex.getMessage().contains("mode"));
     }
+
+    @Test
+    void astigmatismTypeGuideBothMinusMeridiansIsCompoundMyopicWithTheRule() {
+        // 主子午线：-2.00 @180、-3.00 @90，两条都为负 → 复性近视散光；负柱镜轴位 180° → 顺规
+        String result = tools.astigmatismTypeGuide(-2, -1, 180);
+        assertTrue(result.contains("屈光类型：**复性近视散光"));
+        assertTrue(result.contains("轴向规则：**顺规散光"));
+        assertTrue(result.contains("沿轴位 180° 方向：光度 -2D"));
+        assertTrue(result.contains("沿 90° 方向"));
+    }
+
+    @Test
+    void astigmatismTypeGuidePlanoAndPlusMeridianIsSimpleHyperopic() {
+        // p1=0 @90, p2=+1.50 @180 → 单纯远视散光
+        String result = tools.astigmatismTypeGuide(0, 1.5, 90);
+        assertTrue(result.contains("屈光类型：**单纯远视散光"));
+    }
+
+    @Test
+    void astigmatismTypeGuideOppositeSignsIsMixedAgainstTheRule() {
+        // p1=+1.00 @90, p2=-2.00 @180 → 混合散光；负柱镜轴位 90° → 逆规
+        String result = tools.astigmatismTypeGuide(1, -3, 90);
+        assertTrue(result.contains("屈光类型：**混合散光"));
+        assertTrue(result.contains("轴向规则：**逆规散光"));
+    }
+
+    @Test
+    void astigmatismTypeGuideIsNotationIndependent() {
+        // -3.00 / -1.00 x 180 等价写法为 -4.00 / +1.00 x 90，两者判定应一致
+        String minus = tools.astigmatismTypeGuide(-3, -1, 180);
+        String plus = tools.astigmatismTypeGuide(-4, 1, 90);
+        for (String result : new String[] {minus, plus}) {
+            assertTrue(result.contains("屈光类型：**复性近视散光"));
+            assertTrue(result.contains("轴向规则：**顺规散光"));
+        }
+    }
+
+    @Test
+    void astigmatismTypeGuideFlagsObliqueAxis() {
+        String result = tools.astigmatismTypeGuide(-1, -0.75, 45);
+        assertTrue(result.contains("轴向规则：**斜轴散光"));
+    }
+
+    @Test
+    void astigmatismTypeGuideReportsNoAstigmatismWhenCylinderZero() {
+        String result = tools.astigmatismTypeGuide(-3, 0, null);
+        assertTrue(result.contains("无散光"));
+    }
+
+    @Test
+    void astigmatismTypeGuideRequiresAxisWhenCylinderPresent() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.astigmatismTypeGuide(-2, -1, null));
+        assertTrue(ex.getMessage().contains("轴位"));
+    }
 }

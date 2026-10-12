@@ -1674,6 +1674,115 @@ public class GlassAdvisorTools {
                 formatSignedDiopter(se));
     }
 
+    @Tool(description = "散光类型判定：根据球镜 SPH、柱镜 CYL 与轴位 AXIS，判断散光的「屈光类型」与「轴向规则」。"
+            + "屈光类型按两条主子午线光度（SPH 与 SPH+CYL）的正负判定——都为负=复性近视散光，都为正=复性远视散光，"
+            + "一条为平光(0)另一条为负/正=单纯近视/远视散光，一正一负=混合散光。轴向规则按「负柱镜轴位」判定（取 ±30° 窗口）——"
+            + "0–30° 或 150–180°=顺规散光(with-the-rule)、60–120°=逆规散光(against-the-rule)、其余=斜轴散光(oblique)。"
+            + "两条主子午线光度在正/负柱镜记法下相同，判定与记法无关。仅做分类科普，不替代验光与诊断。")
+    public String astigmatismTypeGuide(
+            @ToolParam(description = "球镜度数 SPH，单位D，近视填负数、远视填正数，如 -2.00。") double sph,
+            @ToolParam(description = "柱镜度数 CYL，单位D。负散光记法填负数（如 -1.00），正散光记法填正数；填 0 表示无散光。")
+            double cyl,
+            @ToolParam(required = false, description = "散光轴位 AXIS，0-180 度的整数。有散光（cyl≠0）时必填；无散光时不要填。")
+            Integer axis) {
+
+        checkRange("sph", sph, -30, 30);
+        checkRange("cyl", cyl, -10, 10);
+        if (axis != null) {
+            checkRange("axis", axis, 0, 180);
+        }
+        validateAxis("处方", cyl, axis);
+
+        double se = sph + cyl / 2;
+
+        if (cyl == 0) {
+            String sphDesc = sph < 0 ? "近视" : sph > 0 ? "远视" : "正视 / 平光";
+            return """
+                    ## 散光类型判定
+
+                    > 两条主子午线光度相同，没有柱镜分量，即不存在散光，无所谓类型与轴向规则。
+
+                    **输入**
+                    - 处方：%s（%s）
+
+                    **结果**
+                    - 柱镜为 0，无散光。仅为球性屈光（%s），等效球镜 %s。
+
+                    **提醒**
+                    - 本工具只做分类科普，不替代验光与诊断。""".formatted(
+                    renderPrescriptionLine(sph, cyl, null),
+                    describeEye(sph, cyl),
+                    sphDesc,
+                    formatSignedDiopter(se));
+        }
+
+        // 两条主子午线：沿轴位方向光度 = SPH，垂直方向光度 = SPH + CYL（与正/负柱镜记法无关）。
+        int axisMeridian = axis;
+        int perpMeridian = transposeAxis(axisMeridian);
+        double pAxis = sph;
+        double pPerp = sph + cyl;
+
+        String refractiveType = astigmatismRefractiveType(pAxis, pPerp);
+
+        // 轴向规则按「负柱镜轴位」判定：若输入是正柱镜，先转成负柱镜轴位。
+        int minusAxis = cyl < 0 ? axisMeridian : transposeAxis(axisMeridian);
+        double minusCyl = cyl < 0 ? cyl : -cyl;
+        double minusSph = cyl < 0 ? sph : sph + cyl;
+        String axisRule = astigmatismAxisRule(minusAxis);
+
+        List<String> notes = new ArrayList<>();
+        notes.add("两条主子午线光度（SPH 与 SPH+CYL）在正、负柱镜两种记法下完全相同，所以屈光类型的判定与记法无关。");
+        notes.add("轴向规则按「负柱镜轴位」判定（本例负柱镜轴位 " + minusAxis
+                + "°，取 ±30° 窗口：0–30° 或 150–180° 顺规、60–120° 逆规、其余斜轴）。");
+        if (axisRule.startsWith("顺规")) {
+            notes.add("顺规散光最常见（尤其年轻人角膜垂直向更陡），多数人对低度顺规散光适应较好。");
+        } else if (axisRule.startsWith("逆规")) {
+            notes.add("逆规散光随年龄增长更常见，可能更明显地影响对比度与夜间视力，建议足矫并留意适应。");
+        } else {
+            notes.add("斜轴散光的像位于斜向，初次配戴或轴位改变时更易出现视物倾斜 / 变形，需要更充分的适应期。");
+        }
+        if (Math.abs(cyl) >= 2) {
+            notes.add("柱镜 ≥ 2.00D 属较高散光，首次足矫可能不适，必要时分步适应，并由视光师现场试戴确认轴位。");
+        }
+
+        return """
+                ## 散光类型判定
+
+                > 散光可从两个维度描述：一是「屈光类型」——看两条主子午线的焦点相对视网膜落在哪里（由两条子午线光度的正负决定）；二是「轴向规则」——看矫正用负柱镜的轴位落在哪个方向（顺规 / 逆规 / 斜轴）。
+
+                **输入**
+                - 处方：%s（%s）
+                - 等效球镜（SPH + CYL/2）：%s
+
+                **两条主子午线**
+                - 沿轴位 %d° 方向：光度 %s（= SPH）
+                - 沿 %d° 方向（垂直于轴位）：光度 %s（= SPH + CYL）
+
+                **判定结果**
+                - 屈光类型：**%s**
+                - 轴向规则：**%s**
+                - 换算用负柱镜记法：%s
+
+                **说明**
+                %s
+
+                **提醒**
+                - 分类用于科普理解，不代表「度数准不准」或「能不能适应」，也不是诊断。
+                - 散光短期内明显加重、双眼差异大、或矫正视力上不去（尤其不规则散光 / 疑似圆锥角膜），应到医院进一步检查。
+                - 本工具只做分类科普，不替代验光与诊断。""".formatted(
+                renderPrescriptionLine(sph, cyl, axisMeridian),
+                describeEye(sph, cyl),
+                formatSignedDiopter(se),
+                axisMeridian,
+                formatSignedDiopter(pAxis),
+                perpMeridian,
+                formatSignedDiopter(pPerp),
+                refractiveType,
+                axisRule,
+                renderPrescriptionLine(minusSph, minusCyl, minusAxis),
+                bulletJoin(notes));
+    }
+
     @Tool(description = "镜架尺寸适配（光心偏移评估）：镜架规格常写成「镜圈宽 A□鼻梁 DBL-镜腿」（如 52□18-140）。"
             + "按盒式标注法，镜架几何中心距 = 镜圈宽 + 鼻梁，它与瞳距（PD）之差决定加工时每片光心要移多少。"
             + "给定镜圈宽度、鼻梁宽度和瞳距，算出几何中心距、每片移心量与方向、粗略正面宽度，并按移心量评估镜架是否贴合瞳距；"
@@ -2965,6 +3074,34 @@ public class GlassAdvisorTools {
     private static int transposeAxis(int axis) {
         int rotated = axis + 90;
         return rotated > 180 ? rotated - 180 : rotated;
+    }
+
+    /** 按两条主子午线的矫正光度（p1=SPH、p2=SPH+CYL）判定散光屈光类型。 */
+    private static String astigmatismRefractiveType(double p1, double p2) {
+        if (p1 < 0 && p2 < 0) {
+            return "复性近视散光（compound myopic）";
+        }
+        if (p1 > 0 && p2 > 0) {
+            return "复性远视散光（compound hyperopic）";
+        }
+        if ((p1 == 0 && p2 < 0) || (p2 == 0 && p1 < 0)) {
+            return "单纯近视散光（simple myopic）";
+        }
+        if ((p1 == 0 && p2 > 0) || (p2 == 0 && p1 > 0)) {
+            return "单纯远视散光（simple hyperopic）";
+        }
+        return "混合散光（mixed）";
+    }
+
+    /** 按负柱镜轴位（±30° 窗口）判定散光轴向规则。 */
+    private static String astigmatismAxisRule(int minusAxis) {
+        if (minusAxis <= 30 || minusAxis >= 150) {
+            return "顺规散光（with-the-rule，循规）";
+        }
+        if (minusAxis >= 60 && minusAxis <= 120) {
+            return "逆规散光（against-the-rule）";
+        }
+        return "斜轴散光（oblique）";
     }
 
     /** 按年龄给出 40cm 参考距离下的典型近附加（下加光）度数（D）。 */
