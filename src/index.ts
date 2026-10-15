@@ -777,6 +777,34 @@ export const tools: ToolDefinition[] = [
     sample: { sph: -2, cyl: -1, axis: 180 },
     handler: handleAstigmatismTypeGuide,
   },
+  {
+    name: "progressive_fit_check",
+    description:
+      "渐进镜片装配高度评估：判断镜框在垂直方向是否「够高」装配渐进多焦点镜片。渐进片需要足够的装配高度（瞳孔中心到镜片最低缘的垂直距离）来容纳从看远到看近的过渡通道。常规（长通道）渐进最小约 18mm（舒适 ≥20mm）、短通道约 14mm（舒适 ≥16mm）、个性化/自由曲面约 13mm（舒适 ≥15mm）。可直接给实测装配高度 fitting_height，或给镜框高度 frame_b 由本工具粗估（≈ B/2 + 2mm）。给定目标设计 design 时评估其可行性与余量；不给时按「优先常规 > 短通道 > 个性化」推荐最合适的设计，装配高度过低（< 13mm）则建议换更高的镜框或改用单光/双光方案。仅做科普估算，实际装配高度须由视光师现场标记测量。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        fitting_height: {
+          type: "number",
+          description:
+            "装配高度（瞳孔中心到镜片最低缘的垂直距离），单位mm，常见 14-24，如 20。与 frame_b 至少提供一个；两者都给时以本值为准。",
+        },
+        frame_b: {
+          type: "number",
+          description:
+            "镜框垂直方向镜圈内高度（盒式标注法的 B 值），单位mm，常见 28-42，如 36。未提供 fitting_height 时用它粗估装配高度（≈ B/2 + 2）。",
+        },
+        design: {
+          type: "string",
+          enum: ["standard", "short", "premium"],
+          description:
+            "想评估的渐进设计：standard(常规/长通道)、short(短通道)、premium(个性化/自由曲面)。不填则由工具推荐最合适的设计。",
+        },
+      },
+    },
+    sample: { fitting_height: 17, design: "standard" },
+    handler: handleProgressiveFitCheck,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -2439,6 +2467,163 @@ ${renderBulletList(notes, "判定完成。")}
 - 分类用于科普理解，不代表「度数准不准」或「能不能适应」，也不是诊断。
 - 散光短期内明显加重、双眼差异大、或矫正视力上不去（尤其不规则散光 / 疑似圆锥角膜），应到医院进一步检查。
 - 本工具只做分类科普，不替代验光与诊断。`);
+}
+
+type ProgressiveDesignKey = "standard" | "short" | "premium";
+
+type ProgressiveDesign = {
+  key: ProgressiveDesignKey;
+  label: string;
+  min: number;
+  comfortable: number;
+  note: string;
+};
+
+// 各渐进设计的典型最小/舒适装配高度（mm），为行业常见经验区间。
+const PROGRESSIVE_DESIGNS: ProgressiveDesign[] = [
+  {
+    key: "standard",
+    label: "常规渐进（长通道）",
+    min: 18,
+    comfortable: 20,
+    note: "通道长、看近与中间区域大、周边畸变最小，视觉最自然，价格通常也最友好；代价是对镜框高度要求最高。",
+  },
+  {
+    key: "short",
+    label: "短通道渐进",
+    min: 14,
+    comfortable: 16,
+    note: "通道较短，可适配偏小 / 偏扁的镜框；代价是看近区稍小、周边像散与变形略明显，视近时低头幅度要更到位。",
+  },
+  {
+    key: "premium",
+    label: "个性化 / 自由曲面渐进",
+    min: 13,
+    comfortable: 15,
+    note: "按个人参数优化的短通道设计，能在较低的镜框里尽量保住可用通道；价格较高，仍建议尽量给足高度。",
+  },
+];
+
+type ProgressiveVerdict = "ample" | "tight" | "insufficient";
+
+function progressiveVerdict(h: number, design: ProgressiveDesign): ProgressiveVerdict {
+  if (h >= design.comfortable) return "ample";
+  if (h >= design.min) return "tight";
+  return "insufficient";
+}
+
+function progressiveVerdictLabel(verdict: ProgressiveVerdict): string {
+  return verdict === "ample" ? "充足" : verdict === "tight" ? "临界" : "不足";
+}
+
+function progressiveDesignLine(h: number, design: ProgressiveDesign): string {
+  const verdict = progressiveVerdict(h, design);
+  const label = progressiveVerdictLabel(verdict);
+  let detail: string;
+  if (verdict === "ample") {
+    detail = `高于舒适线 ${mm(h - design.comfortable)} mm`;
+  } else if (verdict === "tight") {
+    detail = `已达最小 ${mm(design.min)}，但距舒适线还差 ${mm(design.comfortable - h)} mm`;
+  } else {
+    detail = `距最小 ${mm(design.min)} 还差 ${mm(design.min - h)} mm`;
+  }
+  return `- ${design.label}：最小 ${mm(design.min)} / 舒适 ≥${mm(design.comfortable)} mm → **${label}**（${detail}）`;
+}
+
+function handleProgressiveFitCheck(args: ToolArgs): ToolResult {
+  const fittingHeight = optionalNumber(args, "fitting_height", { min: 8, max: 40 });
+  const frameB = optionalNumber(args, "frame_b", { min: 20, max: 60 });
+  const design = optionalEnum(args, "design", ["standard", "short", "premium"] as const);
+
+  if (fittingHeight === undefined && frameB === undefined) {
+    throw new Error("请至少提供装配高度 fitting_height 或镜框高度 frame_b 之一");
+  }
+
+  let h: number;
+  let basisLine: string;
+  if (fittingHeight !== undefined) {
+    h = fittingHeight;
+    basisLine = `- 实测装配高度：**${mm(h)} mm**`;
+    if (frameB !== undefined) {
+      basisLine += `\n- 镜框高度 B：${mm(frameB)} mm（已提供装配高度，B 值仅作参考）`;
+    }
+  } else {
+    // 粗估：瞳孔中心通常略高于镜圈几何中心，装配高度 ≈ B/2 + 2mm。
+    h = (frameB as number) / 2 + 2;
+    basisLine = `- 镜框高度 B：${mm(frameB as number)} mm\n- 装配高度（由 B 粗估 ≈ B/2 + 2）：**${mm(h)} mm**（估算值，实际以视光师现场标记为准）`;
+  }
+
+  const designLines = PROGRESSIVE_DESIGNS.map((d) => progressiveDesignLine(h, d)).join("\n");
+
+  const notes: string[] = [];
+  let conclusion: string;
+
+  if (design !== undefined) {
+    const target = PROGRESSIVE_DESIGNS.find((d) => d.key === design) as ProgressiveDesign;
+    const verdict = progressiveVerdict(h, target);
+    if (verdict === "ample") {
+      conclusion = `装配高度 ${mm(h)} mm 对「${target.label}」**充足**（≥ 舒适线 ${mm(target.comfortable)} mm），可以放心装配。`;
+    } else if (verdict === "tight") {
+      conclusion = `装配高度 ${mm(h)} mm 对「${target.label}」**临界可装配**：达到了最小 ${mm(target.min)} mm，但未到舒适线 ${mm(target.comfortable)} mm（还差 ${mm(target.comfortable - h)} mm），看近区会偏小、通道偏紧，建议尽量把镜框配得再高一点或由视光师确认。`;
+    } else {
+      const needMin = target.min - h;
+      const roomier = PROGRESSIVE_DESIGNS.filter((d) => progressiveVerdict(h, d) !== "insufficient");
+      conclusion =
+        `装配高度 ${mm(h)} mm 对「${target.label}」**不足**（低于最小 ${mm(target.min)} mm，还差 ${mm(needMin)} mm），不建议装配，否则通道被截断、看远或看近区域缺失。`;
+      conclusion +=
+        roomier.length > 0
+          ? `\n可改选门槛更低的设计：${roomier.map((d) => d.label).join(" / ")}；或换一副更高的镜框（镜框高度 B 每增加约 2mm，装配高度约增加 1mm）。`
+          : `\n当前高度连门槛最低的个性化设计都不够，建议换更高的镜框，或改用单光 / 双光方案（见下）。`;
+    }
+    notes.push(
+      `上表给出三种设计在装配高度 ${mm(h)} mm 下的通用评估，便于与目标设计「${target.label}」对比。`
+    );
+    notes.push(target.note);
+  } else {
+    // 不指定设计时推荐：优先常规 > 短通道 > 个性化；先取舒适、再取临界。
+    const comfortable = PROGRESSIVE_DESIGNS.find((d) => progressiveVerdict(h, d) === "ample");
+    const feasible = PROGRESSIVE_DESIGNS.find((d) => progressiveVerdict(h, d) === "tight");
+    if (comfortable !== undefined) {
+      conclusion = `推荐「${comfortable.label}」：装配高度 ${mm(h)} mm 对它充足，是在该高度下视觉体验与性价比最佳的选择。`;
+      notes.push(comfortable.note);
+      if (comfortable.key !== "standard") {
+        notes.push("常规（长通道）渐进在更高的镜框里视野更自然，若还能挑到更高的镜框可优先考虑。");
+      }
+    } else if (feasible !== undefined) {
+      conclusion = `推荐「${feasible.label}」：装配高度 ${mm(h)} mm 仅达到它的最小值 ${mm(feasible.min)} mm（临界），可以装配但通道偏紧、看近区偏小；若能换到更高的镜框，可升级到视野更大的设计。`;
+      notes.push(feasible.note);
+      notes.push("临界高度下首次配戴更需要适应，建议由视光师现场试戴确认通道与看近区是否够用。");
+    } else {
+      conclusion = `当前装配高度 ${mm(h)} mm 低于所有渐进设计的最小门槛（个性化设计也需约 13mm），**不建议配渐进镜片**。建议换一副更高的镜框（镜框高度 B 增加约 2mm，装配高度约增加 1mm），或改用单光看远 + 单独老花镜、或双光镜片等方案。`;
+      notes.push("镜框太扁 / 太小时强行装配渐进，会牺牲看近区甚至截断通道，得不偿失。");
+    }
+  }
+
+  notes.push(
+    "装配高度指瞳孔中心到镜片最低缘的垂直距离，须在佩戴者戴正镜架后由视光师现场标记瞳孔位置测量；B 值只是镜框几何高度，实际装配高度还受镜架在脸上的位置、鼻托与前倾角影响。"
+  );
+  notes.push("通道越短，看近区越小、周边像散 / 变形越明显；在高度允许时优先选更长的通道。");
+
+  return textResult(`## 渐进镜片装配高度评估
+
+> 渐进多焦点镜片从上到下由看远区经「渐进通道」过渡到看近区，需要足够的**装配高度**（瞳孔中心到镜片最低缘的垂直距离）来容纳这段通道。镜框太扁、装配高度不够，通道就会被截断、看近区被削掉。不同设计对最小高度要求不同：常规（长通道）最高，短通道、个性化（自由曲面）可适配更扁的镜框。
+
+**输入**
+${basisLine}
+${design !== undefined ? `- 目标设计：${(PROGRESSIVE_DESIGNS.find((d) => d.key === design) as ProgressiveDesign).label}` : "- 目标设计：未指定（由工具推荐）"}
+
+**各设计最小装配高度评估**
+${designLines}
+
+**结论**
+${conclusion}
+
+**说明**
+${renderBulletList(notes, "评估完成。")}
+
+**提醒**
+- 本工具只做科普估算，最小高度为行业常见经验值，不同品牌 / 系列的实际要求可能不同，务必以镜片厂商规格与视光师现场测量为准。
+- 装配高度还要配合瞳距（水平方向）一起定位，可配合 \`frame_fit_calculator\`；是否需要渐进可先用 \`progressive_lens_assessment\` 评估。`);
 }
 
 function frameFitRating(absDec: number): string {

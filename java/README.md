@@ -1,6 +1,6 @@
 # glass-agent（Java + Spring Boot 版）
 
-配眼镜指南**智能体**，基于 **Spring Boot 3 + Spring AI**。它把原 TypeScript MCP Server 的 20 个配镜工具移植为 Java 实现，并在此之上接入大模型：用户用自然语言提问，大模型通过 **Function Calling** 自动选择并调用工具。智能体会**主动追问必要信息**（度数、用途、预算、脸型等），信息足够后给出配镜建议，并在最后**附上京东 / 淘宝 / 拼多多的购买链接**。
+配眼镜指南**智能体**，基于 **Spring Boot 3 + Spring AI**。它把原 TypeScript MCP Server 的 25 个配镜工具移植为 Java 实现，并在此之上接入大模型：用户用自然语言提问，大模型通过 **Function Calling** 自动选择并调用工具。智能体会**主动追问必要信息**（度数、用途、预算、脸型等），信息足够后给出配镜建议，并在最后**附上京东 / 淘宝 / 拼多多的购买链接**。
 
 原 TypeScript / MCP 版本仍保留在仓库根目录，两者并存。
 
@@ -50,6 +50,7 @@
 - `near_acuity_converter`：近用视力（近视力表）记法换算——在 M 记法（1M 视标在 1m 处张角 5′）、印刷点数（≈ M × 8）、近视力小数三种写法间换算，按测试距离（默认 40cm）算出该距离的近视力小数（= 测试距离m ÷ M）并推出 Snellen / logMAR / 五分等效与对照表（含 Jaeger 近似），与看远的 `visual_acuity_converter` 互补
 - `prism_resolver`：棱镜合成与分解（Prentice 向量运算）——`combine` 把水平（base-in/out）与垂直（base-up/down）两个棱镜分量合成为单一合棱镜（大小 = √(水平² + 垂直²)，方向角：颞侧 0°、上 90°、鼻侧 180°、下 270°，逆时针）；`resolve` 把合棱镜（大小 + 方向角）分解回水平、垂直分量。采用以鼻子为参照、左右眼一致的 base-in/out 表述，提示 0.25Δ 处方取整
 - `astigmatism_type_guide`：散光类型判定——按两条主子午线光度（P₁ = SPH、P₂ = SPH + CYL）的正负判定屈光类型（都为负→复性近视散光、都为正→复性远视散光、一条平光→单纯近视/远视散光、一正一负→混合散光），按负柱镜轴位（±30° 窗口：0–30°/150–180° 顺规、60–120° 逆规、其余斜轴）判定轴向规则（正柱镜输入会先转成负柱镜轴位，判定与记法无关），报出两条主子午线、等效球镜与按轴向规则给出的适应提示，与 `prescription_interpreter`、`prescription_transpose` 互补
+- `progressive_fit_check`：渐进镜片装配高度评估——判断镜框是否「够高」装配渐进多焦点镜片（装配高度 = 瞳孔中心到镜片最低缘的垂直距离）。可给实测 `fitting_height`，或给镜框高度 `frame_b`（B 值）由工具粗估（≈ B/2 + 2）；对常规/长通道（最小约 18mm）、短通道（约 14mm）、个性化/自由曲面（约 13mm）三种设计评估充足 / 临界 / 不足，给定目标 `design` 时报出可行性与余量，不给时按「优先常规 > 短通道 > 个性化」推荐，高度低于所有门槛（< 13mm）则建议换更高镜框或改用单光 / 双光，与 `progressive_lens_assessment`、`frame_fit_calculator` 互补
 
 ## 环境要求
 
@@ -226,6 +227,14 @@ curl -X POST http://localhost:8080/api/tools/astigmatism_type_guide \
   -d '{"sph":-2,"cyl":-1,"axis":180}'
 ```
 
+渐进镜片装配高度评估（给 `fittingHeight` 实测，或给 `frameB` 由工具粗估；`design` 可选 `standard`/`short`/`premium`，不填则推荐）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/progressive_fit_check \
+  -H 'Content-Type: application/json' \
+  -d '{"fittingHeight":17,"design":"standard"}'
+```
+
 查看 / 清空工具调用历史（进程内保存最近 50 次，最新在前）：
 
 ```bash
@@ -255,7 +264,7 @@ java/
 └── src/main/java/com/glass/agent/
     ├── GlassAgentApplication.java      # 启动类
     ├── tool/
-    │   ├── GlassAdvisorTools.java      # 24 个工具的业务逻辑 + @Tool 注解
+    │   ├── GlassAdvisorTools.java      # 25 个工具的业务逻辑 + @Tool 注解
     │   ├── ToolCallHistory.java        # 进程内工具调用历史（最近 50 次）
     │   └── Diopters.java               # 度数格式化帮助函数
     ├── agent/

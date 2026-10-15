@@ -37,6 +37,7 @@ test("exports the expected MCP tool set", () => {
     "near_acuity_converter",
     "prism_resolver",
     "astigmatism_type_guide",
+    "progressive_fit_check",
   ]);
 });
 
@@ -606,6 +607,54 @@ test("astigmatism type guide: no cylinder means no astigmatism", () => {
 test("astigmatism type guide requires an axis when there is cylinder", () => {
   const tool = getTool("astigmatism_type_guide");
   assert.throws(() => tool.handler({ sph: -2, cyl: -1 }), /轴位/);
+});
+
+test("progressive fit check: 17mm is tight for standard but comfortable for shorter designs", () => {
+  const tool = getTool("progressive_fit_check");
+  const result = tool.handler({ fitting_height: 17, design: "standard" });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // 常规最小 18：17mm 还差 1mm → 不足
+  assert.match(text, /常规渐进（长通道）：.*→ \*\*不足\*\*（距最小 18 还差 1 mm）/);
+  // 短通道最小 14 / 舒适 16：17mm → 充足
+  assert.match(text, /短通道渐进：.*→ \*\*充足\*\*（高于舒适线 1 mm）/);
+  // 目标是常规但不足 → 结论应提示不建议并给更低门槛替代
+  assert.match(text, /对「常规渐进（长通道）」\*\*不足\*\*/);
+  assert.match(text, /可改选门槛更低的设计/);
+});
+
+test("progressive fit check: tall fitting height recommends standard when no design given", () => {
+  const tool = getTool("progressive_fit_check");
+  const result = tool.handler({ fitting_height: 22 });
+
+  const text = result.content[0].text;
+  assert.match(text, /推荐「常规渐进（长通道）」/);
+  assert.match(text, /目标设计：未指定/);
+});
+
+test("progressive fit check: estimates fitting height from frame B value", () => {
+  const tool = getTool("progressive_fit_check");
+  // B=36 → 装配高度 ≈ 36/2 + 2 = 20mm，对常规充足
+  const result = tool.handler({ frame_b: 36 });
+
+  const text = result.content[0].text;
+  assert.match(text, /由 B 粗估 ≈ B\/2 \+ 2）：\*\*20 mm\*\*/);
+  assert.match(text, /推荐「常规渐进（长通道）」/);
+});
+
+test("progressive fit check: very low height advises against progressive", () => {
+  const tool = getTool("progressive_fit_check");
+  const result = tool.handler({ fitting_height: 11 });
+
+  const text = result.content[0].text;
+  // 11mm 低于个性化最小 13 → 不建议配渐进
+  assert.match(text, /不建议配渐进镜片/);
+});
+
+test("progressive fit check requires at least one of fitting_height or frame_b", () => {
+  const tool = getTool("progressive_fit_check");
+  assert.throws(() => tool.handler({}), /至少提供/);
 });
 
 test("reading add estimator gives a typical add for a 50-year-old at 40cm and computes near total", () => {

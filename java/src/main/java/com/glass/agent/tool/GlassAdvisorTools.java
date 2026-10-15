@@ -1783,6 +1783,160 @@ public class GlassAdvisorTools {
                 bulletJoin(notes));
     }
 
+    @Tool(description = "渐进镜片装配高度评估：判断镜框在垂直方向是否够高装配渐进多焦点镜片。渐进片需要足够的装配高度"
+            + "（瞳孔中心到镜片最低缘的垂直距离）容纳看远到看近的过渡通道。常规（长通道）最小约 18mm（舒适≥20）、"
+            + "短通道约 14mm（舒适≥16）、个性化/自由曲面约 13mm（舒适≥15）。可直接给实测装配高度 fittingHeight，"
+            + "或给镜框高度 frameB 由本工具粗估（≈ B/2 + 2）。给定目标设计 design 时评估可行性与余量，不给时按"
+            + "「优先常规>短通道>个性化」推荐；高度过低（<13mm）则建议换更高镜框或改用单光/双光。仅做科普估算，实际以视光师现场标记为准。")
+    public String progressiveFitCheck(
+            @ToolParam(required = false, description = "装配高度（瞳孔中心到镜片最低缘的垂直距离），单位mm，常见 14-24，如 20。与 frameB 至少提供一个；两者都给时以本值为准。")
+            Double fittingHeight,
+            @ToolParam(required = false, description = "镜框垂直方向镜圈内高度（盒式标注法 B 值），单位mm，常见 28-42，如 36。未提供 fittingHeight 时用它粗估装配高度（≈ B/2 + 2）。")
+            Double frameB,
+            @ToolParam(required = false, description = "想评估的渐进设计：standard(常规/长通道)、short(短通道)、premium(个性化/自由曲面)。不填则由工具推荐。")
+            String design) {
+
+        if (fittingHeight != null) {
+            checkRange("fitting_height", fittingHeight, 8, 40);
+        }
+        if (frameB != null) {
+            checkRange("frame_b", frameB, 20, 60);
+        }
+        String designKey = design == null || design.isBlank()
+                ? null
+                : expectEnum("design", design, "standard", "short", "premium");
+
+        if (fittingHeight == null && frameB == null) {
+            throw new IllegalArgumentException("请至少提供装配高度 fitting_height 或镜框高度 frame_b 之一");
+        }
+
+        double h;
+        String basisLine;
+        if (fittingHeight != null) {
+            h = fittingHeight;
+            basisLine = "- 实测装配高度：**" + mm(h) + " mm**";
+            if (frameB != null) {
+                basisLine += "\n- 镜框高度 B：" + mm(frameB) + " mm（已提供装配高度，B 值仅作参考）";
+            }
+        } else {
+            // 粗估：瞳孔中心通常略高于镜圈几何中心，装配高度 ≈ B/2 + 2mm。
+            h = frameB / 2 + 2;
+            basisLine = "- 镜框高度 B：" + mm(frameB) + " mm\n- 装配高度（由 B 粗估 ≈ B/2 + 2）：**"
+                    + mm(h) + " mm**（估算值，实际以视光师现场标记为准）";
+        }
+
+        StringBuilder designLines = new StringBuilder();
+        for (ProgressiveDesign d : PROGRESSIVE_DESIGNS) {
+            if (designLines.length() > 0) {
+                designLines.append("\n");
+            }
+            designLines.append(progressiveDesignLine(h, d));
+        }
+
+        List<String> notes = new ArrayList<>();
+        String conclusion;
+        String targetLine;
+
+        if (designKey != null) {
+            ProgressiveDesign target = findProgressiveDesign(designKey);
+            targetLine = "- 目标设计：" + target.label();
+            String verdict = progressiveVerdict(h, target);
+            if (verdict.equals("ample")) {
+                conclusion = "装配高度 " + mm(h) + " mm 对「" + target.label() + "」**充足**（≥ 舒适线 "
+                        + mm(target.comfortable()) + " mm），可以放心装配。";
+            } else if (verdict.equals("tight")) {
+                conclusion = "装配高度 " + mm(h) + " mm 对「" + target.label() + "」**临界可装配**：达到了最小 "
+                        + mm(target.min()) + " mm，但未到舒适线 " + mm(target.comfortable()) + " mm（还差 "
+                        + mm(target.comfortable() - h) + " mm），看近区会偏小、通道偏紧，建议尽量把镜框配得再高一点或由视光师确认。";
+            } else {
+                double needMin = target.min() - h;
+                List<ProgressiveDesign> roomier = new ArrayList<>();
+                for (ProgressiveDesign d : PROGRESSIVE_DESIGNS) {
+                    if (!progressiveVerdict(h, d).equals("insufficient")) {
+                        roomier.add(d);
+                    }
+                }
+                conclusion = "装配高度 " + mm(h) + " mm 对「" + target.label() + "」**不足**（低于最小 "
+                        + mm(target.min()) + " mm，还差 " + mm(needMin) + " mm），不建议装配，否则通道被截断、看远或看近区域缺失。";
+                if (!roomier.isEmpty()) {
+                    List<String> labels = new ArrayList<>();
+                    for (ProgressiveDesign d : roomier) {
+                        labels.add(d.label());
+                    }
+                    conclusion += "\n可改选门槛更低的设计：" + String.join(" / ", labels)
+                            + "；或换一副更高的镜框（镜框高度 B 每增加约 2mm，装配高度约增加 1mm）。";
+                } else {
+                    conclusion += "\n当前高度连门槛最低的个性化设计都不够，建议换更高的镜框，或改用单光 / 双光方案（见下）。";
+                }
+            }
+            notes.add("上表给出三种设计在装配高度 " + mm(h) + " mm 下的通用评估，便于与目标设计「" + target.label() + "」对比。");
+            notes.add(target.note());
+        } else {
+            targetLine = "- 目标设计：未指定（由工具推荐）";
+            // 不指定设计时推荐：优先常规 > 短通道 > 个性化；先取舒适、再取临界。
+            ProgressiveDesign comfortable = null;
+            ProgressiveDesign feasible = null;
+            for (ProgressiveDesign d : PROGRESSIVE_DESIGNS) {
+                String v = progressiveVerdict(h, d);
+                if (comfortable == null && v.equals("ample")) {
+                    comfortable = d;
+                }
+                if (feasible == null && v.equals("tight")) {
+                    feasible = d;
+                }
+            }
+            if (comfortable != null) {
+                conclusion = "推荐「" + comfortable.label() + "」：装配高度 " + mm(h)
+                        + " mm 对它充足，是在该高度下视觉体验与性价比最佳的选择。";
+                notes.add(comfortable.note());
+                if (!comfortable.key().equals("standard")) {
+                    notes.add("常规（长通道）渐进在更高的镜框里视野更自然，若还能挑到更高的镜框可优先考虑。");
+                }
+            } else if (feasible != null) {
+                conclusion = "推荐「" + feasible.label() + "」：装配高度 " + mm(h) + " mm 仅达到它的最小值 "
+                        + mm(feasible.min()) + " mm（临界），可以装配但通道偏紧、看近区偏小；若能换到更高的镜框，可升级到视野更大的设计。";
+                notes.add(feasible.note());
+                notes.add("临界高度下首次配戴更需要适应，建议由视光师现场试戴确认通道与看近区是否够用。");
+            } else {
+                conclusion = "当前装配高度 " + mm(h) + " mm 低于所有渐进设计的最小门槛（个性化设计也需约 13mm），"
+                        + "**不建议配渐进镜片**。建议换一副更高的镜框（镜框高度 B 增加约 2mm，装配高度约增加 1mm），"
+                        + "或改用单光看远 + 单独老花镜、或双光镜片等方案。";
+                notes.add("镜框太扁 / 太小时强行装配渐进，会牺牲看近区甚至截断通道，得不偿失。");
+            }
+        }
+
+        notes.add("装配高度指瞳孔中心到镜片最低缘的垂直距离，须在佩戴者戴正镜架后由视光师现场标记瞳孔位置测量；"
+                + "B 值只是镜框几何高度，实际装配高度还受镜架在脸上的位置、鼻托与前倾角影响。");
+        notes.add("通道越短，看近区越小、周边像散 / 变形越明显；在高度允许时优先选更长的通道。");
+
+        return """
+                ## 渐进镜片装配高度评估
+
+                > 渐进多焦点镜片从上到下由看远区经「渐进通道」过渡到看近区，需要足够的**装配高度**（瞳孔中心到镜片最低缘的垂直距离）来容纳这段通道。镜框太扁、装配高度不够，通道就会被截断、看近区被削掉。不同设计对最小高度要求不同：常规（长通道）最高，短通道、个性化（自由曲面）可适配更扁的镜框。
+
+                **输入**
+                %s
+                %s
+
+                **各设计最小装配高度评估**
+                %s
+
+                **结论**
+                %s
+
+                **说明**
+                %s
+
+                **提醒**
+                - 本工具只做科普估算，最小高度为行业常见经验值，不同品牌 / 系列的实际要求可能不同，务必以镜片厂商规格与视光师现场测量为准。
+                - 装配高度还要配合瞳距（水平方向）一起定位，可配合 `frame_fit_calculator`；是否需要渐进可先用 `progressive_lens_assessment` 评估。""".formatted(
+                basisLine,
+                targetLine,
+                designLines.toString(),
+                conclusion,
+                bulletJoin(notes));
+    }
+
     @Tool(description = "镜架尺寸适配（光心偏移评估）：镜架规格常写成「镜圈宽 A□鼻梁 DBL-镜腿」（如 52□18-140）。"
             + "按盒式标注法，镜架几何中心距 = 镜圈宽 + 鼻梁，它与瞳距（PD）之差决定加工时每片光心要移多少。"
             + "给定镜圈宽度、鼻梁宽度和瞳距，算出几何中心距、每片移心量与方向、粗略正面宽度，并按移心量评估镜架是否贴合瞳距；"
@@ -3102,6 +3256,61 @@ public class GlassAdvisorTools {
             return "逆规散光（against-the-rule）";
         }
         return "斜轴散光（oblique）";
+    }
+
+    /** 渐进设计及其典型最小/舒适装配高度（mm），为行业常见经验区间。 */
+    private record ProgressiveDesign(String key, String label, double min, double comfortable, String note) {
+    }
+
+    private static final List<ProgressiveDesign> PROGRESSIVE_DESIGNS = List.of(
+            new ProgressiveDesign("standard", "常规渐进（长通道）", 18, 20,
+                    "通道长、看近与中间区域大、周边畸变最小，视觉最自然，价格通常也最友好；代价是对镜框高度要求最高。"),
+            new ProgressiveDesign("short", "短通道渐进", 14, 16,
+                    "通道较短，可适配偏小 / 偏扁的镜框；代价是看近区稍小、周边像散与变形略明显，视近时低头幅度要更到位。"),
+            new ProgressiveDesign("premium", "个性化 / 自由曲面渐进", 13, 15,
+                    "按个人参数优化的短通道设计，能在较低的镜框里尽量保住可用通道；价格较高，仍建议尽量给足高度。"));
+
+    private static ProgressiveDesign findProgressiveDesign(String key) {
+        for (ProgressiveDesign d : PROGRESSIVE_DESIGNS) {
+            if (d.key().equals(key)) {
+                return d;
+            }
+        }
+        throw new IllegalArgumentException("未知渐进设计：" + key);
+    }
+
+    /** 给定装配高度 h（mm）判断某设计的余量：ample(充足) / tight(临界) / insufficient(不足)。 */
+    private static String progressiveVerdict(double h, ProgressiveDesign design) {
+        if (h >= design.comfortable()) {
+            return "ample";
+        }
+        if (h >= design.min()) {
+            return "tight";
+        }
+        return "insufficient";
+    }
+
+    private static String progressiveVerdictLabel(String verdict) {
+        return switch (verdict) {
+            case "ample" -> "充足";
+            case "tight" -> "临界";
+            default -> "不足";
+        };
+    }
+
+    private static String progressiveDesignLine(double h, ProgressiveDesign design) {
+        String verdict = progressiveVerdict(h, design);
+        String label = progressiveVerdictLabel(verdict);
+        String detail;
+        if (verdict.equals("ample")) {
+            detail = "高于舒适线 " + mm(h - design.comfortable()) + " mm";
+        } else if (verdict.equals("tight")) {
+            detail = "已达最小 " + mm(design.min()) + "，但距舒适线还差 " + mm(design.comfortable() - h) + " mm";
+        } else {
+            detail = "距最小 " + mm(design.min()) + " 还差 " + mm(design.min() - h) + " mm";
+        }
+        return "- " + design.label() + "：最小 " + mm(design.min()) + " / 舒适 ≥" + mm(design.comfortable())
+                + " mm → **" + label + "**（" + detail + "）";
     }
 
     /** 按年龄给出 40cm 参考距离下的典型近附加（下加光）度数（D）。 */

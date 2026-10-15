@@ -768,4 +768,43 @@ class GlassAdvisorToolsTest {
                 () -> tools.astigmatismTypeGuide(-2, -1, null));
         assertTrue(ex.getMessage().contains("轴位"));
     }
+
+    @Test
+    void progressiveFitCheckTightForStandardButAmpleForShorterDesigns() {
+        // 装配高度 17mm：常规最小 18 → 不足；短通道舒适 16 → 充足
+        String result = tools.progressiveFitCheck(17.0, null, "standard");
+        assertTrue(result.contains("常规渐进（长通道）：最小 18 / 舒适 ≥20 mm → **不足**（距最小 18 还差 1 mm）"));
+        assertTrue(result.contains("短通道渐进：最小 14 / 舒适 ≥16 mm → **充足**（高于舒适线 1 mm）"));
+        assertTrue(result.contains("对「常规渐进（长通道）」**不足**"));
+        assertTrue(result.contains("可改选门槛更低的设计"));
+    }
+
+    @Test
+    void progressiveFitCheckRecommendsStandardWhenHeightIsTall() {
+        String result = tools.progressiveFitCheck(22.0, null, null);
+        assertTrue(result.contains("推荐「常规渐进（长通道）」"));
+        assertTrue(result.contains("目标设计：未指定"));
+    }
+
+    @Test
+    void progressiveFitCheckEstimatesHeightFromFrameB() {
+        // B=36 → 装配高度 ≈ 36/2 + 2 = 20mm，对常规充足
+        String result = tools.progressiveFitCheck(null, 36.0, null);
+        assertTrue(result.contains("由 B 粗估 ≈ B/2 + 2）：**20 mm**"));
+        assertTrue(result.contains("推荐「常规渐进（长通道）」"));
+    }
+
+    @Test
+    void progressiveFitCheckAdvisesAgainstProgressiveWhenVeryLow() {
+        // 11mm 低于个性化最小 13 → 不建议配渐进
+        String result = tools.progressiveFitCheck(11.0, null, null);
+        assertTrue(result.contains("不建议配渐进镜片"));
+    }
+
+    @Test
+    void progressiveFitCheckRequiresAtLeastOneHeightInput() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.progressiveFitCheck(null, null, null));
+        assertTrue(ex.getMessage().contains("至少提供"));
+    }
 }

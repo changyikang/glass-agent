@@ -34,10 +34,10 @@ frame-size-to-PD fit checking, visual-acuity notation conversion,
 accommodation-amplitude estimation, sunglass tint (filter-category)
 selection, lens base-material selection, naked-eye clear-range
 (far-point / near-point) estimation, near-vision acuity
-notation conversion, prism vector math, and astigmatism-type
-classification.
+notation conversion, prism vector math, astigmatism-type
+classification, and progressive-lens fitting-height checking.
 
-The project ships **two interchangeable implementations that share the same twenty-four
+The project ships **two interchangeable implementations that share the same twenty-five
 tools**, so you can adopt whichever fits your stack:
 
 | Implementation | Path | Best for |
@@ -47,7 +47,7 @@ tools**, so you can adopt whichever fits your stack:
 
 ### Features
 
-The twenty-four built-in tools:
+The twenty-five built-in tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -75,6 +75,7 @@ The twenty-four built-in tools:
 | `near_acuity_converter` | Converts a near-vision reading between the notations used on reading cards — M-units (standard; a 1M optotype subtends 5′ at 1 m), print point size (≈ M × 8) and a direct near-acuity decimal — at a given test distance (default 40 cm): near decimal = test distance (m) ÷ M, from which it derives the Snellen / logMAR / five-minute equivalents and an acuity level, plus a common near-acuity reference table (including an approximate Jaeger J column). Complements the distance-chart `visual_acuity_converter` |
 | `prism_resolver` | Prism vector math (Prentice). `combine` adds a horizontal (base-in / base-out) and a vertical (base-up / base-down) prism into a single resultant — magnitude = √(H² + V²) and a base-direction angle (convention: base-out 0°, up 90°, base-in 180°, down 270°, counterclockwise); `resolve` decomposes a resultant (magnitude + angle) back into its horizontal and vertical components. Uses base-in/out (nose-referenced, so unambiguous per eye) rather than the eye-specific 360° notation, and notes the 0.25 Δ prescription rounding |
 | `astigmatism_type_guide` | Classifies an astigmatic prescription by **refractive type** — from the signs of the two principal-meridian powers (P₁ = SPH, P₂ = SPH + CYL): both minus → compound myopic, both plus → compound hyperopic, one plano → simple myopic/hyperopic, opposite signs → mixed — and by **axis rule** from the minus-cylinder axis (±30° window: 0–30°/150–180° with-the-rule, 60–120° against-the-rule, else oblique), transposing a plus-cyl input first so the verdict is notation-independent. Reports both principal meridians, the spherical equivalent and rule-specific adaptation notes; complements `prescription_interpreter` and `prescription_transpose` |
+| `progressive_fit_check` | Checks whether a frame is tall enough to fit progressive lenses: a progressive needs enough **fitting height** (pupil center to the lowest edge of the lens) for the far→near corridor. Given a measured `fitting_height` — or a frame `frame_b` (box B value), from which it estimates `fitting_height ≈ B/2 + 2` — it rates each design (standard/long-corridor min ≈ 18 mm, short-corridor ≈ 14 mm, premium/freeform ≈ 13 mm) as ample / tight / insufficient. With a target `design` it reports feasibility and margin; without one it recommends the best fit (preferring standard > short > premium), and when the height is below every threshold (< 13 mm) it advises a taller frame or single-vision/bifocal instead. Complements `progressive_lens_assessment` (whether you need progressive) and `frame_fit_calculator` (horizontal fit) |
 
 The Java agent adds **multi-turn intake**: pass a `conversationId` and it remembers
 the dialogue, so it asks the questions it needs, gives a fitting recommendation, and
@@ -84,7 +85,7 @@ attaches purchase links at the end.
 
 ```
                          ┌──────────────────────────────┐
-        MCP client       │  Twenty-four shared optical   │      REST client
+        MCP client       │  Twenty-five shared optical   │      REST client
    (Claude Desktop, …)   │             tools             │   (curl / your app)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │
@@ -208,9 +209,9 @@ Released under the [MIT License](LICENSE).
 
 ### 项目简介
 
-**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查、青少年近视防控、框架镜到隐形眼镜的度数换算、老花（近附加）度数估算、散光（正/负柱镜）记法转换、镜架尺寸与瞳距的适配评估、视力记录法换算、调节幅度评估、太阳镜镜片色号（过滤分类）选择、镜片材料（基材）选择、裸眼清晰视界（远点 / 近点）估算、近用视力（近视力表）记法换算、棱镜合成与分解（Prentice 向量运算），以及散光类型判定。
+**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查、青少年近视防控、框架镜到隐形眼镜的度数换算、老花（近附加）度数估算、散光（正/负柱镜）记法转换、镜架尺寸与瞳距的适配评估、视力记录法换算、调节幅度评估、太阳镜镜片色号（过滤分类）选择、镜片材料（基材）选择、裸眼清晰视界（远点 / 近点）估算、近用视力（近视力表）记法换算、棱镜合成与分解（Prentice 向量运算）、散光类型判定，以及渐进镜片装配高度评估。
 
-项目提供 **两套可互换、共享同一组二十四个工具的实现**，你可以按技术栈选用：
+项目提供 **两套可互换、共享同一组二十五个工具的实现**，你可以按技术栈选用：
 
 | 实现方式 | 路径 | 适用场景 |
 | --- | --- | --- |
@@ -219,7 +220,7 @@ Released under the [MIT License](LICENSE).
 
 ### 功能
 
-内置二十四个工具：
+内置二十五个工具：
 
 | 工具 | 作用 |
 | --- | --- |
@@ -247,6 +248,7 @@ Released under the [MIT License](LICENSE).
 | `near_acuity_converter` | 近用视力（近视力表）记法换算：在近视力卡常用的 M 记法（国际标准，1M 视标在 1m 处张角 5′）、印刷点数（≈ M × 8）、直接的近视力小数三种写法间换算，按测试距离（默认 40cm）算出该距离的近视力小数（= 测试距离m ÷ M），并推出 Snellen / logMAR / 五分等效与视力水平，附含 Jaeger（J 记法）近似的近视力对照表；与看远的 `visual_acuity_converter` 互补 |
 | `prism_resolver` | 棱镜合成与分解（Prentice 向量运算）：`combine` 把水平（基底朝鼻侧 base-in / 颞侧 base-out）与垂直（base-up / base-down）两个棱镜分量合成为单一合棱镜——大小 = √(水平² + 垂直²)，方向角（约定：颞侧 0°、上 90°、鼻侧 180°、下 270°，逆时针）；`resolve` 把合棱镜（大小 + 方向角）分解回水平、垂直分量。采用以鼻子为参照、左右眼含义一致的 base-in/out 表述（而非左右眼不同的 360° 记法），并提示 0.25Δ 处方取整 |
 | `astigmatism_type_guide` | 散光类型判定：按两条主子午线光度（P₁ = SPH、P₂ = SPH + CYL）的正负判定**屈光类型**（都为负→复性近视散光、都为正→复性远视散光、一条平光→单纯近视/远视散光、一正一负→混合散光），按**负柱镜轴位**（±30° 窗口：0–30°/150–180° 顺规、60–120° 逆规、其余斜轴）判定**轴向规则**，正柱镜输入会先转成负柱镜轴位以保证与记法无关。报出两条主子午线、等效球镜与按轴向规则给出的适应提示，与 `prescription_interpreter`、`prescription_transpose` 互补 |
+| `progressive_fit_check` | 渐进镜片装配高度评估：判断镜框在垂直方向是否「够高」装配渐进多焦点镜片——渐进片需要足够的**装配高度**（瞳孔中心到镜片最低缘的垂直距离）容纳看远到看近的过渡通道。可给实测 `fitting_height`，或给镜框高度 `frame_b`（B 值）由工具粗估（≈ B/2 + 2）；对常规/长通道（最小约 18mm）、短通道（约 14mm）、个性化/自由曲面（约 13mm）三种设计评估充足 / 临界 / 不足。给定目标 `design` 时报出可行性与余量，不给时按「优先常规 > 短通道 > 个性化」推荐；高度低于所有门槛（< 13mm）则建议换更高镜框或改用单光 / 双光。与 `progressive_lens_assessment`（是否需要渐进）、`frame_fit_calculator`（水平贴合）互补 |
 
 Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可记住对话上下文，
 于是它会主动追问所需信息，给出配镜建议，并在最后附上购买链接。
@@ -255,7 +257,7 @@ Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可�
 
 ```
                          ┌──────────────────────────────┐
-       MCP 客户端         │     二十四个共享的配镜工具     │       REST 客户端
+       MCP 客户端         │     二十五个共享的配镜工具     │       REST 客户端
    (Claude Desktop 等)   │                              │   (curl / 你的应用)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │
