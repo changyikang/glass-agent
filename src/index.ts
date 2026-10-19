@@ -805,6 +805,50 @@ export const tools: ToolDefinition[] = [
     sample: { fitting_height: 17, design: "standard" },
     handler: handleProgressiveFitCheck,
   },
+  {
+    name: "minimum_blank_size",
+    description:
+      "最小镜片毛坯直径（MBS）计算：加工时镜片要从一块圆形毛坯上切出，毛坯必须足够大，才能在把光心移到瞳孔位置后仍完整覆盖镜框形状。标准公式 MBS = 有效直径 ED + 2 × 每片移心量 + 加工余量（默认 2mm）；其中移心量 = (镜圈宽 A + 鼻梁 DBL) ÷ 2 − 瞳距 PD ÷ 2，取绝对值。给定镜圈宽度 A、鼻梁 DBL、瞳距 PD（可选有效直径 ED，或镜框高度 B 由本工具按盒对角线 √(A²+B²) 保守估算 ED），算出框几何中心距、每片移心量、所用 ED 与最小毛坯直径，并对照常见毛坯规格（65/70/75/80mm）判断是否容易获得；若提供手头毛坯直径 blank_diameter，则判断够不够用并给出余量。与 frame_fit_calculator（移心/棱镜）互补。仅做科普估算，实际加工以视光师/加工中心的 ED 实测为准。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        frame_a: {
+          type: "number",
+          description: "镜圈宽度（镜片水平宽度 A / eye size），单位mm，常见 48-58，如 52。",
+        },
+        dbl: {
+          type: "number",
+          description: "鼻梁宽度（两镜片间距 DBL / bridge），单位mm，常见 14-22，如 18。",
+        },
+        pd: {
+          type: "number",
+          description: "佩戴者双眼远用瞳距 PD，单位mm，成人常见约 54-74，如 62。单眼瞳距按 PD÷2 估算。",
+        },
+        ed: {
+          type: "number",
+          description:
+            "镜片有效直径 ED（盒式标注中心到镜圈最远缘距离的 2 倍），单位mm，常见 50-65；不填则由 frame_b 估算，再不填则用 A 粗估。",
+        },
+        frame_b: {
+          type: "number",
+          description:
+            "镜框垂直方向镜圈内高度（盒式标注法 B 值），单位mm，常见 28-42；未提供 ed 时用它按盒对角线 √(A²+B²) 保守估算 ED。",
+        },
+        blank_diameter: {
+          type: "number",
+          description:
+            "手头 / 打算使用的镜片毛坯直径，单位mm，常见 65/70/75/80；提供时判断是否够切这副镜架并给出余量。不填则只给所需最小直径。",
+        },
+        cut_allowance: {
+          type: "number",
+          description: "加工余量（防崩边 / 定位误差留量），单位mm，默认 2，通常 2-3。",
+        },
+      },
+      required: ["frame_a", "dbl", "pd"],
+    },
+    sample: { frame_a: 54, dbl: 18, pd: 62, frame_b: 38, blank_diameter: 70 },
+    handler: handleMinimumBlankSize,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -2727,6 +2771,102 @@ ${renderBulletList(notes, "数值看起来合理。")}
 - 移心量只反映镜架规格与瞳距的匹配度，不代表镜架戴在脸上是否舒适；镜圈弧度、鼻托、镜腿宽度与脸宽也很重要。
 - 高度数、渐进 / 多焦点镜片对光心（含瞳高）定位更敏感，务必以视光师现场测量为准。
 - 本工具只做科普估算，不替代专业验配。`);
+}
+
+function handleMinimumBlankSize(args: ToolArgs): ToolResult {
+  const frameA = expectNumber(args, "frame_a", { min: 30, max: 70 });
+  const dbl = expectNumber(args, "dbl", { min: 10, max: 30 });
+  const pd = expectNumber(args, "pd", { min: 40, max: 85 });
+  const edInput = optionalNumber(args, "ed", { min: 20, max: 80 });
+  const frameB = optionalNumber(args, "frame_b", { min: 20, max: 60 });
+  const blankDiameter = optionalNumber(args, "blank_diameter", { min: 40, max: 85 });
+  const cutAllowance = optionalNumber(args, "cut_allowance", { min: 0, max: 6 }) ?? 2;
+
+  // 盒式标注法：框几何中心距 = 镜圈宽 + 鼻梁；单眼瞳距 = PD / 2。
+  const framePd = frameA + dbl;
+  const monoPd = pd / 2;
+  // 每片移心量：把光心从框几何中心移到瞳孔所需的位移，取绝对值参与毛坯计算。
+  const decentration = framePd / 2 - monoPd;
+  const absDec = Math.abs(decentration);
+  const decDirection =
+    decentration > 0.05 ? "向鼻侧内移" : decentration < -0.05 ? "向颞侧外移" : "几乎无需移心";
+
+  // 有效直径 ED：优先用实测值；否则用盒对角线 √(A²+B²) 保守估算（毛坯宁大勿小）；再否则用 A 粗估。
+  let ed: number;
+  let edSource: string;
+  if (edInput !== undefined) {
+    ed = edInput;
+    edSource = `实测有效直径 ED ${mm(ed)}mm`;
+  } else if (frameB !== undefined) {
+    ed = Math.sqrt(frameA * frameA + frameB * frameB);
+    edSource = `由盒对角线保守估算 ED ≈ √(A² + B²) = √(${mm(frameA)}² + ${mm(frameB)}²) ≈ ${mm(ed)}mm`;
+  } else {
+    ed = frameA;
+    edSource = `缺少 ED 与 B，暂以镜圈宽 A ${mm(frameA)}mm 粗估（实际 ED 通常更大，务必实测）`;
+  }
+
+  // 标准公式：最小毛坯直径 = 有效直径 + 2 × 移心量 + 加工余量。
+  const mbs = ed + 2 * absDec + cutAllowance;
+
+  const notes: string[] = [];
+  notes.push(
+    `每片移心量 ${mm(absDec)}mm（${decDirection}）：框几何中心距 ${mm(framePd)}mm 与瞳距 ${mm(pd)}mm 之差的一半；框越宽于瞳距、移心越多，所需毛坯越大。`
+  );
+  notes.push(`有效直径来源：${edSource}。`);
+
+  // 对照常见毛坯规格判断获取难度。
+  let availability: string;
+  if (mbs <= 65) {
+    availability = "≤ 65mm，常规单光毛坯（多为 65/70mm 起）即可轻松切出，最易获得。";
+  } else if (mbs <= 70) {
+    availability = "在 65–70mm 之间，常见 70mm 毛坯可覆盖，一般无需特殊订货。";
+  } else if (mbs <= 75) {
+    availability = "在 70–75mm 之间，需要较大的 75mm 毛坯；部分高折射率 / 渐进片在该直径下可选规格变少，下单前先确认库存。";
+  } else {
+    availability = "超过 75mm，需 80mm 或特殊订货的大毛坯；建议改选几何中心距更贴合瞳距（A + DBL 更接近 PD）的镜架，或确认该材料是否有此直径。";
+  }
+  notes.push(`最小毛坯直径约 ${mm(mbs)}mm——${availability}`);
+
+  let blankLine = "";
+  if (blankDiameter !== undefined) {
+    const margin = blankDiameter - mbs;
+    if (margin >= 0) {
+      blankLine = `\n- 手头毛坯 ${mm(blankDiameter)}mm：**够用**，余量约 ${mm(margin)}mm（直径方向，含 ${mm(cutAllowance)}mm 加工余量后仍有富余）。`;
+    } else {
+      blankLine = `\n- 手头毛坯 ${mm(blankDiameter)}mm：**偏小**，还差约 ${mm(-margin)}mm，直接切这副镜架可能切不全或光心移不到位；需换更大毛坯或更贴合瞳距的镜架。`;
+    }
+  }
+
+  if (absDec >= 4) {
+    notes.push(
+      "移心量偏大会同时推高毛坯直径和镜片边缘厚度（高度数尤甚）；若毛坯规格受限，优先考虑更贴合瞳距的镜架。"
+    );
+  }
+
+  return textResult(`## 最小镜片毛坯直径（MBS）
+
+> 镜片要从一块圆形毛坯上切出，加工时还要把**光心移到瞳孔正前方**。毛坯必须大到：覆盖镜框形状（有效直径 ED）+ 两侧各让出一个移心量 + 一点加工余量。标准公式 **MBS = ED + 2 × 移心量 + 加工余量**。本工具只做科普估算，实际以加工中心的 ED 实测为准。
+
+**输入**
+- 镜圈宽度 A：${mm(frameA)} mm
+- 鼻梁宽度 DBL：${mm(dbl)} mm
+- 双眼瞳距 PD：${mm(pd)} mm（单眼 ${mm(monoPd)} mm）${frameB !== undefined ? `\n- 镜框高度 B：${mm(frameB)} mm` : ""}${edInput !== undefined ? `\n- 有效直径 ED：${mm(edInput)} mm` : ""}
+- 加工余量：${mm(cutAllowance)} mm
+
+**测算结果**
+- 框几何中心距（框 PD）：**${mm(framePd)} mm**（A ${mm(frameA)} + DBL ${mm(dbl)}）
+- 每片移心量：**${mm(absDec)} mm**（${decDirection}）
+- 所用有效直径 ED：**${mm(ed)} mm**
+- 最小毛坯直径 MBS：**${mm(mbs)} mm**（${mm(ed)} + 2 × ${mm(absDec)} + ${mm(cutAllowance)}）${blankLine}
+
+**说明**
+${renderBulletList(notes, "数值看起来合理。")}
+
+**提醒**
+- ED 若非实测，本工具用盒对角线 √(A²+B²) 保守估算（偏大更安全），或在只有 A 时粗估；真实 ED 取决于镜片形状，务必以加工中心测量为准。
+- 本公式假设双眼对称、光心只做水平移心；如需配合瞳高（垂直移心）或大散光 / 渐进定位，所需毛坯可能更大。
+- 想看移心引入的水平棱镜，可配合 \`frame_fit_calculator\`。
+- 本工具只做科普估算，不替代专业验配与加工。`);
 }
 
 function acuityLevelLabel(decimal: number): string {

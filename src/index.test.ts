@@ -38,7 +38,53 @@ test("exports the expected MCP tool set", () => {
     "prism_resolver",
     "astigmatism_type_guide",
     "progressive_fit_check",
+    "minimum_blank_size",
   ]);
+});
+
+test("minimum blank size: MBS = ED + 2×decentration + allowance, blank exactly fits", () => {
+  const tool = getTool("minimum_blank_size");
+  const result = tool.handler({ frame_a: 52, dbl: 18, pd: 62, ed: 60, blank_diameter: 70 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // framePd = 52 + 18 = 70; decentration = 70/2 - 62/2 = 4 (inward)
+  assert.match(text, /框几何中心距（框 PD）：\*\*70 mm\*\*/);
+  assert.match(text, /每片移心量：\*\*4 mm\*\*（向鼻侧内移）/);
+  assert.match(text, /所用有效直径 ED：\*\*60 mm\*\*/);
+  // MBS = 60 + 2×4 + 2(default allowance) = 70
+  assert.match(text, /最小毛坯直径 MBS：\*\*70 mm\*\*（60 \+ 2 × 4 \+ 2）/);
+  assert.match(text, /手头毛坯 70mm：\*\*够用\*\*，余量约 0mm/);
+});
+
+test("minimum blank size estimates ED from the box diagonal when ED is absent", () => {
+  const tool = getTool("minimum_blank_size");
+  const result = tool.handler({ frame_a: 48, dbl: 20, pd: 64, frame_b: 36 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // framePd = 68; decentration = 34 - 32 = 2; ED = √(48²+36²) = 60
+  assert.match(text, /每片移心量：\*\*2 mm\*\*（向鼻侧内移）/);
+  assert.match(text, /所用有效直径 ED：\*\*60 mm\*\*/);
+  assert.match(text, /√\(A² \+ B²\)/);
+  // MBS = 60 + 2×2 + 2 = 66
+  assert.match(text, /最小毛坯直径 MBS：\*\*66 mm\*\*/);
+});
+
+test("minimum blank size flags a too-small blank with the missing margin", () => {
+  const tool = getTool("minimum_blank_size");
+  const result = tool.handler({ frame_a: 56, dbl: 18, pd: 60, ed: 64, blank_diameter: 70 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // framePd = 74; decentration = 37 - 30 = 7; MBS = 64 + 14 + 2 = 80
+  assert.match(text, /最小毛坯直径 MBS：\*\*80 mm\*\*/);
+  assert.match(text, /手头毛坯 70mm：\*\*偏小\*\*，还差约 10mm/);
+});
+
+test("minimum blank size requires the core frame and PD measurements", () => {
+  const tool = getTool("minimum_blank_size");
+  assert.throws(() => tool.handler({ frame_a: 52, dbl: 18 }), /pd/);
 });
 
 test("prism resolver combine: 3Δ out + 4Δ up → 5Δ at 53.1°", () => {

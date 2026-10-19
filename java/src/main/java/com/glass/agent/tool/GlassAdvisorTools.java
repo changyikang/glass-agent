@@ -2051,6 +2051,153 @@ public class GlassAdvisorTools {
                 bulletJoin(notes));
     }
 
+    @Tool(description = "最小镜片毛坯直径（MBS）计算：镜片要从圆形毛坯上切出，加工时还要把光心移到瞳孔位置，"
+            + "毛坯必须足够大。标准公式 MBS = 有效直径 ED + 2 × 每片移心量 + 加工余量（默认 2mm），"
+            + "移心量 = (镜圈宽 A + 鼻梁 DBL) ÷ 2 − 瞳距 PD ÷ 2 取绝对值。给镜圈宽 A、鼻梁 DBL、瞳距 PD"
+            + "（可选有效直径 ED，或镜框高度 B 由盒对角线 √(A²+B²) 保守估算 ED），算出框几何中心距、每片移心量、"
+            + "所用 ED 与最小毛坯直径，并对照常见毛坯规格判断是否易得；给手头毛坯直径 blank_diameter 时判断够不够用。"
+            + "与 frame_fit_calculator 互补。仅做科普估算，实际以加工中心 ED 实测为准。")
+    public String minimumBlankSize(
+            @ToolParam(description = "镜圈宽度（镜片水平宽度 A / eye size），单位mm，常见 48-58，如 52。") double frameA,
+            @ToolParam(description = "鼻梁宽度（两镜片间距 DBL / bridge），单位mm，常见 14-22，如 18。") double dbl,
+            @ToolParam(description = "佩戴者双眼远用瞳距 PD，单位mm，成人常见约 54-74，如 62。单眼按 PD÷2 估算。") double pd,
+            @ToolParam(required = false, description = "镜片有效直径 ED（盒式中心到镜圈最远缘的 2 倍），单位mm，常见 50-65；"
+                    + "不填则由 frame_b 估算，再不填用 A 粗估。")
+            Double ed,
+            @ToolParam(required = false, description = "镜框垂直镜圈内高度（盒式标注 B 值），单位mm，常见 28-42；"
+                    + "未提供 ed 时用它按盒对角线 √(A²+B²) 保守估算 ED。")
+            Double frameB,
+            @ToolParam(required = false, description = "手头 / 打算使用的毛坯直径，单位mm，常见 65/70/75/80；提供时判断是否够用并给出余量。")
+            Double blankDiameter,
+            @ToolParam(required = false, description = "加工余量（防崩边 / 定位误差留量），单位mm，默认 2，通常 2-3。")
+            Double cutAllowance) {
+
+        checkRange("frame_a", frameA, 30, 70);
+        checkRange("dbl", dbl, 10, 30);
+        checkRange("pd", pd, 40, 85);
+        if (ed != null) {
+            checkRange("ed", ed, 20, 80);
+        }
+        if (frameB != null) {
+            checkRange("frame_b", frameB, 20, 60);
+        }
+        if (blankDiameter != null) {
+            checkRange("blank_diameter", blankDiameter, 40, 85);
+        }
+        double allowance = cutAllowance == null ? 2 : cutAllowance;
+        if (cutAllowance != null) {
+            checkRange("cut_allowance", cutAllowance, 0, 6);
+        }
+
+        // 盒式标注法：框几何中心距 = 镜圈宽 + 鼻梁；单眼瞳距 = PD / 2。
+        double framePd = frameA + dbl;
+        double monoPd = pd / 2;
+        // 每片移心量：把光心从框几何中心移到瞳孔所需的位移，取绝对值参与毛坯计算。
+        double decentration = framePd / 2 - monoPd;
+        double absDec = Math.abs(decentration);
+        String decDirection = decentration > 0.05 ? "向鼻侧内移"
+                : decentration < -0.05 ? "向颞侧外移" : "几乎无需移心";
+
+        // 有效直径 ED：优先实测；否则用盒对角线 √(A²+B²) 保守估算；再否则用 A 粗估。
+        double edValue;
+        String edSource;
+        if (ed != null) {
+            edValue = ed;
+            edSource = "实测有效直径 ED " + mm(edValue) + "mm";
+        } else if (frameB != null) {
+            edValue = Math.sqrt(frameA * frameA + frameB * frameB);
+            edSource = "由盒对角线保守估算 ED ≈ √(A² + B²) = √(" + mm(frameA) + "² + " + mm(frameB)
+                    + "²) ≈ " + mm(edValue) + "mm";
+        } else {
+            edValue = frameA;
+            edSource = "缺少 ED 与 B，暂以镜圈宽 A " + mm(frameA) + "mm 粗估（实际 ED 通常更大，务必实测）";
+        }
+
+        // 标准公式：最小毛坯直径 = 有效直径 + 2 × 移心量 + 加工余量。
+        double mbs = edValue + 2 * absDec + allowance;
+
+        List<String> notes = new ArrayList<>();
+        notes.add("每片移心量 " + mm(absDec) + "mm（" + decDirection + "）：框几何中心距 " + mm(framePd)
+                + "mm 与瞳距 " + mm(pd) + "mm 之差的一半；框越宽于瞳距、移心越多，所需毛坯越大。");
+        notes.add("有效直径来源：" + edSource + "。");
+
+        String availability;
+        if (mbs <= 65) {
+            availability = "≤ 65mm，常规单光毛坯（多为 65/70mm 起）即可轻松切出，最易获得。";
+        } else if (mbs <= 70) {
+            availability = "在 65–70mm 之间，常见 70mm 毛坯可覆盖，一般无需特殊订货。";
+        } else if (mbs <= 75) {
+            availability = "在 70–75mm 之间，需要较大的 75mm 毛坯；部分高折射率 / 渐进片在该直径下可选规格变少，下单前先确认库存。";
+        } else {
+            availability = "超过 75mm，需 80mm 或特殊订货的大毛坯；建议改选几何中心距更贴合瞳距（A + DBL 更接近 PD）的镜架，或确认该材料是否有此直径。";
+        }
+        notes.add("最小毛坯直径约 " + mm(mbs) + "mm——" + availability);
+
+        String blankLine = "";
+        if (blankDiameter != null) {
+            double margin = blankDiameter - mbs;
+            if (margin >= 0) {
+                blankLine = "\n- 手头毛坯 " + mm(blankDiameter) + "mm：**够用**，余量约 " + mm(margin)
+                        + "mm（直径方向，含 " + mm(allowance) + "mm 加工余量后仍有富余）。";
+            } else {
+                blankLine = "\n- 手头毛坯 " + mm(blankDiameter) + "mm：**偏小**，还差约 " + mm(-margin)
+                        + "mm，直接切这副镜架可能切不全或光心移不到位；需换更大毛坯或更贴合瞳距的镜架。";
+            }
+        }
+
+        if (absDec >= 4) {
+            notes.add("移心量偏大会同时推高毛坯直径和镜片边缘厚度（高度数尤甚）；若毛坯规格受限，优先考虑更贴合瞳距的镜架。");
+        }
+
+        String bLine = frameB != null ? "\n- 镜框高度 B：" + mm(frameB) + " mm" : "";
+        String edInputLine = ed != null ? "\n- 有效直径 ED：" + mm(ed) + " mm" : "";
+
+        return """
+                ## 最小镜片毛坯直径（MBS）
+
+                > 镜片要从一块圆形毛坯上切出，加工时还要把**光心移到瞳孔正前方**。毛坯必须大到：覆盖镜框形状（有效直径 ED）+ 两侧各让出一个移心量 + 一点加工余量。标准公式 **MBS = ED + 2 × 移心量 + 加工余量**。本工具只做科普估算，实际以加工中心的 ED 实测为准。
+
+                **输入**
+                - 镜圈宽度 A：%s mm
+                - 鼻梁宽度 DBL：%s mm
+                - 双眼瞳距 PD：%s mm（单眼 %s mm）%s%s
+                - 加工余量：%s mm
+
+                **测算结果**
+                - 框几何中心距（框 PD）：**%s mm**（A %s + DBL %s）
+                - 每片移心量：**%s mm**（%s）
+                - 所用有效直径 ED：**%s mm**
+                - 最小毛坯直径 MBS：**%s mm**（%s + 2 × %s + %s）%s
+
+                **说明**
+                %s
+
+                **提醒**
+                - ED 若非实测，本工具用盒对角线 √(A²+B²) 保守估算（偏大更安全），或在只有 A 时粗估；真实 ED 取决于镜片形状，务必以加工中心测量为准。
+                - 本公式假设双眼对称、光心只做水平移心；如需配合瞳高（垂直移心）或大散光 / 渐进定位，所需毛坯可能更大。
+                - 想看移心引入的水平棱镜，可配合 `frame_fit_calculator`。
+                - 本工具只做科普估算，不替代专业验配与加工。""".formatted(
+                mm(frameA),
+                mm(dbl),
+                mm(pd),
+                mm(monoPd),
+                bLine,
+                edInputLine,
+                mm(allowance),
+                mm(framePd),
+                mm(frameA),
+                mm(dbl),
+                mm(absDec),
+                decDirection,
+                mm(edValue),
+                mm(mbs),
+                mm(edValue),
+                mm(absDec),
+                mm(allowance),
+                blankLine,
+                bulletJoin(notes));
+    }
+
     @Tool(description = "视力记录法换算：视力表结果常见四种等价写法——小数记录法(decimal，如 1.0)、"
             + "五分记录法/对数记录法(five_minute，如 5.0，中国 GB 标准)、Snellen 分数(snellen，如 20/20 或 6/6)、"
             + "logMAR(如 0.00，科研常用)。把任一记法换算成其余三种并给出视力大致水平。换算：五分 L = 5 + lg(小数)，"

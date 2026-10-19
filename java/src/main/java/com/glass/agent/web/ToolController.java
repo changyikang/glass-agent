@@ -69,7 +69,8 @@ public class ToolController {
                 tool("near_acuity_converter", "近用视力（近视力表）记法换算：在 M 记法、印刷点数(pt)、近视力小数三种写法间换算，并给出 Snellen/logMAR/五分等效与含 Jaeger 的近视力对照表（小数=测试距离m÷M，点数≈M×8）。"),
                 tool("prism_resolver", "棱镜合成与分解（Prentice 向量运算）：combine 把水平(base-in/out)+垂直(base-up/down)分量合成为单一合棱镜（大小√(h²+v²)与方向角），resolve 把合棱镜按方向角分解回水平、垂直分量。"),
                 tool("astigmatism_type_guide", "散光类型判定：按两条主子午线光度（SPH 与 SPH+CYL）的正负判定屈光类型（复性/单纯近视或远视散光、混合散光），按负柱镜轴位（±30° 窗口）判定轴向规则（顺规/逆规/斜轴），判定与正负柱镜记法无关。"),
-                tool("progressive_fit_check", "渐进镜片装配高度评估：判断镜框是否够高装配渐进片。给实测装配高度或镜框高度 B（粗估 ≈ B/2+2），对常规（≥18mm）/短通道（≥14mm）/个性化（≥13mm）三种设计评估充足/临界/不足，并推荐最合适的设计或在高度过低时建议换镜框/改单光双光。"));
+                tool("progressive_fit_check", "渐进镜片装配高度评估：判断镜框是否够高装配渐进片。给实测装配高度或镜框高度 B（粗估 ≈ B/2+2），对常规（≥18mm）/短通道（≥14mm）/个性化（≥13mm）三种设计评估充足/临界/不足，并推荐最合适的设计或在高度过低时建议换镜框/改单光双光。"),
+                tool("minimum_blank_size", "最小镜片毛坯直径（MBS）计算：MBS = 有效直径 ED + 2×每片移心量 + 加工余量（默认 2mm），移心量=(镜圈宽+鼻梁)/2−PD/2。给镜圈宽/鼻梁/PD（可选 ED，或镜框高度 B 由盒对角线 √(A²+B²) 保守估算 ED），算出最小毛坯直径并对照常见规格(65/70/75/80)判断是否易得；给手头毛坯直径则判断够不够用。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -225,6 +226,13 @@ public class ToolController {
                 () -> tools.progressiveFitCheck(req.fittingHeight(), req.frameB(), req.design()));
     }
 
+    @PostMapping("/minimum_blank_size")
+    public ToolResponse minimumBlankSize(@RequestBody MinimumBlankSizeRequest req) {
+        return run("minimum_blank_size", req,
+                () -> tools.minimumBlankSize(req.frameA(), req.dbl(), req.pd(), req.ed(),
+                        req.frameB(), req.blankDiameter(), req.cutAllowance()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -321,5 +329,9 @@ public class ToolController {
     }
 
     public record ProgressiveFitRequest(Double fittingHeight, Double frameB, String design) {
+    }
+
+    public record MinimumBlankSizeRequest(double frameA, double dbl, double pd, Double ed,
+                                           Double frameB, Double blankDiameter, Double cutAllowance) {
     }
 }

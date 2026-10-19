@@ -807,4 +807,40 @@ class GlassAdvisorToolsTest {
                 () -> tools.progressiveFitCheck(null, null, null));
         assertTrue(ex.getMessage().contains("至少提供"));
     }
+
+    @Test
+    void minimumBlankSizeComputesMbsAndBlankExactlyFits() {
+        // 框 PD = 52 + 18 = 70；移心 = 70/2 - 62/2 = 4；MBS = 60 + 2×4 + 2 = 70
+        String result = tools.minimumBlankSize(52, 18, 62, 60.0, null, 70.0, null);
+        assertTrue(result.contains("框几何中心距（框 PD）：**70 mm**"));
+        assertTrue(result.contains("每片移心量：**4 mm**（向鼻侧内移）"));
+        assertTrue(result.contains("所用有效直径 ED：**60 mm**"));
+        assertTrue(result.contains("最小毛坯直径 MBS：**70 mm**（60 + 2 × 4 + 2）"));
+        assertTrue(result.contains("手头毛坯 70mm：**够用**，余量约 0mm"));
+    }
+
+    @Test
+    void minimumBlankSizeEstimatesEdFromBoxDiagonal() {
+        // 框 PD = 68；移心 = 34 - 32 = 2；ED = √(48²+36²) = 60；MBS = 60 + 4 + 2 = 66
+        String result = tools.minimumBlankSize(48, 20, 64, null, 36.0, null, null);
+        assertTrue(result.contains("每片移心量：**2 mm**（向鼻侧内移）"));
+        assertTrue(result.contains("所用有效直径 ED：**60 mm**"));
+        assertTrue(result.contains("√(A² + B²)"));
+        assertTrue(result.contains("最小毛坯直径 MBS：**66 mm**"));
+    }
+
+    @Test
+    void minimumBlankSizeFlagsTooSmallBlank() {
+        // 框 PD = 74；移心 = 37 - 30 = 7；MBS = 64 + 14 + 2 = 80
+        String result = tools.minimumBlankSize(56, 18, 60, 64.0, null, 70.0, null);
+        assertTrue(result.contains("最小毛坯直径 MBS：**80 mm**"));
+        assertTrue(result.contains("手头毛坯 70mm：**偏小**，还差约 10mm"));
+    }
+
+    @Test
+    void minimumBlankSizeRejectsOutOfRangePd() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.minimumBlankSize(52, 18, 30, null, null, null, null));
+        assertTrue(ex.getMessage().contains("pd"));
+    }
 }
