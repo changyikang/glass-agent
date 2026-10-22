@@ -849,6 +849,48 @@ export const tools: ToolDefinition[] = [
     sample: { frame_a: 54, dbl: 18, pd: 62, frame_b: 38, blank_diameter: 70 },
     handler: handleMinimumBlankSize,
   },
+  {
+    name: "vertical_imbalance_check",
+    description:
+      "近用垂直棱镜差（上下不平衡）评估：屈光参差者向下阅读时，视线落在镜片光心下方，两片各自按 Prentice 公式产生垂直棱镜（棱镜量 Δ = 向下移位量cm × 该子午线光度D）。因两眼垂直方向光度不同，两侧垂直棱镜不相等，形成需要垂直融像来克服的「差异棱镜」，过大时会在看书 / 看手机时引起眼疲劳、复视或串行。本工具按左右眼球镜 SPH（可含柱镜 CYL / 轴位 AXIS）算出各自垂直子午线光度（F_v = SPH + CYL·cos²(轴位)）、各眼在给定向下注视量（reading_drop，默认 8mm）下的垂直棱镜及基底方向，并给出两眼差异棱镜 = |F_v右 − F_v左| × 向下量(cm)，按经验阈值分级（<1Δ 多可耐受、1–1.5Δ 临界、≥1.5Δ 显著常需处理），并给出分开配近用镜 / 隐形眼镜 / 削底(slab-off) / 压贴棱镜等方案。水平方向因融像储备较大一般不计。仅做科普估算，不替代验光与双眼视功能评估。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        right_sph: {
+          type: "number",
+          description: "右眼 OD 球镜 SPH，单位D，近视填负数、远视填正数，如 -1.00。范围 -30~30。",
+        },
+        left_sph: {
+          type: "number",
+          description: "左眼 OS 球镜 SPH，单位D，近视填负数、远视填正数，如 -3.00。范围 -30~30。",
+        },
+        right_cyl: {
+          type: "number",
+          description: "右眼柱镜 CYL，单位D，默认 0；非 0 时必须同时提供 right_axis。范围 -10~10。",
+        },
+        left_cyl: {
+          type: "number",
+          description: "左眼柱镜 CYL，单位D，默认 0；非 0 时必须同时提供 left_axis。范围 -10~10。",
+        },
+        right_axis: {
+          type: "number",
+          description: "右眼散光轴位 AXIS，0-180 度整数；right_cyl≠0 时必填，否则不要填。",
+        },
+        left_axis: {
+          type: "number",
+          description: "左眼散光轴位 AXIS，0-180 度整数；left_cyl≠0 时必填，否则不要填。",
+        },
+        reading_drop: {
+          type: "number",
+          description:
+            "向下阅读时视线落点相对镜片光心的向下移位量，单位mm，默认 8（常见 8-10）。范围 0-20。",
+        },
+      },
+      required: ["right_sph", "left_sph"],
+    },
+    sample: { right_sph: -1, left_sph: -3, reading_drop: 10 },
+    handler: handleVerticalImbalanceCheck,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -2867,6 +2909,108 @@ ${renderBulletList(notes, "数值看起来合理。")}
 - 本公式假设双眼对称、光心只做水平移心；如需配合瞳高（垂直移心）或大散光 / 渐进定位，所需毛坯可能更大。
 - 想看移心引入的水平棱镜，可配合 \`frame_fit_calculator\`。
 - 本工具只做科普估算，不替代专业验配与加工。`);
+}
+
+/** 近用垂直棱镜差分级阈值（Δ）。 */
+const VERTICAL_IMBALANCE_TOLERABLE = 1.0;
+const VERTICAL_IMBALANCE_BORDERLINE = 1.5;
+
+/** 某片在垂直子午线（90°）上的光度：F_v = SPH + CYL·cos²(axis)。 */
+function verticalMeridianPower(sph: number, cyl: number, axis: number): number {
+  const rad = (axis * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  return sph + cyl * cos * cos;
+}
+
+function handleVerticalImbalanceCheck(args: ToolArgs): ToolResult {
+  const rightSph = expectNumber(args, "right_sph", { min: -30, max: 30 });
+  const leftSph = expectNumber(args, "left_sph", { min: -30, max: 30 });
+  const rightCyl = optionalNumber(args, "right_cyl", { min: -10, max: 10 }) ?? 0;
+  const leftCyl = optionalNumber(args, "left_cyl", { min: -10, max: 10 }) ?? 0;
+  const rightAxis = optionalNumber(args, "right_axis", { min: 0, max: 180, integer: true });
+  const leftAxis = optionalNumber(args, "left_axis", { min: 0, max: 180, integer: true });
+  const readingDrop = optionalNumber(args, "reading_drop", { min: 0, max: 20 }) ?? 8;
+
+  if (rightCyl !== 0 && rightAxis === undefined) {
+    throw new Error("右眼有柱镜（right_cyl≠0）时必须提供 right_axis");
+  }
+  if (leftCyl !== 0 && leftAxis === undefined) {
+    throw new Error("左眼有柱镜（left_cyl≠0）时必须提供 left_axis");
+  }
+
+  // 垂直子午线光度。无柱镜时轴位不参与（cos² 项乘 0）。
+  const fvRight = verticalMeridianPower(rightSph, rightCyl, rightAxis ?? 0);
+  const fvLeft = verticalMeridianPower(leftSph, leftCyl, leftAxis ?? 0);
+
+  const dropCm = readingDrop / 10;
+  // 向下注视：正镜呈 base-up，负镜呈 base-down；以 base-up 为正号。
+  const prismRight = fvRight * dropCm;
+  const prismLeft = fvLeft * dropCm;
+  // 差异棱镜 = 两眼垂直光度差 × 向下量（标准配镜公式）。
+  const imbalance = Math.abs(fvRight - fvLeft) * dropCm;
+
+  const baseWord = (fv: number): string =>
+    fv > 0.05 ? "base-up（基底朝上）" : fv < -0.05 ? "base-down（基底朝下）" : "几乎无垂直棱镜";
+
+  let level: string;
+  let advice: string;
+  if (imbalance < VERTICAL_IMBALANCE_TOLERABLE) {
+    level = "可忽略 / 多可耐受";
+    advice =
+      "差异棱镜较小，多数人靠垂直融像储备即可克服，通常无需特殊处理；按常规配镜即可，若近距离仍有不适再复查。";
+  } else if (imbalance < VERTICAL_IMBALANCE_BORDERLINE) {
+    level = "临界（部分人有症状）";
+    advice =
+      "处于临界范围，长时间近距离用眼（阅读 / 手机 / 电脑）可能出现眼疲劳或偶发复视；可优先考虑单独配一副近用 / 工作镜（把两眼近用光心分别对准向下注视点），或改用隐形眼镜。";
+  } else {
+    level = "显著（常需处理）";
+    advice =
+      "差异棱镜明显，近距离阅读易出现复视、串行、眼酸胀，建议采取补偿方案：① 单独配近用镜并下移光心；② 隐形眼镜（镜片随眼转动、光心始终对准瞳孔，几乎不产生差异棱镜）；③ 双光片用削底(slab-off)工艺或 Fresnel 压贴棱镜补偿；④ 请视光师做双眼视功能评估后定方案。";
+  }
+
+  const notes: string[] = [];
+  notes.push(
+    `垂直子午线光度：右眼 F_v=${formatSignedDiopter(fvRight)}、左眼 F_v=${formatSignedDiopter(fvLeft)}（F_v = SPH + CYL·cos²轴位；无散光时即 SPH）。`
+  );
+  notes.push(
+    `向下 ${mm(readingDrop)}mm 注视时每片垂直棱镜：右眼约 ${trimTrailingZeros(Math.abs(prismRight).toFixed(2))}Δ ${baseWord(fvRight)}、左眼约 ${trimTrailingZeros(Math.abs(prismLeft).toFixed(2))}Δ ${baseWord(fvLeft)}。`
+  );
+  if (imbalance >= VERTICAL_IMBALANCE_TOLERABLE) {
+    const higherEye = fvRight > fvLeft ? "右眼" : "左眼";
+    notes.push(
+      `两眼垂直棱镜方向 / 大小不一致，${higherEye}偏正（base-up 更强），向下看时两眼影像被上下拉开，需靠垂直融像维持单像。`
+    );
+  }
+  if (Math.abs(rightSph - leftSph) < 0.25 && Math.abs(rightCyl - leftCyl) < 0.25) {
+    notes.push("两眼度数接近，垂直方向差异很小，通常不构成问题。");
+  }
+
+  return textResult(`## 近用垂直棱镜差（上下不平衡）评估
+
+> 向下阅读时，视线落在镜片光心下方，每片按 **Prentice 公式**（棱镜 Δ = 向下量cm × 垂直光度D）产生垂直棱镜。屈光参差者两眼垂直光度不同，两侧棱镜不相等，形成需要垂直融像克服的「差异棱镜」——过大会在看书 / 看手机时引起眼疲劳、复视。水平方向因融像储备大，一般不单独评估。以下为科普估算，实际以验光与双眼视功能检查为准。
+
+**双眼度数**
+- 右眼 OD：${renderPrescriptionLine(rightSph, rightCyl, rightCyl !== 0 ? rightAxis : undefined)}
+- 左眼 OS：${renderPrescriptionLine(leftSph, leftCyl, leftCyl !== 0 ? leftAxis : undefined)}
+- 向下注视量：${mm(readingDrop)} mm（光心下方）
+
+**测算结果**
+- 两眼垂直光度差：${formatDiopter(Math.abs(fvRight - fvLeft))}
+- **差异垂直棱镜：约 ${trimTrailingZeros(imbalance.toFixed(2))}Δ** → **${level}**
+- 判读阈值：< ${trimTrailingZeros(VERTICAL_IMBALANCE_TOLERABLE.toFixed(1))}Δ 多可耐受、${trimTrailingZeros(VERTICAL_IMBALANCE_TOLERABLE.toFixed(1))}–${trimTrailingZeros(VERTICAL_IMBALANCE_BORDERLINE.toFixed(1))}Δ 临界、≥ ${trimTrailingZeros(VERTICAL_IMBALANCE_BORDERLINE.toFixed(1))}Δ 显著
+
+**建议**
+- ${advice}
+
+**说明**
+${renderBulletList(notes, "数值看起来合理。")}
+
+**提醒**
+- 本评估只针对**垂直**方向的差异棱镜（上下不平衡），这是屈光参差近用时最常见的症状来源；水平方向通常可被较大的融像储备代偿。
+- 向下注视量默认 8mm（常见 8–10mm），实际取决于镜架高度、瞳高与习惯坐姿，差异棱镜随该值线性增减。
+- 渐进 / 双光片在向下注视区同样会产生差异棱镜，需视光师结合子段高度 / 加工工艺评估。
+- 想把处方棱镜合成 / 分解，可配合 \`prism_resolver\`；想看整体屈光参差与影像不等，可配合 \`anisometropia_guide\`。
+- 本工具只做科普估算，不替代专业验光与处方。`);
 }
 
 function acuityLevelLabel(decimal: number): string {

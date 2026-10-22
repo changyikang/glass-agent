@@ -843,4 +843,42 @@ class GlassAdvisorToolsTest {
                 () -> tools.minimumBlankSize(52, 18, 30, null, null, null, null));
         assertTrue(ex.getMessage().contains("pd"));
     }
+
+    @Test
+    void verticalImbalanceComputesDifferentialPrism() {
+        // F_v: OD -1, OS -3 → 差 2D；drop 1cm → 差异棱镜 2.00Δ → 显著
+        String result = tools.verticalImbalanceCheck(-1, -3, null, null, null, null, 10.0);
+        assertTrue(result.contains("两眼垂直光度差：2D"));
+        assertTrue(result.contains("差异垂直棱镜：约 2Δ** → **显著"));
+        assertTrue(result.contains("右眼约 1Δ base-down"));
+        assertTrue(result.contains("左眼约 3Δ base-down"));
+    }
+
+    @Test
+    void verticalImbalanceEqualPowersAreTolerable() {
+        String result = tools.verticalImbalanceCheck(-2.5, -2.5, null, null, null, null, null);
+        assertTrue(result.contains("差异垂直棱镜：约 0Δ** → **可忽略 / 多可耐受"));
+        assertTrue(result.contains("两眼度数接近"));
+    }
+
+    @Test
+    void verticalImbalanceCylinderAtAxis180LoadsVerticalMeridian() {
+        // OD plano + -2cyl@180 → F_v = -2；OS plano → 0；差 2D × 1cm = 2Δ
+        String result = tools.verticalImbalanceCheck(0, 0, -2.0, null, 180, null, 10.0);
+        assertTrue(result.contains("差异垂直棱镜：约 2Δ"));
+    }
+
+    @Test
+    void verticalImbalanceCylinderAtAxis90DoesNotLoadVerticalMeridian() {
+        // cyl@90 → cos²90=0 → F_v = SPH；两眼同 -2 → 0 差异
+        String result = tools.verticalImbalanceCheck(-2, -2, -1.5, -1.5, 90, 90, null);
+        assertTrue(result.contains("差异垂直棱镜：约 0Δ"));
+    }
+
+    @Test
+    void verticalImbalanceRequiresAxisWhenCylinderPresent() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.verticalImbalanceCheck(-1, -2, -1.0, null, null, null, null));
+        assertTrue(ex.getMessage().contains("right_axis"));
+    }
 }

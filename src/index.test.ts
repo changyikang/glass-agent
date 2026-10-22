@@ -39,7 +39,74 @@ test("exports the expected MCP tool set", () => {
     "astigmatism_type_guide",
     "progressive_fit_check",
     "minimum_blank_size",
+    "vertical_imbalance_check",
   ]);
+});
+
+test("vertical imbalance: anisometropic spheres, imbalance = ΔF_v × drop(cm)", () => {
+  const tool = getTool("vertical_imbalance_check");
+  const result = tool.handler({ right_sph: -1, left_sph: -3, reading_drop: 10 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // F_v: OD -1, OS -3 → diff 2D; drop 1cm → imbalance 2.00Δ → significant
+  assert.match(text, /两眼垂直光度差：2D/);
+  assert.match(text, /差异垂直棱镜：约 2Δ\*\* → \*\*显著/);
+  // per-eye: OD 1×1=1Δ base-down, OS 3×1=3Δ base-down
+  assert.match(text, /右眼约 1Δ base-down/);
+  assert.match(text, /左眼约 3Δ base-down/);
+});
+
+test("vertical imbalance: equal powers cancel to zero → tolerable", () => {
+  const tool = getTool("vertical_imbalance_check");
+  const result = tool.handler({ right_sph: -2.5, left_sph: -2.5 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /差异垂直棱镜：约 0Δ\*\* → \*\*可忽略 \/ 多可耐受/);
+  assert.match(text, /两眼度数接近/);
+});
+
+test("vertical imbalance: cylinder only loads the vertical meridian at axis 180", () => {
+  const tool = getTool("vertical_imbalance_check");
+  // OD plano sph, -2 cyl @180 → F_v = 0 + (-2)·cos²180 = -2; OS plano → F_v 0
+  const result = tool.handler({
+    right_sph: 0,
+    right_cyl: -2,
+    right_axis: 180,
+    left_sph: 0,
+    reading_drop: 10,
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // diff |−2 − 0| × 1cm = 2Δ
+  assert.match(text, /差异垂直棱镜：约 2Δ/);
+});
+
+test("vertical imbalance: cylinder at axis 90 does not load the vertical meridian", () => {
+  const tool = getTool("vertical_imbalance_check");
+  // cyl @90 → cos²90 = 0 → F_v = SPH only; both eyes -2 sph → no imbalance
+  const result = tool.handler({
+    right_sph: -2,
+    right_cyl: -1.5,
+    right_axis: 90,
+    left_sph: -2,
+    left_cyl: -1.5,
+    left_axis: 90,
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /差异垂直棱镜：约 0Δ/);
+});
+
+test("vertical imbalance requires an axis when a cylinder is present", () => {
+  const tool = getTool("vertical_imbalance_check");
+  assert.throws(
+    () => tool.handler({ right_sph: -1, right_cyl: -1, left_sph: -2 }),
+    /right_axis/
+  );
 });
 
 test("minimum blank size: MBS = ED + 2×decentration + allowance, blank exactly fits", () => {

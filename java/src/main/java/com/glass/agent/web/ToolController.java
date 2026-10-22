@@ -70,7 +70,8 @@ public class ToolController {
                 tool("prism_resolver", "棱镜合成与分解（Prentice 向量运算）：combine 把水平(base-in/out)+垂直(base-up/down)分量合成为单一合棱镜（大小√(h²+v²)与方向角），resolve 把合棱镜按方向角分解回水平、垂直分量。"),
                 tool("astigmatism_type_guide", "散光类型判定：按两条主子午线光度（SPH 与 SPH+CYL）的正负判定屈光类型（复性/单纯近视或远视散光、混合散光），按负柱镜轴位（±30° 窗口）判定轴向规则（顺规/逆规/斜轴），判定与正负柱镜记法无关。"),
                 tool("progressive_fit_check", "渐进镜片装配高度评估：判断镜框是否够高装配渐进片。给实测装配高度或镜框高度 B（粗估 ≈ B/2+2），对常规（≥18mm）/短通道（≥14mm）/个性化（≥13mm）三种设计评估充足/临界/不足，并推荐最合适的设计或在高度过低时建议换镜框/改单光双光。"),
-                tool("minimum_blank_size", "最小镜片毛坯直径（MBS）计算：MBS = 有效直径 ED + 2×每片移心量 + 加工余量（默认 2mm），移心量=(镜圈宽+鼻梁)/2−PD/2。给镜圈宽/鼻梁/PD（可选 ED，或镜框高度 B 由盒对角线 √(A²+B²) 保守估算 ED），算出最小毛坯直径并对照常见规格(65/70/75/80)判断是否易得；给手头毛坯直径则判断够不够用。"));
+                tool("minimum_blank_size", "最小镜片毛坯直径（MBS）计算：MBS = 有效直径 ED + 2×每片移心量 + 加工余量（默认 2mm），移心量=(镜圈宽+鼻梁)/2−PD/2。给镜圈宽/鼻梁/PD（可选 ED，或镜框高度 B 由盒对角线 √(A²+B²) 保守估算 ED），算出最小毛坯直径并对照常见规格(65/70/75/80)判断是否易得；给手头毛坯直径则判断够不够用。"),
+                tool("vertical_imbalance_check", "近用垂直棱镜差（上下不平衡）评估：屈光参差者向下阅读时两片各按 Prentice 产生垂直棱镜（Δ=向下量cm×垂直光度D）。按左右眼 SPH（可含 CYL/AXIS）算各自垂直子午线光度 F_v=SPH+CYL·cos²轴位、每片垂直棱镜与基底方向，并给出差异棱镜=|F_v右−F_v左|×向下量，按阈值分级（<1Δ 可耐受/1–1.5Δ 临界/≥1.5Δ 显著），给出分开配近用镜/隐形/削底/压贴棱镜等方案。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -233,6 +234,13 @@ public class ToolController {
                         req.frameB(), req.blankDiameter(), req.cutAllowance()));
     }
 
+    @PostMapping("/vertical_imbalance_check")
+    public ToolResponse verticalImbalanceCheck(@RequestBody VerticalImbalanceRequest req) {
+        return run("vertical_imbalance_check", req,
+                () -> tools.verticalImbalanceCheck(req.rightSph(), req.leftSph(), req.rightCyl(),
+                        req.leftCyl(), req.rightAxis(), req.leftAxis(), req.readingDrop()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -333,5 +341,10 @@ public class ToolController {
 
     public record MinimumBlankSizeRequest(double frameA, double dbl, double pd, Double ed,
                                            Double frameB, Double blankDiameter, Double cutAllowance) {
+    }
+
+    public record VerticalImbalanceRequest(double rightSph, double leftSph, Double rightCyl,
+                                           Double leftCyl, Integer rightAxis, Integer leftAxis,
+                                           Double readingDrop) {
     }
 }
