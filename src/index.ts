@@ -891,6 +891,38 @@ export const tools: ToolDefinition[] = [
     sample: { right_sph: -1, left_sph: -3, reading_drop: 10 },
     handler: handleVerticalImbalanceCheck,
   },
+  {
+    name: "lens_tilt_compensation",
+    description:
+      "镜片倾斜（前倾角 / 面弯）引起的度数变化与补偿估算：镜片相对视线倾斜时，到达眼睛的「如戴」光度会发生变化——球镜略增强，并额外引入一个轴位与旋转轴平行的散光（斜向屈光 / Martin 公式）。前倾角（pantoscopic，镜片上缘向脸部倾斜，绕水平轴）引入轴位 180° 的散光；面弯 / 包裹角（faceform / wrap，常见于运动镜、太阳镜，绕垂直轴）引入轴位 90° 的散光。按镜片球镜光度 power、倾斜角 tilt_angle、倾斜类型 tilt_type（默认 pantoscopic）与折射率 index（默认 1.5）计算：等效球镜 S' = F·(1 + sin²θ/(2n))、引入散光 C' = S'·tan²θ（轴位随类型），给出如戴等效度数、与原度数的偏差、按经验阈值（引入散光 <0.12D 可忽略、0.12–0.25D 临界、≥0.25D 明显需补偿）的分级与建议。高度数、大面弯（运动 / 包裹型太阳镜）时偏差放大，高端 / 自由曲面镜片会做「如戴位置（position-of-wear）补偿」抵消。适度前倾角（约 8–12°）属正常设计。仅做科普估算，散光处方需按主子午线分别评估，实际以视光师与加工为准。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        power: {
+          type: "number",
+          description:
+            "镜片球镜光度 F，单位D，近视填负数、远视填正数，如 -4.00。散光处方可按某条主子午线光度分别评估。范围 -20~20。",
+        },
+        tilt_angle: {
+          type: "number",
+          description:
+            "镜片相对视线的倾斜角 θ，单位度（°），如前倾角 10 或面弯 20。范围 0-40（0 表示不倾斜）。",
+        },
+        tilt_type: {
+          type: "string",
+          description:
+            "倾斜类型：pantoscopic（前倾角，绕水平轴，引入轴位 180° 散光）/ faceform（面弯 / 包裹角，绕垂直轴，引入轴位 90° 散光）。默认 pantoscopic。",
+        },
+        index: {
+          type: "number",
+          description: "镜片折射率 n，如 1.50 / 1.60 / 1.67 / 1.74。默认 1.5。范围 1.4-1.9。",
+        },
+      },
+      required: ["power", "tilt_angle"],
+    },
+    sample: { power: 6, tilt_angle: 20, tilt_type: "faceform", index: 1.6 },
+    handler: handleLensTiltCompensation,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -3010,6 +3042,94 @@ ${renderBulletList(notes, "数值看起来合理。")}
 - 向下注视量默认 8mm（常见 8–10mm），实际取决于镜架高度、瞳高与习惯坐姿，差异棱镜随该值线性增减。
 - 渐进 / 双光片在向下注视区同样会产生差异棱镜，需视光师结合子段高度 / 加工工艺评估。
 - 想把处方棱镜合成 / 分解，可配合 \`prism_resolver\`；想看整体屈光参差与影像不等，可配合 \`anisometropia_guide\`。
+- 本工具只做科普估算，不替代专业验光与处方。`);
+}
+
+const TILT_CYL_NEGLIGIBLE = 0.12;
+const TILT_CYL_NOTICEABLE = 0.25;
+
+function handleLensTiltCompensation(args: ToolArgs): ToolResult {
+  const power = expectNumber(args, "power", { min: -20, max: 20 });
+  const tiltAngle = expectNumber(args, "tilt_angle", { min: 0, max: 40 });
+  const tiltType = optionalEnum(args, "tilt_type", ["pantoscopic", "faceform"] as const) ?? "pantoscopic";
+  const index = optionalNumber(args, "index", { min: 1.4, max: 1.9 }) ?? 1.5;
+
+  const rad = (tiltAngle * Math.PI) / 180;
+  const sin = Math.sin(rad);
+  const tan = Math.tan(rad);
+  // Martin 斜向屈光：倾斜后等效球镜 S' = F·(1 + sin²θ/(2n))，引入散光 C' = S'·tan²θ。
+  const effectiveSphere = power * (1 + (sin * sin) / (2 * index));
+  const inducedCyl = effectiveSphere * tan * tan;
+  const sphereShift = effectiveSphere - power;
+  // 前倾角绕水平轴（引入轴 180°）；面弯绕垂直轴（引入轴 90°）。
+  const inducedAxis = tiltType === "pantoscopic" ? 180 : 90;
+  const absCyl = Math.abs(inducedCyl);
+
+  const typeLabel =
+    tiltType === "pantoscopic" ? "前倾角（pantoscopic，绕水平轴）" : "面弯 / 包裹角（faceform / wrap，绕垂直轴）";
+
+  let level: string;
+  let advice: string;
+  if (tiltAngle === 0 || absCyl < TILT_CYL_NEGLIGIBLE) {
+    level = "可忽略";
+    advice =
+      "倾斜引入的散光小于约 0.12D（不足一个 0.25D 步进），对视觉基本无影响，按常规配镜即可，无需特别补偿。";
+  } else if (absCyl < TILT_CYL_NOTICEABLE) {
+    level = "临界（约一个处方步进）";
+    advice =
+      "倾斜引入的散光接近 0.25D，对多数人影响有限；若对清晰度敏感、或镜片度数 / 面弯还会更大，可请视光师考虑做如戴位置（position-of-wear）补偿，或适当减小倾斜。";
+  } else {
+    level = "明显（建议补偿）";
+    advice =
+      "倾斜引入的散光达到或超过 0.25D，可能带来视物变形、边缘模糊或视疲劳，建议：① 选用会做「如戴位置补偿」的高端 / 自由曲面（freeform）镜片，按实际前倾角 / 面弯 / 镜眼距反算镜片面；② 面弯过大的运动 / 包裹型镜架适当减小包裹角；③ 高度数者尤其注意，偏差随度数线性放大。";
+  }
+
+  const notes: string[] = [];
+  notes.push(
+    `倾斜后等效球镜 S' = F·(1 + sin²θ/(2n)) = ${formatSignedDiopter(power)}·(1 + sin²${trimTrailingZeros(tiltAngle.toFixed(0))}°/(2×${trimTrailingZeros(index.toFixed(2))})) ≈ ${formatSignedDiopter(effectiveSphere)}。`
+  );
+  notes.push(
+    `引入散光 C' = S'·tan²θ ≈ ${formatSignedDiopter(inducedCyl)}，轴位 ${inducedAxis}°（与旋转轴平行）。`
+  );
+  if (tiltType === "pantoscopic") {
+    notes.push(
+      "适度前倾角（约 8–12°）是镜架的正常设计，镜片通常按此下移光心并留有余量；真正需要留意的是前倾角过大，或运动 / 包裹型镜架的面弯。"
+    );
+  } else {
+    notes.push(
+      "面弯 / 包裹角常见于运动镜、太阳镜等包裹型镜架，是倾斜补偿里更常见的问题来源——包裹角越大、度数越高，引入的散光越明显。"
+    );
+  }
+  if (Math.abs(power) >= 4) {
+    notes.push("镜片度数较高，倾斜引入的偏差被放大，更建议选用带如戴补偿的镜片。");
+  }
+
+  return textResult(`## 镜片倾斜（${typeLabel.split("（")[0]}）引起的度数变化与补偿
+
+> 镜片相对视线倾斜时，到达眼睛的「如戴」光度会变化：球镜略增强，并引入一个轴位与旋转轴平行的散光（斜向屈光 / Martin 公式）。以下为科普估算，散光处方需按主子午线分别评估，实际以视光师与加工为准。
+
+**输入**
+- 镜片球镜光度 F：${formatSignedDiopter(power)}
+- 倾斜角 θ：${trimTrailingZeros(tiltAngle.toFixed(1))}°
+- 倾斜类型：${typeLabel}
+- 折射率 n：${trimTrailingZeros(index.toFixed(2))}
+
+**测算结果**
+- 倾斜后等效球镜 S'：**${formatSignedDiopter(effectiveSphere)}**（较原球镜 ${sphereShift === 0 ? "无变化" : `绝对值增大约 ${formatDiopter(Math.abs(sphereShift))}`}）
+- **引入散光 C'：约 ${formatSignedDiopter(inducedCyl)} × ${inducedAxis}°** → **${level}**
+- 如戴等效度数：约 ${formatSignedDiopter(effectiveSphere)} / ${formatSignedDiopter(inducedCyl)} × ${inducedAxis}°
+- 判读阈值（按引入散光大小）：< ${trimTrailingZeros(TILT_CYL_NEGLIGIBLE.toFixed(2))}D 可忽略、${trimTrailingZeros(TILT_CYL_NEGLIGIBLE.toFixed(2))}–${trimTrailingZeros(TILT_CYL_NOTICEABLE.toFixed(2))}D 临界、≥ ${trimTrailingZeros(TILT_CYL_NOTICEABLE.toFixed(2))}D 明显
+
+**建议**
+- ${advice}
+
+**说明**
+${renderBulletList(notes, "数值看起来合理。")}
+
+**提醒**
+- 本工具按「球镜光度」估算；散光处方应分别代入两条主子午线光度评估，叠加后的实际如戴度数更复杂，请以验光师为准。
+- 「如戴位置补偿」还需结合镜眼距（顶点距离）、前倾角、面弯一起反算，本工具只给其中倾斜一项的量级。
+- 想评估镜架与瞳距的水平贴合 / 光心移位，可配合 \`frame_fit_calculator\`；想把框架镜换算成隐形眼镜度数（顶点补偿），可配合 \`contact_lens_power\`。
 - 本工具只做科普估算，不替代专业验光与处方。`);
 }
 

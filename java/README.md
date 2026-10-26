@@ -1,6 +1,6 @@
 # glass-agent（Java + Spring Boot 版）
 
-配眼镜指南**智能体**，基于 **Spring Boot 3 + Spring AI**。它把原 TypeScript MCP Server 的 27 个配镜工具移植为 Java 实现，并在此之上接入大模型：用户用自然语言提问，大模型通过 **Function Calling** 自动选择并调用工具。智能体会**主动追问必要信息**（度数、用途、预算、脸型等），信息足够后给出配镜建议，并在最后**附上京东 / 淘宝 / 拼多多的购买链接**。
+配眼镜指南**智能体**，基于 **Spring Boot 3 + Spring AI**。它把原 TypeScript MCP Server 的 28 个配镜工具移植为 Java 实现，并在此之上接入大模型：用户用自然语言提问，大模型通过 **Function Calling** 自动选择并调用工具。智能体会**主动追问必要信息**（度数、用途、预算、脸型等），信息足够后给出配镜建议，并在最后**附上京东 / 淘宝 / 拼多多的购买链接**。
 
 原 TypeScript / MCP 版本仍保留在仓库根目录，两者并存。
 
@@ -53,6 +53,7 @@
 - `progressive_fit_check`：渐进镜片装配高度评估——判断镜框是否「够高」装配渐进多焦点镜片（装配高度 = 瞳孔中心到镜片最低缘的垂直距离）。可给实测 `fitting_height`，或给镜框高度 `frame_b`（B 值）由工具粗估（≈ B/2 + 2）；对常规/长通道（最小约 18mm）、短通道（约 14mm）、个性化/自由曲面（约 13mm）三种设计评估充足 / 临界 / 不足，给定目标 `design` 时报出可行性与余量，不给时按「优先常规 > 短通道 > 个性化」推荐，高度低于所有门槛（< 13mm）则建议换更高镜框或改用单光 / 双光，与 `progressive_lens_assessment`、`frame_fit_calculator` 互补
 - `minimum_blank_size`：最小镜片毛坯直径（MBS）计算——`MBS = 有效直径 ED + 2 × 每片移心量 + 加工余量`（默认 2mm），移心量 = (镜圈宽 + 鼻梁)/2 − PD/2。给镜圈宽/鼻梁/PD（可选 `ed`，或镜框高度 `frameB` 由盒对角线 `√(A²+B²)` 保守估算 ED），算出框几何中心距、每片移心量、所用 ED 与最小毛坯直径，并对照常见毛坯规格（65/70/75/80mm）判断是否易得；给手头毛坯直径 `blankDiameter` 时判断够不够用并给出余量，与 `frame_fit_calculator` 互补
 - `vertical_imbalance_check`：近用垂直棱镜差（上下不平衡）评估（Prentice 向量）——屈光参差者向下阅读时两片各产生垂直棱镜。按左右眼球镜 `rightSph`/`leftSph`（可含 `rightCyl`/`leftCyl` + `rightAxis`/`leftAxis`）算出各自垂直子午线光度 `F_v = SPH + CYL·cos²(轴位)`、每片在给定向下注视量 `readingDrop`（默认 8mm）下的垂直棱镜与基底方向，并给出差异棱镜 `= |F_v右 − F_v左| × 向下量(cm)`，按经验阈值分级（<1Δ 多可耐受、1–1.5Δ 临界、≥1.5Δ 显著常需处理），给出分开配近用镜 / 隐形眼镜 / 削底(slab-off) / 压贴棱镜等方案，与 `anisometropia_guide`、`prism_resolver` 互补
+- `lens_tilt_compensation`：镜片倾斜（前倾角 / 面弯）引起的度数变化与补偿估算（Martin 斜向屈光）——镜片相对视线倾斜时如戴光度变化（球镜略增强并引入与旋转轴平行的散光）。按球镜 `power`、倾斜角 `tiltAngle`、类型 `tiltType`（`pantoscopic` 前倾角引入轴 180°／`faceform` 面弯引入轴 90°）与折射率 `index`（默认 1.5）算等效球镜 `S' = F·(1 + sin²θ/(2n))`、引入散光 `C' = S'·tan²θ`，给出如戴等效度数与偏差，按引入散光大小分级（<0.12D 可忽略、0.12–0.25D 临界、≥0.25D 明显需补偿）。高度数、大面弯时偏差放大，高端 / 自由曲面镜片会做「如戴位置补偿」抵消；适度前倾角（约 8–12°）属正常设计，与 `frame_fit_calculator`、`contact_lens_power` 互补
 
 ## 环境要求
 
@@ -282,7 +283,7 @@ java/
 └── src/main/java/com/glass/agent/
     ├── GlassAgentApplication.java      # 启动类
     ├── tool/
-    │   ├── GlassAdvisorTools.java      # 27 个工具的业务逻辑 + @Tool 注解
+    │   ├── GlassAdvisorTools.java      # 28 个工具的业务逻辑 + @Tool 注解
     │   ├── ToolCallHistory.java        # 进程内工具调用历史（最近 50 次）
     │   └── Diopters.java               # 度数格式化帮助函数
     ├── agent/

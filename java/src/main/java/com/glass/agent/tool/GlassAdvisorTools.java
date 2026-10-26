@@ -1257,6 +1257,11 @@ public class GlassAdvisorTools {
     /** 近用垂直棱镜差分级阈值（Δ）：此值及以上为显著，常需处理。 */
     private static final double VERTICAL_IMBALANCE_BORDERLINE = 1.5;
 
+    /** 镜片倾斜引入散光分级阈值（D）：此值以下可忽略。 */
+    private static final double TILT_CYL_NEGLIGIBLE = 0.12;
+    /** 镜片倾斜引入散光分级阈值（D）：此值及以上为明显，建议补偿。 */
+    private static final double TILT_CYL_NOTICEABLE = 0.25;
+
     @Tool(description = "屈光参差评估：输入左右眼球镜（及可选柱镜）度数，按等效球镜之差评估两眼屈光参差程度"
             + "（无 / 轻度 / 中度 / 显著），估算框架镜下两眼视网膜影像大小差异（不等像 aniseikonia）与耐受边界，"
             + "识别「一眼近视一眼远视」的混合性参差和柱镜差异过大等特殊情况，并给出框架镜 vs 隐形眼镜、逐步适应、"
@@ -2350,6 +2355,132 @@ public class GlassAdvisorTools {
             return "base-down（基底朝下）";
         }
         return "几乎无垂直棱镜";
+    }
+
+    @Tool(description = "镜片倾斜（前倾角 / 面弯）引起的度数变化与补偿估算：镜片相对视线倾斜时，到达眼睛的"
+            + "「如戴」光度会变化——球镜略增强，并额外引入一个轴位与旋转轴平行的散光（斜向屈光 / Martin 公式）。"
+            + "前倾角（pantoscopic，镜片上缘向脸部倾斜，绕水平轴）引入轴位 180° 的散光；面弯 / 包裹角"
+            + "（faceform / wrap，常见于运动镜、太阳镜，绕垂直轴）引入轴位 90° 的散光。按镜片球镜光度 power、"
+            + "倾斜角 tilt_angle、倾斜类型 tilt_type（默认 pantoscopic）与折射率 index（默认 1.5）计算：等效球镜"
+            + " S' = F·(1 + sin²θ/(2n))、引入散光 C' = S'·tan²θ（轴位随类型），给出如戴等效度数、与原度数的偏差、"
+            + "按经验阈值（引入散光 <0.12D 可忽略、0.12–0.25D 临界、≥0.25D 明显需补偿）的分级与建议。高度数、大面弯时偏差放大，"
+            + "高端 / 自由曲面镜片会做「如戴位置（position-of-wear）补偿」抵消；适度前倾角（约 8–12°）属正常设计。"
+            + "仅做科普估算，散光处方需按主子午线分别评估，实际以视光师与加工为准。")
+    public String lensTiltCompensation(
+            @ToolParam(description = "镜片球镜光度 F，单位D，近视填负数、远视填正数，如 -4.00。散光处方可按某条主子午线光度分别评估。范围 -20~20。")
+            double power,
+            @ToolParam(description = "镜片相对视线的倾斜角 θ，单位度（°），如前倾角 10 或面弯 20。范围 0-40（0 表示不倾斜）。")
+            double tiltAngle,
+            @ToolParam(required = false, description = "倾斜类型：pantoscopic（前倾角，绕水平轴，引入轴位 180° 散光）/ "
+                    + "faceform（面弯 / 包裹角，绕垂直轴，引入轴位 90° 散光）。默认 pantoscopic。")
+            String tiltType,
+            @ToolParam(required = false, description = "镜片折射率 n，如 1.50 / 1.60 / 1.67 / 1.74。默认 1.5。范围 1.4-1.9。")
+            Double index) {
+
+        checkRange("power", power, -20, 20);
+        checkRange("tilt_angle", tiltAngle, 0, 40);
+        String type = tiltType == null ? "pantoscopic" : expectEnum("tilt_type", tiltType, "pantoscopic", "faceform");
+        double n = index == null ? 1.5 : index;
+        if (index != null) {
+            checkRange("index", index, 1.4, 1.9);
+        }
+
+        double rad = Math.toRadians(tiltAngle);
+        double sin = Math.sin(rad);
+        double tan = Math.tan(rad);
+        // Martin 斜向屈光：倾斜后等效球镜 S' = F·(1 + sin²θ/(2n))，引入散光 C' = S'·tan²θ。
+        double effectiveSphere = power * (1 + (sin * sin) / (2 * n));
+        double inducedCyl = effectiveSphere * tan * tan;
+        double sphereShift = effectiveSphere - power;
+        // 前倾角绕水平轴（引入轴 180°）；面弯绕垂直轴（引入轴 90°）。
+        int inducedAxis = type.equals("pantoscopic") ? 180 : 90;
+        double absCyl = Math.abs(inducedCyl);
+
+        String typeLabel = type.equals("pantoscopic")
+                ? "前倾角（pantoscopic，绕水平轴）"
+                : "面弯 / 包裹角（faceform / wrap，绕垂直轴）";
+        String titleType = type.equals("pantoscopic") ? "前倾角" : "面弯 / 包裹角";
+
+        String level;
+        String advice;
+        if (tiltAngle == 0 || absCyl < TILT_CYL_NEGLIGIBLE) {
+            level = "可忽略";
+            advice = "倾斜引入的散光小于约 0.12D（不足一个 0.25D 步进），对视觉基本无影响，按常规配镜即可，无需特别补偿。";
+        } else if (absCyl < TILT_CYL_NOTICEABLE) {
+            level = "临界（约一个处方步进）";
+            advice = "倾斜引入的散光接近 0.25D，对多数人影响有限；若对清晰度敏感、或镜片度数 / 面弯还会更大，"
+                    + "可请视光师考虑做如戴位置（position-of-wear）补偿，或适当减小倾斜。";
+        } else {
+            level = "明显（建议补偿）";
+            advice = "倾斜引入的散光达到或超过 0.25D，可能带来视物变形、边缘模糊或视疲劳，建议："
+                    + "① 选用会做「如戴位置补偿」的高端 / 自由曲面（freeform）镜片，按实际前倾角 / 面弯 / 镜眼距反算镜片面；"
+                    + "② 面弯过大的运动 / 包裹型镜架适当减小包裹角；③ 高度数者尤其注意，偏差随度数线性放大。";
+        }
+
+        List<String> notes = new ArrayList<>();
+        notes.add("倾斜后等效球镜 S' = F·(1 + sin²θ/(2n)) = " + formatSignedDiopter(power)
+                + "·(1 + sin²" + trimNumber(tiltAngle) + "°/(2×" + trimNumber(n) + ")) ≈ "
+                + formatSignedDiopter(effectiveSphere) + "。");
+        notes.add("引入散光 C' = S'·tan²θ ≈ " + formatSignedDiopter(inducedCyl)
+                + "，轴位 " + inducedAxis + "°（与旋转轴平行）。");
+        if (type.equals("pantoscopic")) {
+            notes.add("适度前倾角（约 8–12°）是镜架的正常设计，镜片通常按此下移光心并留有余量；"
+                    + "真正需要留意的是前倾角过大，或运动 / 包裹型镜架的面弯。");
+        } else {
+            notes.add("面弯 / 包裹角常见于运动镜、太阳镜等包裹型镜架，是倾斜补偿里更常见的问题来源——"
+                    + "包裹角越大、度数越高，引入的散光越明显。");
+        }
+        if (Math.abs(power) >= 4) {
+            notes.add("镜片度数较高，倾斜引入的偏差被放大，更建议选用带如戴补偿的镜片。");
+        }
+
+        return """
+                ## 镜片倾斜（%s）引起的度数变化与补偿
+
+                > 镜片相对视线倾斜时，到达眼睛的「如戴」光度会变化：球镜略增强，并引入一个轴位与旋转轴平行的散光（斜向屈光 / Martin 公式）。以下为科普估算，散光处方需按主子午线分别评估，实际以视光师与加工为准。
+
+                **输入**
+                - 镜片球镜光度 F：%s
+                - 倾斜角 θ：%s°
+                - 倾斜类型：%s
+                - 折射率 n：%s
+
+                **测算结果**
+                - 倾斜后等效球镜 S'：**%s**（较原球镜 %s）
+                - **引入散光 C'：约 %s × %s°** → **%s**
+                - 如戴等效度数：约 %s / %s × %s°
+                - 判读阈值（按引入散光大小）：< %sD 可忽略、%s–%sD 临界、≥ %sD 明显
+
+                **建议**
+                - %s
+
+                **说明**
+                %s
+
+                **提醒**
+                - 本工具按「球镜光度」估算；散光处方应分别代入两条主子午线光度评估，叠加后的实际如戴度数更复杂，请以验光师为准。
+                - 「如戴位置补偿」还需结合镜眼距（顶点距离）、前倾角、面弯一起反算，本工具只给其中倾斜一项的量级。
+                - 想评估镜架与瞳距的水平贴合 / 光心移位，可配合 `frame_fit_calculator`；想把框架镜换算成隐形眼镜度数（顶点补偿），可配合 `contact_lens_power`。
+                - 本工具只做科普估算，不替代专业验光与处方。""".formatted(
+                titleType,
+                formatSignedDiopter(power),
+                trimNumber(tiltAngle),
+                typeLabel,
+                trimNumber(n),
+                formatSignedDiopter(effectiveSphere),
+                sphereShift == 0 ? "无变化" : "绝对值增大约 " + formatDiopter(Math.abs(sphereShift)),
+                formatSignedDiopter(inducedCyl),
+                inducedAxis,
+                level,
+                formatSignedDiopter(effectiveSphere),
+                formatSignedDiopter(inducedCyl),
+                inducedAxis,
+                trimNumber(TILT_CYL_NEGLIGIBLE),
+                trimNumber(TILT_CYL_NEGLIGIBLE),
+                trimNumber(TILT_CYL_NOTICEABLE),
+                trimNumber(TILT_CYL_NOTICEABLE),
+                advice,
+                bulletJoin(notes));
     }
 
     @Tool(description = "视力记录法换算：视力表结果常见四种等价写法——小数记录法(decimal，如 1.0)、"

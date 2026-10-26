@@ -40,7 +40,56 @@ test("exports the expected MCP tool set", () => {
     "progressive_fit_check",
     "minimum_blank_size",
     "vertical_imbalance_check",
+    "lens_tilt_compensation",
   ]);
+});
+
+test("lens tilt: faceform induces cylinder at axis 90 and strengthens the sphere", () => {
+  const tool = getTool("lens_tilt_compensation");
+  const result = tool.handler({ power: 6, tilt_angle: 20, tilt_type: "faceform", index: 1.6 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // S' = 6·(1 + sin²20/(2·1.6)) ≈ 6·1.0366 ≈ 6.22; C' = S'·tan²20 ≈ 0.82 @90 → noticeable
+  assert.match(text, /引入散光 C'：约 \+0\.82D × 90°\*\* → \*\*明显（建议补偿）/);
+  assert.match(text, /倾斜后等效球镜 S'：\*\*\+6\.22D\*\*/);
+});
+
+test("lens tilt: pantoscopic induces cylinder at axis 180", () => {
+  const tool = getTool("lens_tilt_compensation");
+  const result = tool.handler({ power: -8, tilt_angle: 12, tilt_type: "pantoscopic", index: 1.5 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /× 180°/);
+  // induced cyl magnitude |-8·(1+sin²12/3)·tan²12| ≈ 0.37 → noticeable
+  assert.match(text, /明显（建议补偿）/);
+});
+
+test("lens tilt: zero tilt leaves the power unchanged and is negligible", () => {
+  const tool = getTool("lens_tilt_compensation");
+  const result = tool.handler({ power: -3, tilt_angle: 0 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /倾斜后等效球镜 S'：\*\*-3D\*\*（较原球镜 无变化）/);
+  assert.match(text, /可忽略/);
+  // defaults to pantoscopic → axis 180
+  assert.match(text, /× 180°/);
+});
+
+test("lens tilt: a small pantoscopic tilt on a low power is negligible", () => {
+  const tool = getTool("lens_tilt_compensation");
+  // -2.00, 8° panto, n=1.5: C' ≈ -2.02·tan²8 ≈ -0.04 → negligible
+  const result = tool.handler({ power: -2, tilt_angle: 8 });
+
+  assert.equal(result.isError, undefined);
+  assert.match(result.content[0].text, /可忽略/);
+});
+
+test("lens tilt rejects an out-of-range refractive index", () => {
+  const tool = getTool("lens_tilt_compensation");
+  assert.throws(() => tool.handler({ power: -4, tilt_angle: 10, index: 2.5 }), /index/);
 });
 
 test("vertical imbalance: anisometropic spheres, imbalance = ΔF_v × drop(cm)", () => {

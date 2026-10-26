@@ -881,4 +881,41 @@ class GlassAdvisorToolsTest {
                 () -> tools.verticalImbalanceCheck(-1, -2, -1.0, null, null, null, null));
         assertTrue(ex.getMessage().contains("right_axis"));
     }
+
+    @Test
+    void lensTiltFaceformInducesCylinderAtAxis90() {
+        // S' = 6·(1 + sin²20/(2·1.6)) ≈ 6.22；C' = S'·tan²20 ≈ 0.82 @90 → 明显
+        String result = tools.lensTiltCompensation(6, 20, "faceform", 1.6);
+        assertTrue(result.contains("引入散光 C'：约 +0.82D × 90°** → **明显（建议补偿）"));
+        assertTrue(result.contains("倾斜后等效球镜 S'：**+6.22D**"));
+    }
+
+    @Test
+    void lensTiltPantoscopicInducesCylinderAtAxis180() {
+        String result = tools.lensTiltCompensation(-8, 12, "pantoscopic", 1.5);
+        assertTrue(result.contains("× 180°"));
+        assertTrue(result.contains("明显（建议补偿）"));
+    }
+
+    @Test
+    void lensTiltZeroTiltLeavesPowerUnchanged() {
+        String result = tools.lensTiltCompensation(-3, 0, null, null);
+        assertTrue(result.contains("倾斜后等效球镜 S'：**-3D**（较原球镜 无变化）"));
+        assertTrue(result.contains("可忽略"));
+        // 默认 pantoscopic → 轴 180
+        assertTrue(result.contains("× 180°"));
+    }
+
+    @Test
+    void lensTiltSmallTiltOnLowPowerIsNegligible() {
+        String result = tools.lensTiltCompensation(-2, 8, null, null);
+        assertTrue(result.contains("可忽略"));
+    }
+
+    @Test
+    void lensTiltRejectsOutOfRangeIndex() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.lensTiltCompensation(-4, 10, "pantoscopic", 2.5));
+        assertTrue(ex.getMessage().contains("index"));
+    }
 }
