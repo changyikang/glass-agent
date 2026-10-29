@@ -41,7 +41,47 @@ test("exports the expected MCP tool set", () => {
     "minimum_blank_size",
     "vertical_imbalance_check",
     "lens_tilt_compensation",
+    "spectacle_magnification",
   ]);
+});
+
+test("spectacle magnification: plus lens with shape factor magnifies (PF×SF)", () => {
+  const tool = getTool("spectacle_magnification");
+  // power +5, d=12mm, F1=+7, t=4mm, n=1.5
+  // PF=1/(1-0.012*5)=1.0638; SF=1/(1-(0.004/1.5)*7)=1.0190; SM≈1.0841 → +8.41% → noticeable+
+  const result = tool.handler({ power: 5, vertex_distance: 12, base_curve: 7, center_thickness: 4, index: 1.5 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /总放大率 SM（PF×SF）：1\.0841\*\* → 像放大 \*\*8\.41%\*\* → \*\*明显/);
+  assert.match(text, /镜度因子 PF：\*\*1\.0638/);
+  assert.match(text, /外形因子 SF：\*\*1\.019/);
+});
+
+test("spectacle magnification: power-only plus reports power factor and notes the missing shape factor", () => {
+  const tool = getTool("spectacle_magnification");
+  // power +5, d=12mm → PF=1.0638 → +6.38% → noticeable (5-8%)
+  const result = tool.handler({ power: 5 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /总放大率 SM（仅 PF）：1\.0638\*\* → 像放大 \*\*6\.38%\*\* → \*\*可察觉/);
+  assert.match(text, /仅计镜度因子/);
+});
+
+test("spectacle magnification: strong minus lens minifies the image", () => {
+  const tool = getTool("spectacle_magnification");
+  // power -10, d=12mm → PF=1/1.12=0.8929 → -10.71% → minify, significant
+  const result = tool.handler({ power: -10, vertex_distance: 12 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /总放大率 SM（仅 PF）：0\.8929\*\* → 像缩小 \*\*10\.71%\*\* → \*\*明显/);
+});
+
+test("spectacle magnification rejects an out-of-range refractive index", () => {
+  const tool = getTool("spectacle_magnification");
+  assert.throws(() => tool.handler({ power: 5, index: 2.5 }), /index/);
 });
 
 test("lens tilt: faceform induces cylinder at axis 90 and strengthens the sphere", () => {

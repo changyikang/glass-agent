@@ -72,7 +72,8 @@ public class ToolController {
                 tool("progressive_fit_check", "渐进镜片装配高度评估：判断镜框是否够高装配渐进片。给实测装配高度或镜框高度 B（粗估 ≈ B/2+2），对常规（≥18mm）/短通道（≥14mm）/个性化（≥13mm）三种设计评估充足/临界/不足，并推荐最合适的设计或在高度过低时建议换镜框/改单光双光。"),
                 tool("minimum_blank_size", "最小镜片毛坯直径（MBS）计算：MBS = 有效直径 ED + 2×每片移心量 + 加工余量（默认 2mm），移心量=(镜圈宽+鼻梁)/2−PD/2。给镜圈宽/鼻梁/PD（可选 ED，或镜框高度 B 由盒对角线 √(A²+B²) 保守估算 ED），算出最小毛坯直径并对照常见规格(65/70/75/80)判断是否易得；给手头毛坯直径则判断够不够用。"),
                 tool("vertical_imbalance_check", "近用垂直棱镜差（上下不平衡）评估：屈光参差者向下阅读时两片各按 Prentice 产生垂直棱镜（Δ=向下量cm×垂直光度D）。按左右眼 SPH（可含 CYL/AXIS）算各自垂直子午线光度 F_v=SPH+CYL·cos²轴位、每片垂直棱镜与基底方向，并给出差异棱镜=|F_v右−F_v左|×向下量，按阈值分级（<1Δ 可耐受/1–1.5Δ 临界/≥1.5Δ 显著），给出分开配近用镜/隐形/削底/压贴棱镜等方案。"),
-                tool("lens_tilt_compensation", "镜片倾斜（前倾角/面弯）引起的度数变化与补偿估算：镜片相对视线倾斜时如戴光度变化（球镜略增强并引入与旋转轴平行的散光，Martin 斜向屈光）。按球镜 power、倾斜角 tilt_angle、类型 tilt_type（pantoscopic 轴 180°/faceform 轴 90°）与折射率 index 算 S'=F·(1+sin²θ/(2n))、C'=S'·tan²θ，给出如戴等效度数与偏差，按引入散光<0.12/0.12–0.25/≥0.25D 分级与补偿建议。与 frame_fit_calculator、contact_lens_power 互补。"));
+                tool("lens_tilt_compensation", "镜片倾斜（前倾角/面弯）引起的度数变化与补偿估算：镜片相对视线倾斜时如戴光度变化（球镜略增强并引入与旋转轴平行的散光，Martin 斜向屈光）。按球镜 power、倾斜角 tilt_angle、类型 tilt_type（pantoscopic 轴 180°/faceform 轴 90°）与折射率 index 算 S'=F·(1+sin²θ/(2n))、C'=S'·tan²θ，给出如戴等效度数与偏差，按引入散光<0.12/0.12–0.25/≥0.25D 分级与补偿建议。与 frame_fit_calculator、contact_lens_power 互补。"),
+                tool("spectacle_magnification", "眼镜放大率（视网膜像放大/缩小）估算：框架镜放大/缩小视网膜像——正镜（远视）显眼大、负镜（近视）显眼小，也是屈光参差不等像的根源。SM=镜度因子 PF×外形因子 SF，PF=1/(1−d·Fv)（d 镜眼距 m、Fv 后顶点度数），SF=1/(1−(t/n)·F1)（t 中心厚度 m、n 折射率、F1 前表面度数）。给球镜 power（必填）、镜眼距 vertex_distance（默认 12mm），可选 base_curve 与 center_thickness（齐备才计 SF）、index，输出放大率倍数、放大/缩小百分比与分级。与 anisometropia_guide、contact_lens_power 互补。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -248,6 +249,13 @@ public class ToolController {
                 () -> tools.lensTiltCompensation(req.power(), req.tiltAngle(), req.tiltType(), req.index()));
     }
 
+    @PostMapping("/spectacle_magnification")
+    public ToolResponse spectacleMagnification(@RequestBody SpectacleMagnificationRequest req) {
+        return run("spectacle_magnification", req,
+                () -> tools.spectacleMagnification(req.power(), req.vertexDistance(), req.baseCurve(),
+                        req.centerThickness(), req.index()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -356,5 +364,9 @@ public class ToolController {
     }
 
     public record LensTiltRequest(double power, double tiltAngle, String tiltType, Double index) {
+    }
+
+    public record SpectacleMagnificationRequest(double power, Double vertexDistance, Double baseCurve,
+                                                Double centerThickness, Double index) {
     }
 }

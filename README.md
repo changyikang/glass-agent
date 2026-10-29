@@ -37,10 +37,11 @@ selection, lens base-material selection, naked-eye clear-range
 notation conversion, prism vector math, astigmatism-type
 classification, progressive-lens fitting-height checking,
 minimum lens-blank-size calculation, near-vision vertical
-prismatic imbalance checking, and lens-tilt (pantoscopic / wrap)
-power-change compensation.
+prismatic imbalance checking, lens-tilt (pantoscopic / wrap)
+power-change compensation, and spectacle magnification
+(retinal-image magnification / minification) estimation.
 
-The project ships **two interchangeable implementations that share the same twenty-eight
+The project ships **two interchangeable implementations that share the same twenty-nine
 tools**, so you can adopt whichever fits your stack:
 
 | Implementation | Path | Best for |
@@ -50,7 +51,7 @@ tools**, so you can adopt whichever fits your stack:
 
 ### Features
 
-The twenty-eight built-in tools:
+The twenty-nine built-in tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -82,6 +83,7 @@ The twenty-eight built-in tools:
 | `minimum_blank_size` | Computes the minimum lens-blank diameter needed to cut a frame: **MBS = ED + 2 × decentration + cutting allowance** (default 2 mm), where decentration per lens = (lens width A + bridge DBL)/2 − PD/2. Given A, DBL and PD — plus an optional effective diameter `ed`, or a frame height `frame_b` from which it conservatively estimates `ed ≈ √(A² + B²)` (box diagonal) — it reports the frame center distance, per-lens decentration, the ED used and the minimum blank diameter, and rates it against common blank sizes (65/70/75/80 mm). With a `blank_diameter` on hand it reports whether that blank is big enough and the margin. Complements `frame_fit_calculator` (decentration / induced prism) |
 | `vertical_imbalance_check` | Estimates the differential **vertical prism** at the reading position in anisometropia (Prentice's rule). From each eye's SPH (optional CYL / AXIS) it computes the vertical-meridian power `F_v = SPH + CYL·cos²(axis)`, each lens's induced vertical prism and base direction at a given downward reading drop (`reading_drop`, default 8 mm), and the differential imbalance `= |F_v_OD − F_v_OS| × drop(cm)`, graded against clinical thresholds (< 1 Δ usually tolerated, 1–1.5 Δ borderline, ≥ 1.5 Δ significant), with management options (separate readers, contacts, slab-off / Fresnel prism). Complements `anisometropia_guide` and `prism_resolver` |
 | `lens_tilt_compensation` | Estimates the as-worn power change when a lens is tilted relative to the line of sight (Martin's oblique-refraction formulae): pantoscopic tilt (about a horizontal axis) and face-form / wrap (about a vertical axis). From the sphere power `power`, tilt angle `tilt_angle`, type `tilt_type` (pantoscopic → induced axis 180°, faceform → 90°) and refractive index `index` (default 1.5) it computes the effective sphere `S' = F·(1 + sin²θ/(2n))` and the induced cylinder `C' = S'·tan²θ` at the type's axis, reports the as-worn power and the deviation from the ordered power, and grades it by the induced-cylinder size (< 0.12 D negligible, 0.12–0.25 D borderline, ≥ 0.25 D noticeable → recommend position-of-wear compensation). High powers and large wrap (sports / wrap sunglasses) amplify it; moderate pantoscopic tilt (~8–12°) is normal design. Complements `frame_fit_calculator` and `contact_lens_power` |
+| `spectacle_magnification` | Estimates how much a spectacle lens magnifies / minifies the retinal image — why plus (hyperopic) lenses make the eyes look bigger, minus (myopic) lenses smaller, and the root of aniseikonia in anisometropia. SM = power factor × shape factor, where `PF = 1 / (1 − d·Fv)` (d = vertex distance in m, Fv = back vertex power) and `SF = 1 / (1 − (t/n)·F1)` (t = center thickness in m, n = index, F1 = front-surface / base-curve power). From the sphere `power` (required), `vertex_distance` (default 12 mm), optional `base_curve` + `center_thickness` (both needed to include the shape factor, otherwise only the power factor) and `index` (default 1.5) it reports the magnification ratio, the percent magnification / minification and a magnitude grade (< 5% small, 5–8% noticeable, ≥ 8% significant). Complements `anisometropia_guide` (two-eye aniseikonia) and `contact_lens_power` |
 
 The Java agent adds **multi-turn intake**: pass a `conversationId` and it remembers
 the dialogue, so it asks the questions it needs, gives a fitting recommendation, and
@@ -91,7 +93,7 @@ attaches purchase links at the end.
 
 ```
                          ┌──────────────────────────────┐
-        MCP client       │  Twenty-eight shared optical  │      REST client
+        MCP client       │  Twenty-nine shared optical   │      REST client
    (Claude Desktop, …)   │             tools             │   (curl / your app)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │
@@ -215,9 +217,9 @@ Released under the [MIT License](LICENSE).
 
 ### 项目简介
 
-**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查、青少年近视防控、框架镜到隐形眼镜的度数换算、老花（近附加）度数估算、散光（正/负柱镜）记法转换、镜架尺寸与瞳距的适配评估、视力记录法换算、调节幅度评估、太阳镜镜片色号（过滤分类）选择、镜片材料（基材）选择、裸眼清晰视界（远点 / 近点）估算、近用视力（近视力表）记法换算、棱镜合成与分解（Prentice 向量运算）、散光类型判定、渐进镜片装配高度评估、最小镜片毛坯直径计算、近用垂直棱镜差（上下不平衡）评估，以及镜片倾斜（前倾角 / 面弯）引起的度数变化与补偿估算。
+**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查、青少年近视防控、框架镜到隐形眼镜的度数换算、老花（近附加）度数估算、散光（正/负柱镜）记法转换、镜架尺寸与瞳距的适配评估、视力记录法换算、调节幅度评估、太阳镜镜片色号（过滤分类）选择、镜片材料（基材）选择、裸眼清晰视界（远点 / 近点）估算、近用视力（近视力表）记法换算、棱镜合成与分解（Prentice 向量运算）、散光类型判定、渐进镜片装配高度评估、最小镜片毛坯直径计算、近用垂直棱镜差（上下不平衡）评估、镜片倾斜（前倾角 / 面弯）引起的度数变化与补偿估算，以及眼镜放大率（视网膜像放大 / 缩小）估算。
 
-项目提供 **两套可互换、共享同一组二十八个工具的实现**，你可以按技术栈选用：
+项目提供 **两套可互换、共享同一组二十九个工具的实现**，你可以按技术栈选用：
 
 | 实现方式 | 路径 | 适用场景 |
 | --- | --- | --- |
@@ -226,7 +228,7 @@ Released under the [MIT License](LICENSE).
 
 ### 功能
 
-内置二十八个工具：
+内置二十九个工具：
 
 | 工具 | 作用 |
 | --- | --- |
@@ -258,6 +260,7 @@ Released under the [MIT License](LICENSE).
 | `minimum_blank_size` | 最小镜片毛坯直径（MBS）计算：**MBS = 有效直径 ED + 2 × 每片移心量 + 加工余量**（默认 2mm），移心量 = (镜圈宽 A + 鼻梁 DBL) ÷ 2 − 瞳距 PD ÷ 2。给镜圈宽 A、鼻梁 DBL、瞳距 PD（可选有效直径 `ed`，或镜框高度 `frame_b` 由盒对角线 `ed ≈ √(A²+B²)` 保守估算），算出框几何中心距、每片移心量、所用 ED 与最小毛坯直径，并对照常见毛坯规格（65/70/75/80mm）判断是否易得；给手头毛坯直径 `blank_diameter` 时判断够不够用并给出余量。与 `frame_fit_calculator`（移心 / 棱镜）互补 |
 | `vertical_imbalance_check` | 近用垂直棱镜差（上下不平衡）评估（Prentice 向量）：屈光参差者向下阅读时两片各产生垂直棱镜。按左右眼球镜 SPH（可含柱镜 CYL / 轴位 AXIS）算出各自垂直子午线光度 `F_v = SPH + CYL·cos²(轴位)`、每片在给定向下注视量（`reading_drop`，默认 8mm）下的垂直棱镜与基底方向，并给出差异棱镜 `= |F_v右 − F_v左| × 向下量(cm)`，按经验阈值分级（<1Δ 多可耐受、1–1.5Δ 临界、≥1.5Δ 显著常需处理），给出分开配近用镜 / 隐形眼镜 / 削底(slab-off) / 压贴棱镜等方案。与 `anisometropia_guide`、`prism_resolver` 互补 |
 | `lens_tilt_compensation` | 镜片倾斜（前倾角 / 面弯）引起的度数变化与补偿估算（Martin 斜向屈光）：镜片相对视线倾斜时如戴光度会变化——球镜略增强并引入一个轴位与旋转轴平行的散光。前倾角（pantoscopic，绕水平轴）引入轴位 180° 散光；面弯 / 包裹角（faceform / wrap，常见于运动镜、太阳镜，绕垂直轴）引入轴位 90° 散光。按球镜 `power`、倾斜角 `tilt_angle`、类型 `tilt_type`、折射率 `index`（默认 1.5）算等效球镜 `S' = F·(1 + sin²θ/(2n))`、引入散光 `C' = S'·tan²θ`，给出如戴等效度数与偏差，按引入散光大小分级（<0.12D 可忽略、0.12–0.25D 临界、≥0.25D 明显需补偿）。高度数、大面弯时偏差放大，高端 / 自由曲面镜片会做「如戴位置补偿」抵消；适度前倾角（约 8–12°）属正常设计。与 `frame_fit_calculator`、`contact_lens_power` 互补 |
+| `spectacle_magnification` | 眼镜放大率（视网膜像放大 / 缩小）估算：框架镜会把视网膜像放大或缩小——正镜（远视）戴镜显眼大、负镜（近视）显眼小，也是屈光参差引起不等像（aniseikonia）的根源。放大率 SM = 镜度因子 × 外形因子，`PF = 1 / (1 − d·Fv)`（d 镜眼距 m、Fv 后顶点度数），`SF = 1 / (1 − (t/n)·F1)`（t 中心厚度 m、n 折射率、F1 前表面 / 基弧面度数）。给球镜 `power`（必填）、镜眼距 `vertex_distance`（默认 12mm），可选前表面度数 `base_curve` 与中心厚度 `center_thickness`（两者齐备才计外形因子，否则只给镜度因子）、折射率 `index`（默认 1.5），输出放大率倍数、放大 / 缩小百分比与量级分级（<5% 较小、5–8% 可察觉、≥8% 明显）。与 `anisometropia_guide`（两眼不等像）、`contact_lens_power` 互补 |
 
 Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可记住对话上下文，
 于是它会主动追问所需信息，给出配镜建议，并在最后附上购买链接。
@@ -266,7 +269,7 @@ Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可�
 
 ```
                          ┌──────────────────────────────┐
-       MCP 客户端         │     二十八个共享的配镜工具     │       REST 客户端
+       MCP 客户端         │     二十九个共享的配镜工具     │       REST 客户端
    (Claude Desktop 等)   │                              │   (curl / 你的应用)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │

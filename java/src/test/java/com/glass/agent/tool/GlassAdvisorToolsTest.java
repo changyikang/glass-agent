@@ -918,4 +918,36 @@ class GlassAdvisorToolsTest {
                 () -> tools.lensTiltCompensation(-4, 10, "pantoscopic", 2.5));
         assertTrue(ex.getMessage().contains("index"));
     }
+
+    @Test
+    void spectacleMagnificationPlusWithShapeFactorMagnifies() {
+        // power +5, d=12mm, F1=+7, t=4mm, n=1.5
+        // PF=1.0638; SF=1.019; SM≈1.0841 → +8.41% → 明显
+        String result = tools.spectacleMagnification(5.0, 12.0, 7.0, 4.0, 1.5);
+        assertTrue(result.contains("总放大率 SM（PF×SF）：1.0841** → 像放大 **8.41%** → **明显"));
+        assertTrue(result.contains("镜度因子 PF：**1.0638"));
+        assertTrue(result.contains("外形因子 SF：**1.019"));
+    }
+
+    @Test
+    void spectacleMagnificationPowerOnlyNotesMissingShapeFactor() {
+        // power +5, d=12mm → PF=1.0638 → +6.38% → 可察觉
+        String result = tools.spectacleMagnification(5.0, null, null, null, null);
+        assertTrue(result.contains("总放大率 SM（仅 PF）：1.0638** → 像放大 **6.38%** → **可察觉"));
+        assertTrue(result.contains("仅计镜度因子"));
+    }
+
+    @Test
+    void spectacleMagnificationStrongMinusMinifies() {
+        // power -10, d=12mm → PF=1/1.12=0.8929 → -10.71% → 缩小、明显
+        String result = tools.spectacleMagnification(-10.0, 12.0, null, null, null);
+        assertTrue(result.contains("总放大率 SM（仅 PF）：0.8929** → 像缩小 **10.71%** → **明显"));
+    }
+
+    @Test
+    void spectacleMagnificationRejectsOutOfRangeIndex() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.spectacleMagnification(5.0, null, null, null, 2.5));
+        assertTrue(ex.getMessage().contains("index"));
+    }
 }

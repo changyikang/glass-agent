@@ -1262,6 +1262,11 @@ public class GlassAdvisorTools {
     /** 镜片倾斜引入散光分级阈值（D）：此值及以上为明显，建议补偿。 */
     private static final double TILT_CYL_NOTICEABLE = 0.25;
 
+    /** 单片放大率量级分级门槛（放大 / 缩小百分比绝对值，%）：此值以下较小。 */
+    private static final double SM_PERCENT_SMALL = 5;
+    /** 单片放大率量级分级门槛（放大 / 缩小百分比绝对值，%）：此值及以上明显。 */
+    private static final double SM_PERCENT_NOTICEABLE = 8;
+
     @Tool(description = "屈光参差评估：输入左右眼球镜（及可选柱镜）度数，按等效球镜之差评估两眼屈光参差程度"
             + "（无 / 轻度 / 中度 / 显著），估算框架镜下两眼视网膜影像大小差异（不等像 aniseikonia）与耐受边界，"
             + "识别「一眼近视一眼远视」的混合性参差和柱镜差异过大等特殊情况，并给出框架镜 vs 隐形眼镜、逐步适应、"
@@ -2479,6 +2484,154 @@ public class GlassAdvisorTools {
                 trimNumber(TILT_CYL_NEGLIGIBLE),
                 trimNumber(TILT_CYL_NOTICEABLE),
                 trimNumber(TILT_CYL_NOTICEABLE),
+                advice,
+                bulletJoin(notes));
+    }
+
+    @Tool(description = "眼镜放大率（视网膜像放大 / 缩小）估算：框架镜会把视网膜上的像放大或缩小——这正是"
+            + "「远视（正镜）戴镜后眼睛显大、近视（负镜）戴镜后眼睛显小」的原因，也是两眼度数差（屈光参差）"
+            + "会引起不等像（aniseikonia）的根源。放大率 SM = 镜度因子 × 外形因子：镜度因子 PF = 1 / (1 − d·Fv)"
+            + "（d 为镜眼距 / 顶点距离，单位 m；Fv 为后顶点度数 D），外形因子 SF = 1 / (1 − (t/n)·F1)"
+            + "（t 为中心厚度 m，n 为折射率，F1 为前表面 / 基弧面度数 D）。给定球镜度数 power（必填）、"
+            + "镜眼距 vertex_distance（默认 12mm），可选前表面度数 base_curve 与中心厚度 center_thickness"
+            + "（两者齐备才计外形因子，否则只给镜度因子）、折射率 index（默认 1.5），输出放大率倍数、"
+            + "放大 / 缩小百分比与量级分级。正镜 SM>1（放大）、负镜 SM<1（缩小）。仅为科普估算，"
+            + "散光请按主子午线分别评估，两眼不等像评估请配合 anisometropia_guide。")
+    public String spectacleMagnification(
+            @ToolParam(description = "镜片后顶点球镜度数 Fv，单位D，近视填负数、远视填正数，如 +4.00 或 -6.00。"
+                    + "散光处方可按某条主子午线光度分别评估。范围 -20~20。")
+            double power,
+            @ToolParam(required = false, description = "镜眼距（顶点距离）d，镜片后表面到角膜的距离，单位 mm，默认 12。范围 0-20。隐形眼镜≈0。")
+            Double vertexDistance,
+            @ToolParam(required = false, description = "镜片前表面（基弧面）度数 F1，单位 D，通常为正值，如 +4.00 ~ +8.00。"
+                    + "与 center_thickness 同时提供时才计入外形因子。范围 0-20。")
+            Double baseCurve,
+            @ToolParam(required = false, description = "镜片中心厚度 t，单位 mm，如 2.0。与 base_curve 同时提供时才计入外形因子。范围 0-15。")
+            Double centerThickness,
+            @ToolParam(required = false, description = "镜片折射率 n，如 1.50 / 1.60 / 1.67 / 1.74。默认 1.5。范围 1.4-1.9。")
+            Double index) {
+
+        checkRange("power", power, -20, 20);
+        double vertexMm = vertexDistance == null ? 12 : vertexDistance;
+        if (vertexDistance != null) {
+            checkRange("vertex_distance", vertexDistance, 0, 20);
+        }
+        if (baseCurve != null) {
+            checkRange("base_curve", baseCurve, 0, 20);
+        }
+        if (centerThickness != null) {
+            checkRange("center_thickness", centerThickness, 0, 15);
+        }
+        double n = index == null ? 1.5 : index;
+        if (index != null) {
+            checkRange("index", index, 1.4, 1.9);
+        }
+
+        double d = vertexMm / 1000; // m
+        // 镜度因子 PF = 1 / (1 − d·Fv)。
+        double powerFactor = 1 / (1 - d * power);
+        if (!Double.isFinite(powerFactor) || powerFactor <= 0) {
+            throw new IllegalArgumentException("镜度与镜眼距组合超出可估算范围，请检查输入");
+        }
+
+        // 外形因子 SF = 1 / (1 − (t/n)·F1)，需同时提供基弧面度数与中心厚度。
+        boolean hasShape = baseCurve != null && centerThickness != null;
+        Double shapeFactor = null;
+        if (hasShape) {
+            double t = centerThickness / 1000; // m
+            shapeFactor = 1 / (1 - (t / n) * baseCurve);
+            if (!Double.isFinite(shapeFactor) || shapeFactor <= 0) {
+                throw new IllegalArgumentException("基弧面度数与中心厚度组合超出可估算范围，请检查输入");
+            }
+        }
+
+        double sm = hasShape ? powerFactor * shapeFactor : powerFactor;
+        double percent = (sm - 1) * 100;
+        double absPercent = Math.abs(percent);
+        String direction = percent > 0.05 ? "放大" : percent < -0.05 ? "缩小" : "基本无变化";
+
+        String level;
+        String advice;
+        if (absPercent < SM_PERCENT_SMALL) {
+            level = "较小";
+            advice = "单片放大 / 缩小量较小（绝对值 < 约 5%），通常不易察觉；若两眼度数相近，不等像一般不成问题。";
+        } else if (absPercent < SM_PERCENT_NOTICEABLE) {
+            level = "可察觉";
+            advice = "单片放大 / 缩小量约 5%–8%，部分人能感到像的大小变化或外观差异；"
+                    + "若双眼这一数值相差较大（屈光参差），可能引起不等像不适，建议用 anisometropia_guide 评估两眼之差。";
+        } else {
+            level = "明显";
+            advice = "单片放大 / 缩小量 ≥ 约 8%，外观与成像变化较明显：正镜（远视）戴镜显眼大、负镜（近视）显眼小；"
+                    + "若两眼度数差大，不等像耐受往往成为难点。可考虑隐形眼镜（镜眼距≈0，放大率更接近 1）、"
+                    + "或请视光师在基弧 / 厚度上做等像（iseikonic）设计。";
+        }
+
+        List<String> notes = new ArrayList<>();
+        notes.add("镜度因子 PF = 1 / (1 − d·Fv) = 1 / (1 − " + Diopters.trimTrailingZeros(String.format("%.3f", d))
+                + "×" + formatSignedDiopter(power) + ") ≈ " + Diopters.trimTrailingZeros(String.format("%.4f", powerFactor))
+                + "（" + ((powerFactor - 1) * 100 >= 0 ? "+" : "")
+                + Diopters.trimTrailingZeros(String.format("%.2f", (powerFactor - 1) * 100)) + "%）。");
+        if (hasShape) {
+            notes.add("外形因子 SF = 1 / (1 − (t/n)·F1) = 1 / (1 − ("
+                    + Diopters.trimTrailingZeros(String.format("%.4f", centerThickness / 1000)) + "/"
+                    + Diopters.trimTrailingZeros(String.format("%.2f", n)) + ")×" + formatSignedDiopter(baseCurve)
+                    + ") ≈ " + Diopters.trimTrailingZeros(String.format("%.4f", shapeFactor))
+                    + "（" + ((shapeFactor - 1) * 100 >= 0 ? "+" : "")
+                    + Diopters.trimTrailingZeros(String.format("%.2f", (shapeFactor - 1) * 100)) + "%）。");
+            notes.add("外形因子来自镜片前表面曲率与中心厚度：基弧越弯、中心越厚，放大越多（对正镜尤其明显）。");
+        } else {
+            notes.add("未同时提供基弧面度数（base_curve）与中心厚度（center_thickness），本次仅计镜度因子；"
+                    + "补齐两者可一并估算外形因子，得到更完整的总放大率。");
+        }
+        notes.add("镜眼距越大，正镜放大 / 负镜缩小越明显——这也是隐形眼镜（镜眼距≈0）放大率更接近 1、成像更接近真实大小的原因。");
+
+        String shapeInputLine = hasShape
+                ? "- 前表面度数 F1：" + formatSignedDiopter(baseCurve) + "，中心厚度 t："
+                        + Diopters.trimTrailingZeros(String.format("%.2f", centerThickness)) + "mm"
+                : "- 前表面度数 / 中心厚度：未提供（仅计镜度因子）";
+
+        return """
+                ## 眼镜放大率（视网膜像放大 / 缩小）估算
+
+                > 框架镜会把视网膜上的像放大或缩小：正镜（远视）放大、负镜（近视）缩小。总放大率 SM = 镜度因子 PF × 外形因子 SF。以下为科普估算，散光请按主子午线分别评估，实际以视光师为准。
+
+                **输入**
+                - 后顶点球镜度数 Fv：%s
+                - 镜眼距 d：%smm
+                %s
+                - 折射率 n：%s
+
+                **测算结果**
+                - 镜度因子 PF：**%s**%s
+                - **总放大率 SM%s：%s** → 像%s **%s%%** → **%s**
+                - 判读阈值（按单片放大 / 缩小百分比绝对值）：< %s%% 较小、%s%%–%s%% 可察觉、≥ %s%% 明显
+
+                **建议**
+                - %s
+
+                **说明**
+                %s
+
+                **提醒**
+                - 本工具按「球镜后顶点度数」估算；散光处方应分别代入两条主子午线光度评估，两条主子午线放大率不同即为子午线性不等像。
+                - 不等像（aniseikonia）是两眼放大率之差造成的，经验上框架镜每 1.00D 屈光参差约对应 1.5%% 像差；要评估两眼之差与耐受，请配合 `anisometropia_guide`。
+                - 想把框架镜换算成镜眼距≈0 的隐形眼镜度数（顶点补偿），可配合 `contact_lens_power`。
+                - 本工具只做科普估算，不替代专业验光与处方。""".formatted(
+                formatSignedDiopter(power),
+                trimNumber(vertexMm),
+                shapeInputLine,
+                trimNumber(n),
+                Diopters.trimTrailingZeros(String.format("%.4f", powerFactor)),
+                hasShape ? "\n- 外形因子 SF：**" + Diopters.trimTrailingZeros(String.format("%.4f", shapeFactor)) + "**" : "",
+                hasShape ? "（PF×SF）" : "（仅 PF）",
+                Diopters.trimTrailingZeros(String.format("%.4f", sm)),
+                direction,
+                Diopters.trimTrailingZeros(String.format("%.2f", absPercent)),
+                level,
+                trimNumber(SM_PERCENT_SMALL),
+                trimNumber(SM_PERCENT_SMALL),
+                trimNumber(SM_PERCENT_NOTICEABLE),
+                trimNumber(SM_PERCENT_NOTICEABLE),
                 advice,
                 bulletJoin(notes));
     }
