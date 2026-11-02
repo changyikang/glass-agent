@@ -960,6 +960,58 @@ export const tools: ToolDefinition[] = [
     sample: { power: 5, vertex_distance: 12, base_curve: 7, center_thickness: 4, index: 1.5 },
     handler: handleSpectacleMagnification,
   },
+  {
+    name: "digital_eyestrain_guide",
+    description:
+      "数字视疲劳（电脑视觉综合征 CVS）自助评估与护眼建议：按日均屏幕时长、当前症状、是否规律休息、屏幕距离与年龄，估算视疲劳风险（低 / 中 / 高），并给出按「优先 / 建议 / 可选」分级的护眼措施——20-20-20 休息法、主动眨眼与干眼护理、屏幕距离与高度摆位、照明与反光控制、屈光矫正与办公 / 渐进镜片，以及何时需要就医的提示。这是一份用眼习惯层面的科普指南（与侧重镀膜选购的 lens_coating_advisor 互补），不替代专业眼科 / 视光检查。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        screen_hours: {
+          type: "number",
+          description: "日均屏幕（电脑 / 手机 / 平板）使用时长，单位小时。范围 0-24。",
+        },
+        symptoms: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: [
+              "dryness",
+              "blur",
+              "headache",
+              "double_vision",
+              "neck_shoulder",
+              "tearing",
+              "light_sensitive",
+            ],
+          },
+          description:
+            "当前症状，可多选：dryness(眼干涩/异物感), blur(视物模糊/聚焦变慢), headache(头痛/眉骨胀), double_vision(重影/复视), neck_shoulder(颈肩酸痛), tearing(流泪), light_sensitive(畏光)。无症状可不填。",
+        },
+        takes_breaks: {
+          type: "boolean",
+          description: "是否已规律休息（如遵循 20-20-20 法则、每小时起身活动）。默认否。",
+        },
+        screen_distance_cm: {
+          type: "number",
+          description: "眼睛到主屏幕的距离，单位 cm。范围 15-120。推荐约 50-70cm。可不填。",
+        },
+        age: {
+          type: "number",
+          description: "年龄，用于判断是否需结合老花（近附加）/ 办公 / 渐进镜片的提示。范围 5-120。可不填。",
+        },
+      },
+      required: ["screen_hours"],
+    },
+    sample: {
+      screen_hours: 9,
+      symptoms: ["dryness", "blur", "neck_shoulder"],
+      takes_breaks: false,
+      screen_distance_cm: 40,
+      age: 32,
+    },
+    handler: handleDigitalEyestrainGuide,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -3268,6 +3320,185 @@ ${renderBulletList(smNotes, "数值看起来合理。")}
 - 不等像（aniseikonia）是两眼放大率之差造成的，经验上框架镜每 1.00D 屈光参差约对应 1.5% 像差；要评估两眼之差与耐受，请配合 \`anisometropia_guide\`。
 - 想把框架镜换算成镜眼距≈0 的隐形眼镜度数（顶点补偿），可配合 \`contact_lens_power\`。
 - 本工具只做科普估算，不替代专业验光与处方。`);
+}
+
+const DIGITAL_SYMPTOMS = [
+  "dryness",
+  "blur",
+  "headache",
+  "double_vision",
+  "neck_shoulder",
+  "tearing",
+  "light_sensitive",
+] as const;
+type DigitalSymptom = (typeof DIGITAL_SYMPTOMS)[number];
+
+const DIGITAL_SYMPTOM_LABELS: Record<DigitalSymptom, string> = {
+  dryness: "眼干涩 / 异物感",
+  blur: "视物模糊 / 聚焦变慢",
+  headache: "头痛 / 眉骨胀",
+  double_vision: "重影 / 复视",
+  neck_shoulder: "颈肩酸痛",
+  tearing: "流泪",
+  light_sensitive: "畏光",
+};
+
+function parseDigitalSymptoms(args: ToolArgs): DigitalSymptom[] {
+  const raw = args["symptoms"];
+  if (raw === undefined || raw === null) {
+    return [];
+  }
+  if (!Array.isArray(raw)) {
+    throw new Error("参数 symptoms 必须是字符串数组");
+  }
+  const result: DigitalSymptom[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string" || !(DIGITAL_SYMPTOMS as readonly string[]).includes(item)) {
+      throw new Error(`参数 symptoms 的取值必须是以下之一：${DIGITAL_SYMPTOMS.join(", ")}`);
+    }
+    if (!result.includes(item as DigitalSymptom)) {
+      result.push(item as DigitalSymptom);
+    }
+  }
+  return result;
+}
+
+function handleDigitalEyestrainGuide(args: ToolArgs): ToolResult {
+  const hours = expectNumber(args, "screen_hours", { min: 0, max: 24 });
+  const symptoms = parseDigitalSymptoms(args);
+  const takesBreaks = optionalBoolean(args, "takes_breaks") ?? false;
+  const distanceCm = optionalNumber(args, "screen_distance_cm", { min: 15, max: 120 });
+  const age = optionalNumber(args, "age", { min: 5, max: 120 });
+
+  const has = (s: DigitalSymptom) => symptoms.includes(s);
+  const midHours = hours >= 4;
+  const highHours = hours >= 6;
+
+  // 风险打分：时长分 + 症状数 + 未规律休息惩罚。
+  const hoursScore = hours < 2 ? 0 : hours < 4 ? 1 : hours < 7 ? 2 : hours < 10 ? 3 : 4;
+  const breakPenalty = !takesBreaks && hours >= 2 ? 1 : 0;
+  const totalScore = hoursScore + symptoms.length + breakPenalty;
+
+  let level: string;
+  let levelSummary: string;
+  if (totalScore <= 1) {
+    level = "低";
+    levelSummary = "数字视疲劳风险较低，保持良好用眼习惯即可。";
+  } else if (totalScore <= 4) {
+    level = "中";
+    levelSummary = "存在一定数字视疲劳风险，建议落实下面的护眼措施并观察。";
+  } else {
+    level = "高";
+    levelSummary = "数字视疲劳风险较高，建议尽快调整用眼习惯，症状持续时及时就医。";
+  }
+
+  // 屏幕距离评估。
+  let distanceLine: string;
+  if (distanceCm === undefined) {
+    distanceLine = "- 眼睛到屏幕距离：未填写（推荐约 50–70cm，约一臂距离）";
+  } else {
+    let label: string;
+    if (distanceCm < 50) {
+      label = "偏近";
+    } else if (distanceCm > 70) {
+      label = "偏远";
+    } else {
+      label = "合适";
+    }
+    distanceLine = `- 眼睛到屏幕距离：${String(Math.round(distanceCm))}cm（评估：${label}，推荐 50–70cm）`;
+  }
+
+  // 分级建议。
+  const recs: Array<{ tag: string; text: string }> = [];
+
+  recs.push({
+    tag: midHours || !takesBreaks ? "优先" : "建议",
+    text:
+      "遵循 20-20-20 休息法：每近距离用眼约 20 分钟，抬头远眺 6 米（约 20 英尺）外至少 20 秒；每用眼 1 小时起身活动一下。" +
+      (takesBreaks ? "你已表示有规律休息，继续保持。" : "目前未规律休息，这是最容易见效的一步。"),
+  });
+
+  if (has("dryness") || has("tearing") || has("light_sensitive") || highHours) {
+    recs.push({
+      tag: has("dryness") ? "优先" : "建议",
+      text:
+        "有意识地完整眨眼：盯屏幕时眨眼次数会明显下降，导致眼表干涩、异物感甚至反射性流泪；可配合不含防腐剂的人工泪液，避免空调 / 风扇直吹，保持环境湿度。",
+    });
+  }
+
+  recs.push({
+    tag: distanceCm !== undefined && distanceCm < 50 ? "优先" : "建议",
+    text:
+      "屏幕摆位：眼睛到屏幕约 50–70cm（约一臂），屏幕上沿与视线齐平或略低，视线自然下视约 15–20°，可缩小睑裂暴露面积、减轻干眼与调节负担。",
+  });
+
+  if (has("light_sensitive") || midHours) {
+    recs.push({
+      tag: "建议",
+      text:
+        "改善照明与反光：让屏幕亮度与环境亮度接近，避免屏幕正对窗户或强光源产生反光，房间不要全黑；镜片加减反射（AR）膜有助减少眩光（可用 lens_coating_advisor 评估是否值得）。",
+    });
+  }
+
+  if (has("blur") || has("headache") || has("double_vision") || (age !== undefined && age >= 40)) {
+    if (age !== undefined && age >= 40) {
+      recs.push({
+        tag: "建议",
+        text:
+          "矫正与镜片：你的年龄已进入老视（老花）阶段，长时间近距离用眼吃力可能与调节力下降有关——可评估近附加（reading_add_estimator）或办公 / 渐进镜片（progressive_lens_assessment），别用看远度数硬撑近距离工作。",
+      });
+    } else {
+      recs.push({
+        tag: "建议",
+        text:
+          "矫正到位：持续模糊 / 头痛也可能来自未矫正或过矫的近视、远视、散光，或双眼协调（集合 / 调节）问题；若戴镜仍不适，建议复查验光与双眼视功能。",
+      });
+    }
+  }
+
+  // 就医提示。
+  const seeDoctor =
+    has("double_vision") || (has("headache") && has("blur")) || symptoms.length >= 4;
+  const doctorLine = seeDoctor
+    ? "⚠️ 建议就医：出现重影 / 复视、持续头痛、明显视力下降、眼痛或长期干眼等，单靠护眼习惯往往难以缓解，请到眼科或专业视光门诊检查，排查未矫正屈光不正、双眼视功能异常、干眼症等。"
+    : "目前症状以疲劳为主，可先按上面的护眼建议调整 1–2 周；若出现重影、持续头痛、明显视力下降或眼痛，或调整后仍不缓解，请及时就医。";
+
+  const symptomLine =
+    symptoms.length === 0
+      ? "- 当前症状：未填写"
+      : `- 当前症状：${symptoms.map((s) => DIGITAL_SYMPTOM_LABELS[s]).join("、")}`;
+  const ageLine =
+    age === undefined ? "- 年龄：未填写" : `- 年龄：${String(Math.round(age))} 岁`;
+
+  const recLines = recs.map((r) => `- 【${r.tag}】${r.text}`).join("\n");
+
+  return textResult(`## 数字视疲劳（电脑视觉综合征）评估与护眼建议
+
+> 长时间看屏幕引起的眼干、酸胀、模糊、头痛等统称「数字视疲劳 / 电脑视觉综合征（CVS）」。以下按你的用眼情况做科普评估与分级建议（【优先】最值得先做），不替代专业眼科 / 视光检查。
+
+**输入**
+- 日均屏幕时长：${trimTrailingZeros(hours.toFixed(1))} 小时
+${symptomLine}
+- 是否规律休息：${takesBreaks ? "是" : "否"}
+${distanceLine}
+${ageLine}
+
+**风险评估**
+- 风险评分：**${totalScore}**（时长 ${hoursScore} + 症状 ${symptoms.length} + 未规律休息 ${breakPenalty}）
+- 风险等级：**${level}**
+- ${levelSummary}
+
+**护眼建议（按优先级）**
+${recLines}
+
+**就医提示**
+- ${doctorLine}
+
+**说明**
+- 评分仅为粗略自助分级：时长越长、症状越多、没有规律休息，风险越高；它衡量的是「用眼负荷与不适」，不是某种眼病的诊断。
+- 数字视疲劳多为功能性、可逆，调整用眼习惯后常能缓解；但重影、持续头痛、视力明显下降需排查器质性或双眼视问题。
+- 本工具侧重用眼习惯，镜片镀膜（防蓝光 / 减反射等）是否值得购买请配合 \`lens_coating_advisor\`；是否需要近附加 / 渐进请配合 \`reading_add_estimator\`、\`progressive_lens_assessment\`。
+- 本工具只做科普评估，不替代专业眼科与视光检查。`);
 }
 
 function acuityLevelLabel(decimal: number): string {

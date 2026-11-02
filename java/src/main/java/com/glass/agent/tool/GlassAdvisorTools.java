@@ -2636,6 +2636,172 @@ public class GlassAdvisorTools {
                 bulletJoin(notes));
     }
 
+    @Tool(description = "数字视疲劳（电脑视觉综合征 CVS）自助评估与护眼建议：按日均屏幕时长 screen_hours、当前症状 symptoms"
+            + "（dryness 眼干涩 / blur 模糊 / headache 头痛 / double_vision 重影 / neck_shoulder 颈肩酸痛 / tearing 流泪 / "
+            + "light_sensitive 畏光，可多选）、是否规律休息 takes_breaks、屏幕距离 screen_distance_cm 与年龄 age，"
+            + "估算数字视疲劳风险（低 / 中 / 高），并给出按「优先 / 建议 / 可选」分级的护眼措施——20-20-20 休息法、"
+            + "主动眨眼与干眼护理、屏幕距离与高度摆位、照明与反光控制、屈光矫正与办公 / 渐进镜片，以及何时需要就医的提示。"
+            + "与侧重镀膜选购的 lens_coating_advisor 互补，不替代专业眼科 / 视光检查。")
+    public String digitalEyestrainGuide(
+            @ToolParam(description = "日均屏幕（电脑 / 手机 / 平板）使用时长，单位小时。范围 0-24。")
+            double screenHours,
+            @ToolParam(required = false, description = "当前症状，可多选：dryness(眼干涩/异物感), blur(视物模糊/聚焦变慢), "
+                    + "headache(头痛/眉骨胀), double_vision(重影/复视), neck_shoulder(颈肩酸痛), tearing(流泪), "
+                    + "light_sensitive(畏光)。无症状可不填。")
+            List<String> symptoms,
+            @ToolParam(required = false, description = "是否已规律休息（如遵循 20-20-20 法则、每小时起身活动）。默认否。")
+            Boolean takesBreaks,
+            @ToolParam(required = false, description = "眼睛到主屏幕的距离，单位 cm。范围 15-120。推荐约 50-70cm。可不填。")
+            Double screenDistanceCm,
+            @ToolParam(required = false, description = "年龄，用于判断是否需结合老花（近附加）/ 办公 / 渐进镜片的提示。范围 5-120。可不填。")
+            Integer age) {
+
+        checkRange("screen_hours", screenHours, 0, 24);
+        List<String> parsed = parseDigitalSymptoms(symptoms);
+        boolean breaks = takesBreaks != null && takesBreaks;
+        if (screenDistanceCm != null) {
+            checkRange("screen_distance_cm", screenDistanceCm, 15, 120);
+        }
+        if (age != null) {
+            checkRange("age", age, 5, 120);
+        }
+
+        boolean midHours = screenHours >= 4;
+        boolean highHours = screenHours >= 6;
+
+        // 风险打分：时长分 + 症状数 + 未规律休息惩罚。
+        int hoursScore = screenHours < 2 ? 0 : screenHours < 4 ? 1 : screenHours < 7 ? 2 : screenHours < 10 ? 3 : 4;
+        int breakPenalty = !breaks && screenHours >= 2 ? 1 : 0;
+        int totalScore = hoursScore + parsed.size() + breakPenalty;
+
+        String level;
+        String levelSummary;
+        if (totalScore <= 1) {
+            level = "低";
+            levelSummary = "数字视疲劳风险较低，保持良好用眼习惯即可。";
+        } else if (totalScore <= 4) {
+            level = "中";
+            levelSummary = "存在一定数字视疲劳风险，建议落实下面的护眼措施并观察。";
+        } else {
+            level = "高";
+            levelSummary = "数字视疲劳风险较高，建议尽快调整用眼习惯，症状持续时及时就医。";
+        }
+
+        // 屏幕距离评估。
+        String distanceLine;
+        if (screenDistanceCm == null) {
+            distanceLine = "- 眼睛到屏幕距离：未填写（推荐约 50–70cm，约一臂距离）";
+        } else {
+            String label;
+            if (screenDistanceCm < 50) {
+                label = "偏近";
+            } else if (screenDistanceCm > 70) {
+                label = "偏远";
+            } else {
+                label = "合适";
+            }
+            distanceLine = "- 眼睛到屏幕距离：" + Math.round(screenDistanceCm) + "cm（评估：" + label + "，推荐 50–70cm）";
+        }
+
+        // 分级建议。
+        List<String> recs = new ArrayList<>();
+
+        recs.add("【" + (midHours || !breaks ? "优先" : "建议") + "】"
+                + "遵循 20-20-20 休息法：每近距离用眼约 20 分钟，抬头远眺 6 米（约 20 英尺）外至少 20 秒；每用眼 1 小时起身活动一下。"
+                + (breaks ? "你已表示有规律休息，继续保持。" : "目前未规律休息，这是最容易见效的一步。"));
+
+        if (parsed.contains("dryness") || parsed.contains("tearing") || parsed.contains("light_sensitive") || highHours) {
+            recs.add("【" + (parsed.contains("dryness") ? "优先" : "建议") + "】"
+                    + "有意识地完整眨眼：盯屏幕时眨眼次数会明显下降，导致眼表干涩、异物感甚至反射性流泪；"
+                    + "可配合不含防腐剂的人工泪液，避免空调 / 风扇直吹，保持环境湿度。");
+        }
+
+        recs.add("【" + (screenDistanceCm != null && screenDistanceCm < 50 ? "优先" : "建议") + "】"
+                + "屏幕摆位：眼睛到屏幕约 50–70cm（约一臂），屏幕上沿与视线齐平或略低，视线自然下视约 15–20°，"
+                + "可缩小睑裂暴露面积、减轻干眼与调节负担。");
+
+        if (parsed.contains("light_sensitive") || midHours) {
+            recs.add("【建议】改善照明与反光：让屏幕亮度与环境亮度接近，避免屏幕正对窗户或强光源产生反光，房间不要全黑；"
+                    + "镜片加减反射（AR）膜有助减少眩光（可用 lens_coating_advisor 评估是否值得）。");
+        }
+
+        if (parsed.contains("blur") || parsed.contains("headache") || parsed.contains("double_vision")
+                || (age != null && age >= 40)) {
+            if (age != null && age >= 40) {
+                recs.add("【建议】矫正与镜片：你的年龄已进入老视（老花）阶段，长时间近距离用眼吃力可能与调节力下降有关——"
+                        + "可评估近附加（reading_add_estimator）或办公 / 渐进镜片（progressive_lens_assessment），"
+                        + "别用看远度数硬撑近距离工作。");
+            } else {
+                recs.add("【建议】矫正到位：持续模糊 / 头痛也可能来自未矫正或过矫的近视、远视、散光，或双眼协调（集合 / 调节）问题；"
+                        + "若戴镜仍不适，建议复查验光与双眼视功能。");
+            }
+        }
+
+        // 就医提示。
+        boolean seeDoctor = parsed.contains("double_vision")
+                || (parsed.contains("headache") && parsed.contains("blur"))
+                || parsed.size() >= 4;
+        String doctorLine = seeDoctor
+                ? "⚠️ 建议就医：出现重影 / 复视、持续头痛、明显视力下降、眼痛或长期干眼等，单靠护眼习惯往往难以缓解，"
+                        + "请到眼科或专业视光门诊检查，排查未矫正屈光不正、双眼视功能异常、干眼症等。"
+                : "目前症状以疲劳为主，可先按上面的护眼建议调整 1–2 周；若出现重影、持续头痛、明显视力下降或眼痛，"
+                        + "或调整后仍不缓解，请及时就医。";
+
+        String symptomLine;
+        if (parsed.isEmpty()) {
+            symptomLine = "- 当前症状：未填写";
+        } else {
+            List<String> labels = new ArrayList<>();
+            for (String s : parsed) {
+                labels.add(digitalSymptomLabel(s));
+            }
+            symptomLine = "- 当前症状：" + String.join("、", labels);
+        }
+        String ageLine = age == null ? "- 年龄：未填写" : "- 年龄：" + age + " 岁";
+
+        return """
+                ## 数字视疲劳（电脑视觉综合征）评估与护眼建议
+
+                > 长时间看屏幕引起的眼干、酸胀、模糊、头痛等统称「数字视疲劳 / 电脑视觉综合征（CVS）」。以下按你的用眼情况做科普评估与分级建议（【优先】最值得先做），不替代专业眼科 / 视光检查。
+
+                **输入**
+                - 日均屏幕时长：%s 小时
+                %s
+                - 是否规律休息：%s
+                %s
+                %s
+
+                **风险评估**
+                - 风险评分：**%d**（时长 %d + 症状 %d + 未规律休息 %d）
+                - 风险等级：**%s**
+                - %s
+
+                **护眼建议（按优先级）**
+                %s
+
+                **就医提示**
+                - %s
+
+                **说明**
+                - 评分仅为粗略自助分级：时长越长、症状越多、没有规律休息，风险越高；它衡量的是「用眼负荷与不适」，不是某种眼病的诊断。
+                - 数字视疲劳多为功能性、可逆，调整用眼习惯后常能缓解；但重影、持续头痛、视力明显下降需排查器质性或双眼视问题。
+                - 本工具侧重用眼习惯，镜片镀膜（防蓝光 / 减反射等）是否值得购买请配合 `lens_coating_advisor`；是否需要近附加 / 渐进请配合 `reading_add_estimator`、`progressive_lens_assessment`。
+                - 本工具只做科普评估，不替代专业眼科与视光检查。""".formatted(
+                Diopters.trimTrailingZeros(String.format("%.1f", screenHours)),
+                symptomLine,
+                breaks ? "是" : "否",
+                distanceLine,
+                ageLine,
+                totalScore,
+                hoursScore,
+                parsed.size(),
+                breakPenalty,
+                level,
+                levelSummary,
+                bulletJoin(recs),
+                doctorLine);
+    }
+
     @Tool(description = "视力记录法换算：视力表结果常见四种等价写法——小数记录法(decimal，如 1.0)、"
             + "五分记录法/对数记录法(five_minute，如 5.0，中国 GB 标准)、Snellen 分数(snellen，如 20/20 或 6/6)、"
             + "logMAR(如 0.00，科研常用)。把任一记法换算成其余三种并给出视力大致水平。换算：五分 L = 5 + lg(小数)，"
@@ -4051,6 +4217,40 @@ public class GlassAdvisorTools {
     // ---------------------------------------------------------------------
     // 参数校验帮助函数（等价于 TS 版本的 expect*/validate*）
     // ---------------------------------------------------------------------
+    private static final List<String> DIGITAL_SYMPTOMS = List.of(
+            "dryness", "blur", "headache", "double_vision", "neck_shoulder", "tearing", "light_sensitive");
+
+    /** 校验并去重数字视疲劳症状列表，保持原顺序。 */
+    private static List<String> parseDigitalSymptoms(List<String> symptoms) {
+        List<String> result = new ArrayList<>();
+        if (symptoms == null) {
+            return result;
+        }
+        for (String s : symptoms) {
+            if (s == null || !DIGITAL_SYMPTOMS.contains(s)) {
+                throw new IllegalArgumentException(
+                        "参数 symptoms 的取值必须是以下之一：" + String.join(", ", DIGITAL_SYMPTOMS));
+            }
+            if (!result.contains(s)) {
+                result.add(s);
+            }
+        }
+        return result;
+    }
+
+    private static String digitalSymptomLabel(String symptom) {
+        return switch (symptom) {
+            case "dryness" -> "眼干涩 / 异物感";
+            case "blur" -> "视物模糊 / 聚焦变慢";
+            case "headache" -> "头痛 / 眉骨胀";
+            case "double_vision" -> "重影 / 复视";
+            case "neck_shoulder" -> "颈肩酸痛";
+            case "tearing" -> "流泪";
+            case "light_sensitive" -> "畏光";
+            default -> symptom;
+        };
+    }
+
     private static String expectEnum(String key, String value, String... allowed) {
         if (value != null) {
             for (String option : allowed) {

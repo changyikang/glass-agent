@@ -1,5 +1,7 @@
 package com.glass.agent.tool;
 
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -949,5 +951,47 @@ class GlassAdvisorToolsTest {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> tools.spectacleMagnification(5.0, null, null, null, 2.5));
         assertTrue(ex.getMessage().contains("index"));
+    }
+
+    @Test
+    void digitalEyestrainHeavyUseScoresHigh() {
+        // hours 9 → hoursScore 3; 3 症状; 未休息且 hours≥2 → +1; total 7 → 高
+        String result = tools.digitalEyestrainGuide(
+                9.0, List.of("dryness", "blur", "neck_shoulder"), false, 40.0, 32);
+        assertTrue(result.contains("风险评分：**7**（时长 3 + 症状 3 + 未规律休息 1）"));
+        assertTrue(result.contains("风险等级：**高**"));
+        assertTrue(result.contains("距离：40cm（评估：偏近"));
+        assertTrue(result.contains("【优先】遵循 20-20-20"));
+        assertTrue(result.contains("【优先】有意识地完整眨眼"));
+    }
+
+    @Test
+    void digitalEyestrainLightUseScoresLow() {
+        // hours 1 → hoursScore 0; 0 症状; 已规律休息 → +0; total 0 → 低
+        String result = tools.digitalEyestrainGuide(1.0, null, true, null, null);
+        assertTrue(result.contains("风险评分：**0**"));
+        assertTrue(result.contains("风险等级：**低**"));
+        assertTrue(result.contains("当前症状：未填写"));
+        assertTrue(result.contains("是否规律休息：是"));
+    }
+
+    @Test
+    void digitalEyestrainDoubleVisionTriggersDoctorFlag() {
+        String result = tools.digitalEyestrainGuide(3.0, List.of("double_vision"), null, null, null);
+        assertTrue(result.contains("⚠️ 建议就医"));
+    }
+
+    @Test
+    void digitalEyestrainPresbyopicAgeGetsNearAddNote() {
+        String result = tools.digitalEyestrainGuide(5.0, null, null, null, 48);
+        assertTrue(result.contains("老视（老花）阶段"));
+        assertTrue(result.contains("reading_add_estimator"));
+    }
+
+    @Test
+    void digitalEyestrainRejectsUnknownSymptom() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.digitalEyestrainGuide(3.0, List.of("itchy"), null, null, null));
+        assertTrue(ex.getMessage().contains("symptoms"));
     }
 }

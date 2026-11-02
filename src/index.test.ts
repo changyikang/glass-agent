@@ -42,7 +42,66 @@ test("exports the expected MCP tool set", () => {
     "vertical_imbalance_check",
     "lens_tilt_compensation",
     "spectacle_magnification",
+    "digital_eyestrain_guide",
   ]);
+});
+
+test("digital eyestrain: heavy use with symptoms and no breaks scores high", () => {
+  const tool = getTool("digital_eyestrain_guide");
+  // hours 9 → hoursScore 3; 3 symptoms; no breaks & hours≥2 → +1; total 7 → 高
+  const result = tool.handler({
+    screen_hours: 9,
+    symptoms: ["dryness", "blur", "neck_shoulder"],
+    takes_breaks: false,
+    screen_distance_cm: 40,
+    age: 32,
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /风险评分：\*\*7\*\*（时长 3 \+ 症状 3 \+ 未规律休息 1）/);
+  assert.match(text, /风险等级：\*\*高\*\*/);
+  // 距离 40cm < 50 → 偏近，且 20-20-20 与距离建议都应标【优先】
+  assert.match(text, /距离：40cm（评估：偏近/);
+  assert.match(text, /【优先】遵循 20-20-20/);
+  assert.match(text, /【优先】有意识地完整眨眼/);
+});
+
+test("digital eyestrain: light use with no symptoms and breaks scores low", () => {
+  const tool = getTool("digital_eyestrain_guide");
+  // hours 1 → hoursScore 0; 0 symptoms; takes_breaks true → +0; total 0 → 低
+  const result = tool.handler({ screen_hours: 1, takes_breaks: true });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /风险评分：\*\*0\*\*/);
+  assert.match(text, /风险等级：\*\*低\*\*/);
+  assert.match(text, /当前症状：未填写/);
+  assert.match(text, /是否规律休息：是/);
+});
+
+test("digital eyestrain: double vision triggers a see-a-doctor flag", () => {
+  const tool = getTool("digital_eyestrain_guide");
+  const result = tool.handler({ screen_hours: 3, symptoms: ["double_vision"] });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /⚠️ 建议就医/);
+});
+
+test("digital eyestrain: presbyopic age gets a near-add / progressive note", () => {
+  const tool = getTool("digital_eyestrain_guide");
+  const result = tool.handler({ screen_hours: 5, age: 48 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /老视（老花）阶段/);
+  assert.match(text, /reading_add_estimator/);
+});
+
+test("digital eyestrain rejects an unknown symptom", () => {
+  const tool = getTool("digital_eyestrain_guide");
+  assert.throws(() => tool.handler({ screen_hours: 3, symptoms: ["itchy"] }), /symptoms/);
 });
 
 test("spectacle magnification: plus lens with shape factor magnifies (PF×SF)", () => {
