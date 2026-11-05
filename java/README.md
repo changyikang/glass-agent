@@ -1,6 +1,6 @@
 # glass-agent（Java + Spring Boot 版）
 
-配眼镜指南**智能体**，基于 **Spring Boot 3 + Spring AI**。它把原 TypeScript MCP Server 的 30 个配镜工具移植为 Java 实现，并在此之上接入大模型：用户用自然语言提问，大模型通过 **Function Calling** 自动选择并调用工具。智能体会**主动追问必要信息**（度数、用途、预算、脸型等），信息足够后给出配镜建议，并在最后**附上京东 / 淘宝 / 拼多多的购买链接**。
+配眼镜指南**智能体**，基于 **Spring Boot 3 + Spring AI**。它把原 TypeScript MCP Server 的 31 个配镜工具移植为 Java 实现，并在此之上接入大模型：用户用自然语言提问，大模型通过 **Function Calling** 自动选择并调用工具。智能体会**主动追问必要信息**（度数、用途、预算、脸型等），信息足够后给出配镜建议，并在最后**附上京东 / 淘宝 / 拼多多的购买链接**。
 
 原 TypeScript / MCP 版本仍保留在仓库根目录，两者并存。
 
@@ -56,6 +56,7 @@
 - `lens_tilt_compensation`：镜片倾斜（前倾角 / 面弯）引起的度数变化与补偿估算（Martin 斜向屈光）——镜片相对视线倾斜时如戴光度变化（球镜略增强并引入与旋转轴平行的散光）。按球镜 `power`、倾斜角 `tiltAngle`、类型 `tiltType`（`pantoscopic` 前倾角引入轴 180°／`faceform` 面弯引入轴 90°）与折射率 `index`（默认 1.5）算等效球镜 `S' = F·(1 + sin²θ/(2n))`、引入散光 `C' = S'·tan²θ`，给出如戴等效度数与偏差，按引入散光大小分级（<0.12D 可忽略、0.12–0.25D 临界、≥0.25D 明显需补偿）。高度数、大面弯时偏差放大，高端 / 自由曲面镜片会做「如戴位置补偿」抵消；适度前倾角（约 8–12°）属正常设计，与 `frame_fit_calculator`、`contact_lens_power` 互补
 - `spectacle_magnification`：眼镜放大率（视网膜像放大 / 缩小）估算——框架镜会把视网膜像放大或缩小（正镜 / 远视显眼大、负镜 / 近视显眼小），也是屈光参差引起不等像（aniseikonia）的根源。放大率 SM = 镜度因子 × 外形因子：`PF = 1 / (1 − d·Fv)`（d 镜眼距 m、Fv 后顶点度数），`SF = 1 / (1 − (t/n)·F1)`（t 中心厚度 m、n 折射率、F1 前表面 / 基弧面度数）。给球镜 `power`（必填）、镜眼距 `vertexDistance`（默认 12mm），可选前表面度数 `baseCurve` 与中心厚度 `centerThickness`（两者齐备才计外形因子，否则只给镜度因子）、折射率 `index`（默认 1.5），输出放大率倍数、放大 / 缩小百分比与量级分级（<5% 较小、5–8% 可察觉、≥8% 明显），与 `anisometropia_guide`、`contact_lens_power` 互补
 - `digital_eyestrain_guide`：数字视疲劳（电脑视觉综合征 CVS）自助评估与护眼建议——按日均屏幕时长 `screenHours`、当前症状 `symptoms`（`dryness` 干涩 / `blur` 模糊 / `headache` 头痛 / `double_vision` 重影 / `neck_shoulder` 颈肩酸痛 / `tearing` 流泪 / `light_sensitive` 畏光，可多选）、是否规律休息 `takesBreaks`、屏幕距离 `screenDistanceCm` 与年龄 `age`，估算视疲劳风险（低 / 中 / 高），并给出按「优先 / 建议 / 可选」分级的护眼措施——20-20-20 休息法、主动眨眼与干眼护理、屏幕距离与高度摆位、照明与反光控制、屈光矫正与办公 / 渐进镜片，以及就医提示（重影、模糊+头痛或症状≥4 项时触发），侧重用眼习惯，与 `lens_coating_advisor` 互补
+- `rx_tolerance_check`：配镜处方公差核验（ANSI Z80.1 / ISO 21987）——把「订单处方 ordered」与「到货实测 measured」逐项比对，判断单片成镜度数是否合格。球镜 / 子午线公差按参考度数（两条主子午线中绝对值较大者）确定（≤ 6.50D ±0.13D、> 6.50D ±2%），柱镜公差按柱镜大小分段（≤ 2.00D ±0.13D、2.00–4.50D ±0.15D、> 4.50D ±4%），轴位公差随柱镜增大而收紧（≤ 0.25D ±14°、≤ 0.50D ±7°、≤ 0.75D ±5°、≤ 1.50D ±3°、> 1.50D ±2°），可选核验下加光 ADD（≤ 4.00D ±0.12D、> 4.00D ±0.18D）。比对前把实测统一到订单的柱镜记法，故正 / 负柱镜记法不同不会误判；输出逐项偏差、对应公差、合格 / 超差标记与总结论，与 `prescription_interpreter`、`prescription_transpose`、`frame_fit_calculator` 互补
 
 ## 环境要求
 
@@ -272,6 +273,14 @@ curl -X POST http://localhost:8080/api/tools/digital_eyestrain_guide \
   -d '{"screenHours":9,"symptoms":["dryness","blur","neck_shoulder"],"takesBreaks":false,"screenDistanceCm":40,"age":32}'
 ```
 
+配镜处方公差核验（给订单 `orderedSph`/`orderedCyl`/`orderedAxis` 与实测 `measuredSph`/`measuredCyl`/`measuredAxis`，可选 `orderedAdd`/`measuredAdd`）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/rx_tolerance_check \
+  -H 'Content-Type: application/json' \
+  -d '{"orderedSph":-4,"orderedCyl":-1,"orderedAxis":180,"measuredSph":-4,"measuredCyl":-1,"measuredAxis":178,"orderedAdd":2,"measuredAdd":2}'
+```
+
 查看 / 清空工具调用历史（进程内保存最近 50 次，最新在前）：
 
 ```bash
@@ -301,7 +310,7 @@ java/
 └── src/main/java/com/glass/agent/
     ├── GlassAgentApplication.java      # 启动类
     ├── tool/
-    │   ├── GlassAdvisorTools.java      # 28 个工具的业务逻辑 + @Tool 注解
+    │   ├── GlassAdvisorTools.java      # 31 个工具的业务逻辑 + @Tool 注解
     │   ├── ToolCallHistory.java        # 进程内工具调用历史（最近 50 次）
     │   └── Diopters.java               # 度数格式化帮助函数
     ├── agent/

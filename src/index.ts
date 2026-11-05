@@ -1012,6 +1012,61 @@ export const tools: ToolDefinition[] = [
     },
     handler: handleDigitalEyestrainGuide,
   },
+  {
+    name: "rx_tolerance_check",
+    description:
+      "配镜处方公差核验（ANSI Z80.1 / ISO 21987）：把「订单处方 ordered」与「到货实测 measured」逐项比对，按国际公差标准判断单片成镜度数是否合格。球镜 / 子午线公差按参考度数（两条主子午线中绝对值较大者）确定：≤ 6.50D 时 ±0.13D，> 6.50D 按 ±2%；柱镜公差按柱镜大小分段（≤ 2.00D ±0.13D、2.00–4.50D ±0.15D、> 4.50D ±4%）；柱镜轴位公差随柱镜增大而收紧（≤ 0.25D ±14°、≤ 0.50D ±7°、≤ 0.75D ±5°、≤ 1.50D ±3°、> 1.50D ±2°）；可选核验下加光 ADD（≤ 4.00D ±0.12D、> 4.00D ±0.18D）。比对前会把实测处方统一到订单的柱镜记法，故正 / 负柱镜记法不同不会误判。输出逐项偏差、对应公差与合格 / 超差判定及总结论。仅为按通用阈值的估算，正式验收以标准原文与焦度计为准。与 prescription_interpreter、prescription_transpose、frame_fit_calculator 互补。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ordered_sph: {
+          type: "number",
+          description: "订单（开具）球镜 SPH，单位 D，近视填负、远视填正，如 -4.00。范围 -30~30。",
+        },
+        ordered_cyl: {
+          type: "number",
+          description: "订单柱镜 CYL，单位 D，可正可负，无散光可不填（默认 0）。范围 -10~10。",
+        },
+        ordered_axis: {
+          type: "number",
+          description: "订单轴位 AXIS，整数 0-180，单位 °。订单有柱镜时必填、无柱镜时不要填。",
+        },
+        measured_sph: {
+          type: "number",
+          description: "到货实测球镜 SPH（焦度计读数），单位 D。范围 -30~30。",
+        },
+        measured_cyl: {
+          type: "number",
+          description:
+            "到货实测柱镜 CYL，单位 D，可正可负，无散光可不填（默认 0）。记法可与订单不同，会自动统一后比对。范围 -10~10。",
+        },
+        measured_axis: {
+          type: "number",
+          description: "到货实测轴位 AXIS，整数 0-180，单位 °。实测有柱镜时必填、无柱镜时不要填。",
+        },
+        ordered_add: {
+          type: "number",
+          description: "订单下加光 ADD，单位 D，如 +2.00。需与 measured_add 同时提供才核验 ADD。范围 0-6。",
+        },
+        measured_add: {
+          type: "number",
+          description: "到货实测下加光 ADD，单位 D。需与 ordered_add 同时提供才核验 ADD。范围 0-6。",
+        },
+      },
+      required: ["ordered_sph", "measured_sph"],
+    },
+    sample: {
+      ordered_sph: -4,
+      ordered_cyl: -1,
+      ordered_axis: 180,
+      measured_sph: -4,
+      measured_cyl: -1,
+      measured_axis: 178,
+      ordered_add: 2,
+      measured_add: 2,
+    },
+    handler: handleRxToleranceCheck,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -3499,6 +3554,206 @@ ${recLines}
 - 数字视疲劳多为功能性、可逆，调整用眼习惯后常能缓解；但重影、持续头痛、视力明显下降需排查器质性或双眼视问题。
 - 本工具侧重用眼习惯，镜片镀膜（防蓝光 / 减反射等）是否值得购买请配合 \`lens_coating_advisor\`；是否需要近附加 / 渐进请配合 \`reading_add_estimator\`、\`progressive_lens_assessment\`。
 - 本工具只做科普评估，不替代专业眼科与视光检查。`);
+}
+
+// 配镜处方公差（ANSI Z80.1 / ISO 21987 常用阈值）。
+const RX_SPHERE_TOL_LOW = 0.13; // 参考度数（绝对值较大的主子午线）≤ 6.50D 时的球镜/子午线公差
+const RX_SPHERE_HIGH_THRESHOLD = 6.5; // 超过此值改按百分比
+const RX_SPHERE_HIGH_PCT = 0.02; // 高度数球镜/子午线公差 = 2%
+const RX_CYL_TOL_LOW = 0.13; // 柱镜 ≤ 2.00D
+const RX_CYL_TOL_MID = 0.15; // 柱镜 2.00–4.50D
+const RX_CYL_HIGH_PCT = 0.04; // 柱镜 > 4.50D 按 4%
+const RX_ADD_TOL_LOW = 0.12; // 下加光 ≤ 4.00D
+const RX_ADD_TOL_HIGH = 0.18; // 下加光 > 4.00D
+const RX_TOL_EPS = 1e-9;
+
+function rxSphereTolerance(higherMeridianAbs: number): number {
+  return higherMeridianAbs <= RX_SPHERE_HIGH_THRESHOLD
+    ? RX_SPHERE_TOL_LOW
+    : RX_SPHERE_HIGH_PCT * higherMeridianAbs;
+}
+
+function rxCylinderTolerance(cylMag: number): number {
+  if (cylMag <= 2.0) return RX_CYL_TOL_LOW;
+  if (cylMag <= 4.5) return RX_CYL_TOL_MID;
+  return RX_CYL_HIGH_PCT * cylMag;
+}
+
+// 柱镜轴位公差：随柱镜增大而收紧（ANSI Z80.1 阶梯）。
+function rxAxisTolerance(cylMag: number): number {
+  if (cylMag <= 0.25) return 14;
+  if (cylMag <= 0.5) return 7;
+  if (cylMag <= 0.75) return 5;
+  if (cylMag <= 1.5) return 3;
+  return 2;
+}
+
+function axisCircularDiff(a: number, b: number): number {
+  let d = Math.abs(a - b);
+  if (d > 90) d = 180 - d;
+  return d;
+}
+
+function formatTolDiopter(value: number): string {
+  return `±${trimTrailingZeros(value.toFixed(2))}D`;
+}
+
+function handleRxToleranceCheck(args: ToolArgs): ToolResult {
+  const orderedSph = expectNumber(args, "ordered_sph", { min: -30, max: 30 });
+  const orderedCyl = optionalNumber(args, "ordered_cyl", { min: -10, max: 10 }) ?? 0;
+  const orderedAxis = optionalNumber(args, "ordered_axis", { min: 0, max: 180, integer: true });
+  validateAxis("订单处方", orderedCyl, orderedAxis);
+
+  const measuredSph = expectNumber(args, "measured_sph", { min: -30, max: 30 });
+  const measuredCylRaw = optionalNumber(args, "measured_cyl", { min: -10, max: 10 }) ?? 0;
+  const measuredAxisRaw = optionalNumber(args, "measured_axis", { min: 0, max: 180, integer: true });
+  validateAxis("实测处方", measuredCylRaw, measuredAxisRaw);
+
+  const orderedAdd = optionalNumber(args, "ordered_add", { min: 0, max: 6 });
+  const measuredAdd = optionalNumber(args, "measured_add", { min: 0, max: 6 });
+  if ((orderedAdd === undefined) !== (measuredAdd === undefined)) {
+    throw new Error("核验下加光 ADD 时需同时提供 ordered_add 与 measured_add");
+  }
+
+  // 统一柱镜记法：以订单柱镜的符号为准（订单无柱镜时按负柱镜记法），必要时转置实测处方再比对。
+  const targetNegative = orderedCyl <= 0;
+  let mSph = measuredSph;
+  let mCyl = measuredCylRaw;
+  let mAxis = measuredAxisRaw;
+  let transposed = false;
+  if (mCyl !== 0 && mCyl < 0 !== targetNegative) {
+    mSph = measuredSph + measuredCylRaw;
+    mCyl = -measuredCylRaw;
+    mAxis = measuredAxisRaw === undefined ? undefined : transposeAxis(measuredAxisRaw);
+    transposed = true;
+  }
+
+  // 订单两条主子午线：沿轴位方向 = SPH，垂直方向 = SPH + CYL。参考度数取绝对值较大者。
+  const m1 = orderedSph;
+  const m2 = orderedSph + orderedCyl;
+  const higherMeridian = Math.abs(m1) >= Math.abs(m2) ? m1 : m2;
+  const sphereTol = rxSphereTolerance(Math.abs(higherMeridian));
+  const cylMag = Math.abs(orderedCyl);
+  const cylTol = rxCylinderTolerance(cylMag);
+  const axisTol = rxAxisTolerance(cylMag);
+
+  const sphereDelta = mSph - orderedSph;
+  const cylDelta = mCyl - orderedCyl;
+
+  const failed: string[] = [];
+  const lines: string[] = [];
+
+  const spherePass = Math.abs(sphereDelta) <= sphereTol + RX_TOL_EPS;
+  if (!spherePass) failed.push("球镜 SPH");
+  lines.push(
+    `球镜 SPH：订单 ${formatSignedDiopter(orderedSph)}，实测 ${formatSignedDiopter(mSph)}，偏差 ${formatDiopter(
+      Math.abs(sphereDelta)
+    )}，公差 ${formatTolDiopter(sphereTol)} → ${spherePass ? "✅ 合格" : "❌ 超差"}`
+  );
+
+  const cylPass = Math.abs(cylDelta) <= cylTol + RX_TOL_EPS;
+  if (!cylPass) failed.push("柱镜 CYL");
+  lines.push(
+    `柱镜 CYL：订单 ${formatSignedDiopter(orderedCyl)}，实测 ${formatSignedDiopter(mCyl)}，偏差 ${formatDiopter(
+      Math.abs(cylDelta)
+    )}，公差 ${formatTolDiopter(cylTol)} → ${cylPass ? "✅ 合格" : "❌ 超差"}`
+  );
+
+  // 轴位仅在订单与实测都带柱镜时可比对。
+  if (orderedCyl !== 0 && mCyl !== 0) {
+    const axisDelta = axisCircularDiff(mAxis as number, orderedAxis as number);
+    const axisPass = axisDelta <= axisTol + RX_TOL_EPS;
+    if (!axisPass) failed.push("轴位 AXIS");
+    lines.push(
+      `轴位 AXIS：订单 ${orderedAxis}°，实测 ${mAxis}°，偏差 ${axisDelta}°，公差 ±${axisTol}° → ${
+        axisPass ? "✅ 合格" : "❌ 超差"
+      }`
+    );
+  } else if (orderedCyl !== 0 && mCyl === 0) {
+    failed.push("柱镜 CYL");
+    lines.push("轴位 AXIS：实测无柱镜，轴位无从比对（柱镜项已判超差）。");
+  } else if (orderedCyl === 0 && mCyl !== 0) {
+    lines.push("轴位 AXIS：订单无柱镜，无基准轴位可比；实测多出的柱镜已并入柱镜项核验。");
+  } else {
+    lines.push("轴位 AXIS：订单与实测均无柱镜，无需核验。");
+  }
+
+  if (orderedAdd !== undefined && measuredAdd !== undefined) {
+    const addTol = orderedAdd <= 4.0 ? RX_ADD_TOL_LOW : RX_ADD_TOL_HIGH;
+    const addDelta = measuredAdd - orderedAdd;
+    const addPass = Math.abs(addDelta) <= addTol + RX_TOL_EPS;
+    if (!addPass) failed.push("下加光 ADD");
+    lines.push(
+      `下加光 ADD：订单 ${formatSignedDiopter(orderedAdd)}，实测 ${formatSignedDiopter(
+        measuredAdd
+      )}，偏差 ${formatDiopter(Math.abs(addDelta))}，公差 ${formatTolDiopter(addTol)} → ${
+        addPass ? "✅ 合格" : "❌ 超差"
+      }`
+    );
+  }
+
+  const verdict = failed.length === 0 ? "合格" : "超差";
+  const conclusion =
+    failed.length === 0
+      ? "**合格**：各项均在 ANSI Z80.1 / ISO 21987 允许公差之内，可按此验收。"
+      : `**超差**：以下项目超出允许公差——${failed.join("、")}。建议联系加工方复核或重做，并确认装配（移心、轴位）是否正确。`;
+
+  const measuredLine = transposed
+    ? `${renderPrescriptionLine(measuredSph, measuredCylRaw, measuredAxisRaw)}（原始输入）→ 统一为${
+        targetNegative ? "负" : "正"
+      }柱镜记法后比对：${renderPrescriptionLine(mSph, mCyl, mAxis)}`
+    : renderPrescriptionLine(mSph, mCyl, mAxis);
+
+  const orderedAddLine =
+    orderedAdd !== undefined ? ` / ADD ${formatSignedDiopter(orderedAdd)}` : "";
+  const measuredAddLine =
+    measuredAdd !== undefined ? ` / ADD ${formatSignedDiopter(measuredAdd)}` : "";
+
+  const notes: string[] = [];
+  notes.push(
+    `球镜 / 子午线公差按「参考度数（两条主子午线中绝对值较大者 = ${formatSignedDiopter(
+      higherMeridian
+    )}）」确定：≤ 6.50D 时 ±0.13D，> 6.50D 时按 ±2%，故本例为 ${formatTolDiopter(sphereTol)}。`
+  );
+  notes.push(
+    `柱镜公差按柱镜大小分段：≤ 2.00D ±0.13D、2.00–4.50D ±0.15D、> 4.50D ±4%；本例柱镜 ${formatDiopter(
+      cylMag
+    )} → ${formatTolDiopter(cylTol)}。`
+  );
+  notes.push(
+    `轴位公差随柱镜增大而收紧：≤ 0.25D ±14°、≤ 0.50D ±7°、≤ 0.75D ±5°、≤ 1.50D ±3°、> 1.50D ±2°；本例 → ±${axisTol}°（柱镜越大，轴位偏一点影响越大）。`
+  );
+  if (orderedAdd !== undefined) {
+    notes.push("下加光 ADD 公差：≤ 4.00D ±0.12D、> 4.00D ±0.18D。");
+  }
+  notes.push(
+    "正、负柱镜记法描述同一副镜片；比对前会把实测处方统一到订单的柱镜记法，所以记法不同不会误判（转换可参考 prescription_transpose）。"
+  );
+
+  return textResult(`## 配镜处方公差核验（ANSI Z80.1 / ISO 21987）
+
+> 把「订单处方（ordered）」与「到货实测（measured）」逐项比对，按国际公差标准判断单片是否合格。公差并非固定值：球镜越高、柱镜越大，允许的误差越宽（高度数改按百分比），而轴位公差随柱镜增大而收紧。以下为按通用阈值的估算，正式验收以相应标准原文与检测设备（焦度计）为准。
+
+**输入**
+- 订单处方（ordered）：${renderPrescriptionLine(orderedSph, orderedCyl, orderedAxis)}${orderedAddLine}
+- 实测处方（measured）：${measuredLine}${measuredAddLine}
+- 订单两条主子午线：沿轴位方向 ${formatSignedDiopter(m1)}、垂直方向 ${formatSignedDiopter(
+    m2
+  )}；参考度数（绝对值较大者）${formatSignedDiopter(higherMeridian)}
+
+**逐项核验**
+${renderBulletList(lines, "无可核验项目。")}
+
+**结论**
+- ${conclusion}
+
+**说明**
+${renderBulletList(notes, "核验完成。")}
+
+**提醒**
+- 公差针对「单片成镜度数」；一副眼镜还需核验瞳距 / 光心高度、棱镜、基弧、镜片厚度与外观，可配合 \`frame_fit_calculator\`、\`prism_resolver\`。
+- 不同标准 / 年份的阈值略有差异，本工具用常见通用值做估算，不作为正式检测报告。
+- 本工具只做科普核验，验收判定与处理请以专业机构和设备为准。`);
 }
 
 function acuityLevelLabel(decimal: number): string {

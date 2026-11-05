@@ -2802,6 +2802,249 @@ public class GlassAdvisorTools {
                 doctorLine);
     }
 
+    // 配镜处方公差（ANSI Z80.1 / ISO 21987 常用阈值）。
+    private static final double RX_SPHERE_TOL_LOW = 0.13;
+    private static final double RX_SPHERE_HIGH_THRESHOLD = 6.5;
+    private static final double RX_SPHERE_HIGH_PCT = 0.02;
+    private static final double RX_CYL_TOL_LOW = 0.13;
+    private static final double RX_CYL_TOL_MID = 0.15;
+    private static final double RX_CYL_HIGH_PCT = 0.04;
+    private static final double RX_ADD_TOL_LOW = 0.12;
+    private static final double RX_ADD_TOL_HIGH = 0.18;
+    private static final double RX_TOL_EPS = 1e-9;
+
+    private static double rxSphereTolerance(double higherMeridianAbs) {
+        return higherMeridianAbs <= RX_SPHERE_HIGH_THRESHOLD
+                ? RX_SPHERE_TOL_LOW
+                : RX_SPHERE_HIGH_PCT * higherMeridianAbs;
+    }
+
+    private static double rxCylinderTolerance(double cylMag) {
+        if (cylMag <= 2.0) {
+            return RX_CYL_TOL_LOW;
+        }
+        if (cylMag <= 4.5) {
+            return RX_CYL_TOL_MID;
+        }
+        return RX_CYL_HIGH_PCT * cylMag;
+    }
+
+    private static int rxAxisTolerance(double cylMag) {
+        if (cylMag <= 0.25) {
+            return 14;
+        }
+        if (cylMag <= 0.5) {
+            return 7;
+        }
+        if (cylMag <= 0.75) {
+            return 5;
+        }
+        if (cylMag <= 1.5) {
+            return 3;
+        }
+        return 2;
+    }
+
+    private static int axisCircularDiff(int a, int b) {
+        int d = Math.abs(a - b);
+        return d > 90 ? 180 - d : d;
+    }
+
+    private static String formatTolDiopter(double value) {
+        return "±" + Diopters.trimTrailingZeros(String.format("%.2f", value)) + "D";
+    }
+
+    @Tool(description = "配镜处方公差核验（ANSI Z80.1 / ISO 21987）：把「订单处方 ordered」与「到货实测 measured」逐项比对，"
+            + "按国际公差标准判断单片成镜度数是否合格。球镜 / 子午线公差按参考度数（两条主子午线中绝对值较大者）确定："
+            + "≤ 6.50D 时 ±0.13D，> 6.50D 按 ±2%；柱镜公差按柱镜大小分段（≤ 2.00D ±0.13D、2.00–4.50D ±0.15D、> 4.50D ±4%）；"
+            + "柱镜轴位公差随柱镜增大而收紧（≤ 0.25D ±14°、≤ 0.50D ±7°、≤ 0.75D ±5°、≤ 1.50D ±3°、> 1.50D ±2°）；"
+            + "可选核验下加光 ADD（≤ 4.00D ±0.12D、> 4.00D ±0.18D）。比对前会把实测处方统一到订单的柱镜记法，"
+            + "故正 / 负柱镜记法不同不会误判。输出逐项偏差、对应公差与合格 / 超差判定及总结论。仅为按通用阈值的估算，"
+            + "正式验收以标准原文与焦度计为准。与 prescription_interpreter、prescription_transpose、frame_fit_calculator 互补。")
+    public String rxToleranceCheck(
+            @ToolParam(description = "订单（开具）球镜 SPH，单位 D，近视填负、远视填正，如 -4.00。范围 -30~30。")
+            double orderedSph,
+            @ToolParam(required = false, description = "订单柱镜 CYL，单位 D，可正可负，无散光可不填（默认 0）。范围 -10~10。")
+            Double orderedCyl,
+            @ToolParam(required = false, description = "订单轴位 AXIS，整数 0-180，单位 °。订单有柱镜时必填、无柱镜时不要填。")
+            Integer orderedAxis,
+            @ToolParam(description = "到货实测球镜 SPH（焦度计读数），单位 D。范围 -30~30。")
+            double measuredSph,
+            @ToolParam(required = false, description = "到货实测柱镜 CYL，单位 D，可正可负，无散光可不填（默认 0）。"
+                    + "记法可与订单不同，会自动统一后比对。范围 -10~10。")
+            Double measuredCyl,
+            @ToolParam(required = false, description = "到货实测轴位 AXIS，整数 0-180，单位 °。实测有柱镜时必填、无柱镜时不要填。")
+            Integer measuredAxis,
+            @ToolParam(required = false, description = "订单下加光 ADD，单位 D，如 +2.00。需与 measured_add 同时提供才核验 ADD。范围 0-6。")
+            Double orderedAdd,
+            @ToolParam(required = false, description = "到货实测下加光 ADD，单位 D。需与 ordered_add 同时提供才核验 ADD。范围 0-6。")
+            Double measuredAdd) {
+
+        checkRange("ordered_sph", orderedSph, -30, 30);
+        double oCyl = orderedCyl == null ? 0 : orderedCyl;
+        if (orderedCyl != null) {
+            checkRange("ordered_cyl", orderedCyl, -10, 10);
+        }
+        if (orderedAxis != null) {
+            checkRange("ordered_axis", orderedAxis, 0, 180);
+        }
+        validateAxis("订单处方", oCyl, orderedAxis);
+
+        checkRange("measured_sph", measuredSph, -30, 30);
+        double mCylRaw = measuredCyl == null ? 0 : measuredCyl;
+        if (measuredCyl != null) {
+            checkRange("measured_cyl", measuredCyl, -10, 10);
+        }
+        if (measuredAxis != null) {
+            checkRange("measured_axis", measuredAxis, 0, 180);
+        }
+        validateAxis("实测处方", mCylRaw, measuredAxis);
+
+        if (orderedAdd != null) {
+            checkRange("ordered_add", orderedAdd, 0, 6);
+        }
+        if (measuredAdd != null) {
+            checkRange("measured_add", measuredAdd, 0, 6);
+        }
+        if ((orderedAdd == null) != (measuredAdd == null)) {
+            throw new IllegalArgumentException("核验下加光 ADD 时需同时提供 ordered_add 与 measured_add");
+        }
+
+        // 统一柱镜记法：以订单柱镜的符号为准（订单无柱镜时按负柱镜记法），必要时转置实测处方再比对。
+        boolean targetNegative = oCyl <= 0;
+        double mSph = measuredSph;
+        double mCyl = mCylRaw;
+        Integer mAxis = measuredAxis;
+        boolean transposed = false;
+        if (mCyl != 0 && (mCyl < 0) != targetNegative) {
+            mSph = measuredSph + mCylRaw;
+            mCyl = -mCylRaw;
+            mAxis = measuredAxis == null ? null : transposeAxis(measuredAxis);
+            transposed = true;
+        }
+
+        // 订单两条主子午线：沿轴位方向 = SPH，垂直方向 = SPH + CYL。参考度数取绝对值较大者。
+        double m1 = orderedSph;
+        double m2 = orderedSph + oCyl;
+        double higherMeridian = Math.abs(m1) >= Math.abs(m2) ? m1 : m2;
+        double sphereTol = rxSphereTolerance(Math.abs(higherMeridian));
+        double cylMag = Math.abs(oCyl);
+        double cylTol = rxCylinderTolerance(cylMag);
+        int axisTol = rxAxisTolerance(cylMag);
+
+        double sphereDelta = mSph - orderedSph;
+        double cylDelta = mCyl - oCyl;
+
+        List<String> failed = new ArrayList<>();
+        List<String> lines = new ArrayList<>();
+
+        boolean spherePass = Math.abs(sphereDelta) <= sphereTol + RX_TOL_EPS;
+        if (!spherePass) {
+            failed.add("球镜 SPH");
+        }
+        lines.add("球镜 SPH：订单 " + formatSignedDiopter(orderedSph) + "，实测 " + formatSignedDiopter(mSph)
+                + "，偏差 " + formatDiopter(Math.abs(sphereDelta)) + "，公差 " + formatTolDiopter(sphereTol)
+                + " → " + (spherePass ? "✅ 合格" : "❌ 超差"));
+
+        boolean cylPass = Math.abs(cylDelta) <= cylTol + RX_TOL_EPS;
+        if (!cylPass) {
+            failed.add("柱镜 CYL");
+        }
+        lines.add("柱镜 CYL：订单 " + formatSignedDiopter(oCyl) + "，实测 " + formatSignedDiopter(mCyl)
+                + "，偏差 " + formatDiopter(Math.abs(cylDelta)) + "，公差 " + formatTolDiopter(cylTol)
+                + " → " + (cylPass ? "✅ 合格" : "❌ 超差"));
+
+        // 轴位仅在订单与实测都带柱镜时可比对。
+        if (oCyl != 0 && mCyl != 0) {
+            int axisDelta = axisCircularDiff(mAxis, orderedAxis);
+            boolean axisPass = axisDelta <= axisTol + RX_TOL_EPS;
+            if (!axisPass) {
+                failed.add("轴位 AXIS");
+            }
+            lines.add("轴位 AXIS：订单 " + orderedAxis + "°，实测 " + mAxis + "°，偏差 " + axisDelta
+                    + "°，公差 ±" + axisTol + "° → " + (axisPass ? "✅ 合格" : "❌ 超差"));
+        } else if (oCyl != 0 && mCyl == 0) {
+            failed.add("柱镜 CYL");
+            lines.add("轴位 AXIS：实测无柱镜，轴位无从比对（柱镜项已判超差）。");
+        } else if (oCyl == 0 && mCyl != 0) {
+            lines.add("轴位 AXIS：订单无柱镜，无基准轴位可比；实测多出的柱镜已并入柱镜项核验。");
+        } else {
+            lines.add("轴位 AXIS：订单与实测均无柱镜，无需核验。");
+        }
+
+        if (orderedAdd != null && measuredAdd != null) {
+            double addTol = orderedAdd <= 4.0 ? RX_ADD_TOL_LOW : RX_ADD_TOL_HIGH;
+            double addDelta = measuredAdd - orderedAdd;
+            boolean addPass = Math.abs(addDelta) <= addTol + RX_TOL_EPS;
+            if (!addPass) {
+                failed.add("下加光 ADD");
+            }
+            lines.add("下加光 ADD：订单 " + formatSignedDiopter(orderedAdd) + "，实测 " + formatSignedDiopter(measuredAdd)
+                    + "，偏差 " + formatDiopter(Math.abs(addDelta)) + "，公差 " + formatTolDiopter(addTol)
+                    + " → " + (addPass ? "✅ 合格" : "❌ 超差"));
+        }
+
+        String conclusion = failed.isEmpty()
+                ? "**合格**：各项均在 ANSI Z80.1 / ISO 21987 允许公差之内，可按此验收。"
+                : "**超差**：以下项目超出允许公差——" + String.join("、", failed)
+                        + "。建议联系加工方复核或重做，并确认装配（移心、轴位）是否正确。";
+
+        String measuredLine = transposed
+                ? renderPrescriptionLine(measuredSph, mCylRaw, measuredAxis) + "（原始输入）→ 统一为"
+                        + (targetNegative ? "负" : "正") + "柱镜记法后比对：" + renderPrescriptionLine(mSph, mCyl, mAxis)
+                : renderPrescriptionLine(mSph, mCyl, mAxis);
+
+        String orderedAddLine = orderedAdd != null ? " / ADD " + formatSignedDiopter(orderedAdd) : "";
+        String measuredAddLine = measuredAdd != null ? " / ADD " + formatSignedDiopter(measuredAdd) : "";
+
+        List<String> notes = new ArrayList<>();
+        notes.add("球镜 / 子午线公差按「参考度数（两条主子午线中绝对值较大者 = " + formatSignedDiopter(higherMeridian)
+                + "）」确定：≤ 6.50D 时 ±0.13D，> 6.50D 时按 ±2%，故本例为 " + formatTolDiopter(sphereTol) + "。");
+        notes.add("柱镜公差按柱镜大小分段：≤ 2.00D ±0.13D、2.00–4.50D ±0.15D、> 4.50D ±4%；本例柱镜 "
+                + formatDiopter(cylMag) + " → " + formatTolDiopter(cylTol) + "。");
+        notes.add("轴位公差随柱镜增大而收紧：≤ 0.25D ±14°、≤ 0.50D ±7°、≤ 0.75D ±5°、≤ 1.50D ±3°、> 1.50D ±2°；本例 → ±"
+                + axisTol + "°（柱镜越大，轴位偏一点影响越大）。");
+        if (orderedAdd != null) {
+            notes.add("下加光 ADD 公差：≤ 4.00D ±0.12D、> 4.00D ±0.18D。");
+        }
+        notes.add("正、负柱镜记法描述同一副镜片；比对前会把实测处方统一到订单的柱镜记法，"
+                + "所以记法不同不会误判（转换可参考 prescription_transpose）。");
+
+        return """
+                ## 配镜处方公差核验（ANSI Z80.1 / ISO 21987）
+
+                > 把「订单处方（ordered）」与「到货实测（measured）」逐项比对，按国际公差标准判断单片是否合格。公差并非固定值：球镜越高、柱镜越大，允许的误差越宽（高度数改按百分比），而轴位公差随柱镜增大而收紧。以下为按通用阈值的估算，正式验收以相应标准原文与检测设备（焦度计）为准。
+
+                **输入**
+                - 订单处方（ordered）：%s%s
+                - 实测处方（measured）：%s%s
+                - 订单两条主子午线：沿轴位方向 %s、垂直方向 %s；参考度数（绝对值较大者）%s
+
+                **逐项核验**
+                %s
+
+                **结论**
+                - %s
+
+                **说明**
+                %s
+
+                **提醒**
+                - 公差针对「单片成镜度数」；一副眼镜还需核验瞳距 / 光心高度、棱镜、基弧、镜片厚度与外观，可配合 `frame_fit_calculator`、`prism_resolver`。
+                - 不同标准 / 年份的阈值略有差异，本工具用常见通用值做估算，不作为正式检测报告。
+                - 本工具只做科普核验，验收判定与处理请以专业机构和设备为准。""".formatted(
+                renderPrescriptionLine(orderedSph, oCyl, orderedAxis),
+                orderedAddLine,
+                measuredLine,
+                measuredAddLine,
+                formatSignedDiopter(m1),
+                formatSignedDiopter(m2),
+                formatSignedDiopter(higherMeridian),
+                renderBulletList(lines, "无可核验项目。"),
+                conclusion,
+                renderBulletList(notes, "核验完成。"));
+    }
+
     @Tool(description = "视力记录法换算：视力表结果常见四种等价写法——小数记录法(decimal，如 1.0)、"
             + "五分记录法/对数记录法(five_minute，如 5.0，中国 GB 标准)、Snellen 分数(snellen，如 20/20 或 6/6)、"
             + "logMAR(如 0.00，科研常用)。把任一记法换算成其余三种并给出视力大致水平。换算：五分 L = 5 + lg(小数)，"

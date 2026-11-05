@@ -74,7 +74,8 @@ public class ToolController {
                 tool("vertical_imbalance_check", "近用垂直棱镜差（上下不平衡）评估：屈光参差者向下阅读时两片各按 Prentice 产生垂直棱镜（Δ=向下量cm×垂直光度D）。按左右眼 SPH（可含 CYL/AXIS）算各自垂直子午线光度 F_v=SPH+CYL·cos²轴位、每片垂直棱镜与基底方向，并给出差异棱镜=|F_v右−F_v左|×向下量，按阈值分级（<1Δ 可耐受/1–1.5Δ 临界/≥1.5Δ 显著），给出分开配近用镜/隐形/削底/压贴棱镜等方案。"),
                 tool("lens_tilt_compensation", "镜片倾斜（前倾角/面弯）引起的度数变化与补偿估算：镜片相对视线倾斜时如戴光度变化（球镜略增强并引入与旋转轴平行的散光，Martin 斜向屈光）。按球镜 power、倾斜角 tilt_angle、类型 tilt_type（pantoscopic 轴 180°/faceform 轴 90°）与折射率 index 算 S'=F·(1+sin²θ/(2n))、C'=S'·tan²θ，给出如戴等效度数与偏差，按引入散光<0.12/0.12–0.25/≥0.25D 分级与补偿建议。与 frame_fit_calculator、contact_lens_power 互补。"),
                 tool("spectacle_magnification", "眼镜放大率（视网膜像放大/缩小）估算：框架镜放大/缩小视网膜像——正镜（远视）显眼大、负镜（近视）显眼小，也是屈光参差不等像的根源。SM=镜度因子 PF×外形因子 SF，PF=1/(1−d·Fv)（d 镜眼距 m、Fv 后顶点度数），SF=1/(1−(t/n)·F1)（t 中心厚度 m、n 折射率、F1 前表面度数）。给球镜 power（必填）、镜眼距 vertex_distance（默认 12mm），可选 base_curve 与 center_thickness（齐备才计 SF）、index，输出放大率倍数、放大/缩小百分比与分级。与 anisometropia_guide、contact_lens_power 互补。"),
-                tool("digital_eyestrain_guide", "数字视疲劳（电脑视觉综合征 CVS）自助评估与护眼建议：按日均屏幕时长、当前症状（干涩/模糊/头痛/重影/颈肩酸痛/流泪/畏光，可多选）、是否规律休息、屏幕距离与年龄，估算视疲劳风险（低/中/高），并给出按「优先/建议/可选」分级的护眼措施——20-20-20 休息法、主动眨眼与干眼护理、屏幕距离与高度摆位、照明与反光控制、屈光矫正与办公/渐进镜片，以及何时就医的提示。与 lens_coating_advisor 互补。"));
+                tool("digital_eyestrain_guide", "数字视疲劳（电脑视觉综合征 CVS）自助评估与护眼建议：按日均屏幕时长、当前症状（干涩/模糊/头痛/重影/颈肩酸痛/流泪/畏光，可多选）、是否规律休息、屏幕距离与年龄，估算视疲劳风险（低/中/高），并给出按「优先/建议/可选」分级的护眼措施——20-20-20 休息法、主动眨眼与干眼护理、屏幕距离与高度摆位、照明与反光控制、屈光矫正与办公/渐进镜片，以及何时就医的提示。与 lens_coating_advisor 互补。"),
+                tool("rx_tolerance_check", "配镜处方公差核验（ANSI Z80.1 / ISO 21987）：把订单处方 ordered 与到货实测 measured 逐项比对，判断单片成镜度数是否合格。球镜/子午线公差按参考度数（绝对值较大的主子午线）确定（≤6.50D ±0.13D、>6.50D ±2%），柱镜公差按柱镜大小分段（≤2.00D ±0.13D、2.00–4.50D ±0.15D、>4.50D ±4%），轴位公差随柱镜增大而收紧（≤0.25D ±14°…>1.50D ±2°），可选核验下加光 ADD（≤4.00D ±0.12D、>4.00D ±0.18D）。比对前把实测统一到订单的柱镜记法，正/负柱镜记法不同不会误判。与 prescription_interpreter、prescription_transpose、frame_fit_calculator 互补。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -264,6 +265,14 @@ public class ToolController {
                         req.screenDistanceCm(), req.age()));
     }
 
+    @PostMapping("/rx_tolerance_check")
+    public ToolResponse rxToleranceCheck(@RequestBody RxToleranceRequest req) {
+        return run("rx_tolerance_check", req,
+                () -> tools.rxToleranceCheck(req.orderedSph(), req.orderedCyl(), req.orderedAxis(),
+                        req.measuredSph(), req.measuredCyl(), req.measuredAxis(),
+                        req.orderedAdd(), req.measuredAdd()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -380,5 +389,10 @@ public class ToolController {
 
     public record DigitalEyestrainRequest(double screenHours, List<String> symptoms, Boolean takesBreaks,
                                           Double screenDistanceCm, Integer age) {
+    }
+
+    public record RxToleranceRequest(double orderedSph, Double orderedCyl, Integer orderedAxis,
+                                     double measuredSph, Double measuredCyl, Integer measuredAxis,
+                                     Double orderedAdd, Double measuredAdd) {
     }
 }

@@ -38,10 +38,11 @@ notation conversion, prism vector math, astigmatism-type
 classification, progressive-lens fitting-height checking,
 minimum lens-blank-size calculation, near-vision vertical
 prismatic imbalance checking, lens-tilt (pantoscopic / wrap)
-power-change compensation, and spectacle magnification
-(retinal-image magnification / minification) estimation.
+power-change compensation, spectacle magnification
+(retinal-image magnification / minification) estimation, and
+prescription tolerance verification (ANSI Z80.1 / ISO 21987).
 
-The project ships **two interchangeable implementations that share the same thirty
+The project ships **two interchangeable implementations that share the same thirty-one
 tools**, so you can adopt whichever fits your stack:
 
 | Implementation | Path | Best for |
@@ -51,7 +52,7 @@ tools**, so you can adopt whichever fits your stack:
 
 ### Features
 
-The thirty built-in tools:
+The thirty-one built-in tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -85,6 +86,7 @@ The thirty built-in tools:
 | `lens_tilt_compensation` | Estimates the as-worn power change when a lens is tilted relative to the line of sight (Martin's oblique-refraction formulae): pantoscopic tilt (about a horizontal axis) and face-form / wrap (about a vertical axis). From the sphere power `power`, tilt angle `tilt_angle`, type `tilt_type` (pantoscopic → induced axis 180°, faceform → 90°) and refractive index `index` (default 1.5) it computes the effective sphere `S' = F·(1 + sin²θ/(2n))` and the induced cylinder `C' = S'·tan²θ` at the type's axis, reports the as-worn power and the deviation from the ordered power, and grades it by the induced-cylinder size (< 0.12 D negligible, 0.12–0.25 D borderline, ≥ 0.25 D noticeable → recommend position-of-wear compensation). High powers and large wrap (sports / wrap sunglasses) amplify it; moderate pantoscopic tilt (~8–12°) is normal design. Complements `frame_fit_calculator` and `contact_lens_power` |
 | `spectacle_magnification` | Estimates how much a spectacle lens magnifies / minifies the retinal image — why plus (hyperopic) lenses make the eyes look bigger, minus (myopic) lenses smaller, and the root of aniseikonia in anisometropia. SM = power factor × shape factor, where `PF = 1 / (1 − d·Fv)` (d = vertex distance in m, Fv = back vertex power) and `SF = 1 / (1 − (t/n)·F1)` (t = center thickness in m, n = index, F1 = front-surface / base-curve power). From the sphere `power` (required), `vertex_distance` (default 12 mm), optional `base_curve` + `center_thickness` (both needed to include the shape factor, otherwise only the power factor) and `index` (default 1.5) it reports the magnification ratio, the percent magnification / minification and a magnitude grade (< 5% small, 5–8% noticeable, ≥ 8% significant). Complements `anisometropia_guide` (two-eye aniseikonia) and `contact_lens_power` |
 | `digital_eyestrain_guide` | Self-assessment and eye-care advice for digital eye strain / computer vision syndrome (CVS). From daily `screen_hours`, current `symptoms` (dryness / blur / headache / double_vision / neck_shoulder / tearing / light_sensitive, multi-select), whether you `takes_breaks`, your `screen_distance_cm` and `age`, it scores a strain risk (low / moderate / high) and returns prioritized (優先 / 建議 / 可選) measures — the 20-20-20 rule, conscious blinking & dry-eye care, screen distance/height setup, lighting & glare control, refractive correction and office/progressive lenses — plus a see-a-doctor flag (double vision, blur+headache, or ≥ 4 symptoms). A habit-level companion to `lens_coating_advisor` (coatings); not a substitute for a professional eye exam |
+| `rx_tolerance_check` | Verifies a delivered / measured prescription against the ordered one using standard optical tolerances (ANSI Z80.1 / ISO 21987). The sphere / meridian tolerance follows the higher-absolute principal meridian (≤ 6.50 D → ±0.13 D, else ±2%); the cylinder tolerance is stepped by cylinder power (≤ 2.00 D → ±0.13 D, 2.00–4.50 D → ±0.15 D, > 4.50 D → ±4%); the axis tolerance tightens with cylinder power (≤ 0.25 D → ±14°, ≤ 0.50 D → ±7°, ≤ 0.75 D → ±5°, ≤ 1.50 D → ±3°, > 1.50 D → ±2°); an optional ADD check uses ±0.12 D (≤ 4.00 D) / ±0.18 D. It transposes the measured Rx into the ordered cylinder-sign convention first, so plus / minus-cylinder notation never causes a false reject, and reports per-item deviation, the applicable tolerance, a pass / fail mark and an overall verdict. Complements `prescription_interpreter`, `prescription_transpose` and `frame_fit_calculator` |
 
 The Java agent adds **multi-turn intake**: pass a `conversationId` and it remembers
 the dialogue, so it asks the questions it needs, gives a fitting recommendation, and
@@ -94,7 +96,7 @@ attaches purchase links at the end.
 
 ```
                          ┌──────────────────────────────┐
-        MCP client       │   Thirty shared optical       │      REST client
+        MCP client       │   Thirty-one shared optical   │      REST client
    (Claude Desktop, …)   │             tools             │   (curl / your app)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │
@@ -218,9 +220,9 @@ Released under the [MIT License](LICENSE).
 
 ### 项目简介
 
-**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查、青少年近视防控、框架镜到隐形眼镜的度数换算、老花（近附加）度数估算、散光（正/负柱镜）记法转换、镜架尺寸与瞳距的适配评估、视力记录法换算、调节幅度评估、太阳镜镜片色号（过滤分类）选择、镜片材料（基材）选择、裸眼清晰视界（远点 / 近点）估算、近用视力（近视力表）记法换算、棱镜合成与分解（Prentice 向量运算）、散光类型判定、渐进镜片装配高度评估、最小镜片毛坯直径计算、近用垂直棱镜差（上下不平衡）评估、镜片倾斜（前倾角 / 面弯）引起的度数变化与补偿估算，以及眼镜放大率（视网膜像放大 / 缩小）估算。
+**glass-agent** 把配眼镜的领域知识封装成可被大模型（或任意 MCP 客户端）调用的工具，覆盖验光单解读、镜片推荐、镜片厚度估算、镜片镀膜取舍、镜框选择、视力检查建议、渐进镜片评估、新眼镜佩戴不适排查、青少年近视防控、框架镜到隐形眼镜的度数换算、老花（近附加）度数估算、散光（正/负柱镜）记法转换、镜架尺寸与瞳距的适配评估、视力记录法换算、调节幅度评估、太阳镜镜片色号（过滤分类）选择、镜片材料（基材）选择、裸眼清晰视界（远点 / 近点）估算、近用视力（近视力表）记法换算、棱镜合成与分解（Prentice 向量运算）、散光类型判定、渐进镜片装配高度评估、最小镜片毛坯直径计算、近用垂直棱镜差（上下不平衡）评估、镜片倾斜（前倾角 / 面弯）引起的度数变化与补偿估算、眼镜放大率（视网膜像放大 / 缩小）估算，以及配镜处方公差核验（ANSI Z80.1 / ISO 21987）。
 
-项目提供 **两套可互换、共享同一组三十个工具的实现**，你可以按技术栈选用：
+项目提供 **两套可互换、共享同一组三十一个工具的实现**，你可以按技术栈选用：
 
 | 实现方式 | 路径 | 适用场景 |
 | --- | --- | --- |
@@ -229,7 +231,7 @@ Released under the [MIT License](LICENSE).
 
 ### 功能
 
-内置三十个工具：
+内置三十一个工具：
 
 | 工具 | 作用 |
 | --- | --- |
@@ -263,6 +265,7 @@ Released under the [MIT License](LICENSE).
 | `lens_tilt_compensation` | 镜片倾斜（前倾角 / 面弯）引起的度数变化与补偿估算（Martin 斜向屈光）：镜片相对视线倾斜时如戴光度会变化——球镜略增强并引入一个轴位与旋转轴平行的散光。前倾角（pantoscopic，绕水平轴）引入轴位 180° 散光；面弯 / 包裹角（faceform / wrap，常见于运动镜、太阳镜，绕垂直轴）引入轴位 90° 散光。按球镜 `power`、倾斜角 `tilt_angle`、类型 `tilt_type`、折射率 `index`（默认 1.5）算等效球镜 `S' = F·(1 + sin²θ/(2n))`、引入散光 `C' = S'·tan²θ`，给出如戴等效度数与偏差，按引入散光大小分级（<0.12D 可忽略、0.12–0.25D 临界、≥0.25D 明显需补偿）。高度数、大面弯时偏差放大，高端 / 自由曲面镜片会做「如戴位置补偿」抵消；适度前倾角（约 8–12°）属正常设计。与 `frame_fit_calculator`、`contact_lens_power` 互补 |
 | `spectacle_magnification` | 眼镜放大率（视网膜像放大 / 缩小）估算：框架镜会把视网膜像放大或缩小——正镜（远视）戴镜显眼大、负镜（近视）显眼小，也是屈光参差引起不等像（aniseikonia）的根源。放大率 SM = 镜度因子 × 外形因子，`PF = 1 / (1 − d·Fv)`（d 镜眼距 m、Fv 后顶点度数），`SF = 1 / (1 − (t/n)·F1)`（t 中心厚度 m、n 折射率、F1 前表面 / 基弧面度数）。给球镜 `power`（必填）、镜眼距 `vertex_distance`（默认 12mm），可选前表面度数 `base_curve` 与中心厚度 `center_thickness`（两者齐备才计外形因子，否则只给镜度因子）、折射率 `index`（默认 1.5），输出放大率倍数、放大 / 缩小百分比与量级分级（<5% 较小、5–8% 可察觉、≥8% 明显）。与 `anisometropia_guide`（两眼不等像）、`contact_lens_power` 互补 |
 | `digital_eyestrain_guide` | 数字视疲劳（电脑视觉综合征 CVS）自助评估与护眼建议：按日均屏幕时长 `screen_hours`、当前症状 `symptoms`（干涩 / 模糊 / 头痛 / 重影 / 颈肩酸痛 / 流泪 / 畏光，可多选）、是否规律休息 `takes_breaks`、屏幕距离 `screen_distance_cm` 与年龄 `age`，估算视疲劳风险（低 / 中 / 高），并给出按「优先 / 建议 / 可选」分级的护眼措施——20-20-20 休息法、主动眨眼与干眼护理、屏幕距离与高度摆位、照明与反光控制、屈光矫正与办公 / 渐进镜片，以及就医提示（重影、模糊+头痛或症状≥4 项时触发）。侧重用眼习惯，与 `lens_coating_advisor`（镀膜选购）互补，不替代专业眼科 / 视光检查 |
+| `rx_tolerance_check` | 配镜处方公差核验（ANSI Z80.1 / ISO 21987）：把「订单处方 ordered」与「到货实测 measured」逐项比对，按国际公差标准判断单片成镜度数是否合格。球镜 / 子午线公差按参考度数（两条主子午线中绝对值较大者）确定（≤ 6.50D ±0.13D、> 6.50D ±2%），柱镜公差按柱镜大小分段（≤ 2.00D ±0.13D、2.00–4.50D ±0.15D、> 4.50D ±4%），轴位公差随柱镜增大而收紧（≤ 0.25D ±14°、≤ 0.50D ±7°、≤ 0.75D ±5°、≤ 1.50D ±3°、> 1.50D ±2°），可选核验下加光 ADD（≤ 4.00D ±0.12D、> 4.00D ±0.18D）。比对前把实测统一到订单的柱镜记法，故正 / 负柱镜记法不同不会误判；输出逐项偏差、对应公差、合格 / 超差标记与总结论。与 `prescription_interpreter`、`prescription_transpose`、`frame_fit_calculator` 互补 |
 
 Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可记住对话上下文，
 于是它会主动追问所需信息，给出配镜建议，并在最后附上购买链接。
@@ -271,7 +274,7 @@ Java 智能体还支持 **多轮问诊**：请求带上 `conversationId` 即可�
 
 ```
                          ┌──────────────────────────────┐
-       MCP 客户端         │      三十个共享的配镜工具      │       REST 客户端
+       MCP 客户端         │     三十一个共享的配镜工具     │       REST 客户端
    (Claude Desktop 等)   │                              │   (curl / 你的应用)
             │            └──────────────────────────────┘            │
             │                 ▲                    ▲                  │

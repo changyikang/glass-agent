@@ -994,4 +994,59 @@ class GlassAdvisorToolsTest {
                 () -> tools.digitalEyestrainGuide(3.0, List.of("itchy"), null, null, null));
         assertTrue(ex.getMessage().contains("symptoms"));
     }
+
+    @Test
+    void rxToleranceNearPerfectLensPasses() {
+        // ordered -4.00/-1.00x180 ADD+2; higher meridian -5.00 (≤6.5 → ±0.13D), cyl 1.00 → axis ±3°
+        String result = tools.rxToleranceCheck(-4.0, -1.0, 180, -4.0, -1.0, 178, 2.0, 2.0);
+        assertTrue(result.contains("**合格**：各项均在 ANSI Z80.1 / ISO 21987 允许公差之内"));
+        assertTrue(result.contains("球镜 SPH：订单 -4D，实测 -4D，偏差 0D，公差 ±0.13D → ✅ 合格"));
+        assertTrue(result.contains("轴位 AXIS：订单 180°，实测 178°，偏差 2°，公差 ±3° → ✅ 合格"));
+        assertTrue(result.contains("下加光 ADD：订单 +2D，实测 +2D，偏差 0D，公差 ±0.12D → ✅ 合格"));
+    }
+
+    @Test
+    void rxToleranceSphereErrorFailsSphere() {
+        String result = tools.rxToleranceCheck(-3.0, -1.0, 180, -3.5, -1.0, 180, null, null);
+        assertTrue(result.contains("**超差**：以下项目超出允许公差——球镜 SPH。"));
+        assertTrue(result.contains("球镜 SPH：订单 -3D，实测 -3.5D，偏差 0.5D，公差 ±0.13D → ❌ 超差"));
+    }
+
+    @Test
+    void rxToleranceHighCylinderTightensAxisTolerance() {
+        // cyl 2.00D → axis tolerance ±2°; 5° off → fails
+        String result = tools.rxToleranceCheck(-1.0, -2.0, 90, -1.0, -2.0, 95, null, null);
+        assertTrue(result.contains("以下项目超出允许公差——轴位 AXIS。"));
+        assertTrue(result.contains("轴位 AXIS：订单 90°，实测 95°，偏差 5°，公差 ±2° → ❌ 超差"));
+    }
+
+    @Test
+    void rxToleranceHighPowerUsesTwoPercentBand() {
+        // ordered -8.00 → |8.00| > 6.50 → tol = 2% of 8.00 = ±0.16D; 0.25 off → fails
+        String result = tools.rxToleranceCheck(-8.0, null, null, -8.25, null, null, null, null);
+        assertTrue(result.contains("球镜 SPH：订单 -8D，实测 -8.25D，偏差 0.25D，公差 ±0.16D → ❌ 超差"));
+        assertTrue(result.contains("轴位 AXIS：订单与实测均无柱镜，无需核验。"));
+    }
+
+    @Test
+    void rxTolerancePlusCylinderIsTransposedBeforeComparison() {
+        // ordered -2.00/-1.00x90; measured plus-cyl -3.00/+1.00x180 == -2.00/-1.00x90
+        String result = tools.rxToleranceCheck(-2.0, -1.0, 90, -3.0, 1.0, 180, null, null);
+        assertTrue(result.contains("统一为负柱镜记法后比对：SPH -2D / CYL -1D / AXIS 90°"));
+        assertTrue(result.contains("**合格**"));
+    }
+
+    @Test
+    void rxToleranceRequiresBothAddValues() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.rxToleranceCheck(-2.0, null, null, -2.0, null, null, 2.0, null));
+        assertTrue(ex.getMessage().contains("measured_add"));
+    }
+
+    @Test
+    void rxToleranceRejectsCylinderWithoutAxis() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.rxToleranceCheck(-2.0, -1.0, null, -2.0, null, null, null, null));
+        assertTrue(ex.getMessage().contains("轴位"));
+    }
 }

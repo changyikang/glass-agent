@@ -43,6 +43,7 @@ test("exports the expected MCP tool set", () => {
     "lens_tilt_compensation",
     "spectacle_magnification",
     "digital_eyestrain_guide",
+    "rx_tolerance_check",
   ]);
 });
 
@@ -102,6 +103,108 @@ test("digital eyestrain: presbyopic age gets a near-add / progressive note", () 
 test("digital eyestrain rejects an unknown symptom", () => {
   const tool = getTool("digital_eyestrain_guide");
   assert.throws(() => tool.handler({ screen_hours: 3, symptoms: ["itchy"] }), /symptoms/);
+});
+
+test("rx tolerance: a near-perfect lens passes every check", () => {
+  const tool = getTool("rx_tolerance_check");
+  // ordered -4.00/-1.00x180 ADD+2; higher meridian -5.00 (≤6.5 → ±0.13D), cyl 1.00 → axis ±3°
+  const result = tool.handler({
+    ordered_sph: -4,
+    ordered_cyl: -1,
+    ordered_axis: 180,
+    measured_sph: -4,
+    measured_cyl: -1,
+    measured_axis: 178,
+    ordered_add: 2,
+    measured_add: 2,
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /\*\*合格\*\*：各项均在 ANSI Z80\.1 \/ ISO 21987 允许公差之内/);
+  assert.match(text, /球镜 SPH：订单 -4D，实测 -4D，偏差 0D，公差 ±0\.13D → ✅ 合格/);
+  assert.match(text, /轴位 AXIS：订单 180°，实测 178°，偏差 2°，公差 ±3° → ✅ 合格/);
+  assert.match(text, /下加光 ADD：订单 \+2D，实测 \+2D，偏差 0D，公差 ±0\.12D → ✅ 合格/);
+});
+
+test("rx tolerance: a 0.50D sphere error fails the sphere check", () => {
+  const tool = getTool("rx_tolerance_check");
+  const result = tool.handler({
+    ordered_sph: -3,
+    ordered_cyl: -1,
+    ordered_axis: 180,
+    measured_sph: -3.5,
+    measured_cyl: -1,
+    measured_axis: 180,
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /\*\*超差\*\*：以下项目超出允许公差——球镜 SPH。/);
+  assert.match(text, /球镜 SPH：订单 -3D，实测 -3\.5D，偏差 0\.5D，公差 ±0\.13D → ❌ 超差/);
+});
+
+test("rx tolerance: a high cylinder tightens the axis tolerance to ±2°", () => {
+  const tool = getTool("rx_tolerance_check");
+  // cyl 2.00D → axis tolerance ±2°; 5° off → fails
+  const result = tool.handler({
+    ordered_sph: -1,
+    ordered_cyl: -2,
+    ordered_axis: 90,
+    measured_sph: -1,
+    measured_cyl: -2,
+    measured_axis: 95,
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /以下项目超出允许公差——轴位 AXIS。/);
+  assert.match(text, /轴位 AXIS：订单 90°，实测 95°，偏差 5°，公差 ±2° → ❌ 超差/);
+});
+
+test("rx tolerance: a high power sphere uses the ±2% band, not ±0.13D", () => {
+  const tool = getTool("rx_tolerance_check");
+  // ordered -8.00 → |8.00| > 6.50 → tol = 2% of 8.00 = ±0.16D; 0.25 off → fails
+  const result = tool.handler({ ordered_sph: -8, measured_sph: -8.25 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /球镜 SPH：订单 -8D，实测 -8\.25D，偏差 0\.25D，公差 ±0\.16D → ❌ 超差/);
+  assert.match(text, /轴位 AXIS：订单与实测均无柱镜，无需核验。/);
+});
+
+test("rx tolerance: a plus-cylinder measurement is transposed before comparison", () => {
+  const tool = getTool("rx_tolerance_check");
+  // ordered -2.00/-1.00x90; measured given in plus-cyl -3.00/+1.00x180 == -2.00/-1.00x90
+  const result = tool.handler({
+    ordered_sph: -2,
+    ordered_cyl: -1,
+    ordered_axis: 90,
+    measured_sph: -3,
+    measured_cyl: 1,
+    measured_axis: 180,
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /统一为负柱镜记法后比对：SPH -2D \/ CYL -1D \/ AXIS 90°/);
+  assert.match(text, /\*\*合格\*\*/);
+});
+
+test("rx tolerance: requires both ADD values together", () => {
+  const tool = getTool("rx_tolerance_check");
+  assert.throws(
+    () => tool.handler({ ordered_sph: -2, measured_sph: -2, ordered_add: 2 }),
+    /measured_add/
+  );
+});
+
+test("rx tolerance rejects a cylinder without its axis", () => {
+  const tool = getTool("rx_tolerance_check");
+  assert.throws(
+    () => tool.handler({ ordered_sph: -2, ordered_cyl: -1, measured_sph: -2 }),
+    /轴位/
+  );
 });
 
 test("spectacle magnification: plus lens with shape factor magnifies (PF×SF)", () => {
