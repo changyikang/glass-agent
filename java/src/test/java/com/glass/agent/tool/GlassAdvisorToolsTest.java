@@ -1,5 +1,7 @@
 package com.glass.agent.tool;
 
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -371,5 +373,680 @@ class GlassAdvisorToolsTest {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> tools.frameFitCalculator(52, 18, 30, null, null));
         assertTrue(ex.getMessage().contains("pd"));
+    }
+
+    @Test
+    void visualAcuityConverterMapsDecimalToAllNotations() {
+        String result = tools.visualAcuityConverter("decimal", 1.0, null);
+        assertTrue(result.contains("小数记录法：**1**"));
+        assertTrue(result.contains("五分记录法（对数）：**5**"));
+        assertTrue(result.contains("Snellen（美制/公制）：**20/20** ≈ **6/6**"));
+        assertTrue(result.contains("logMAR：**0**"));
+        assertTrue(result.contains("视力水平：**正常或以上**"));
+    }
+
+    @Test
+    void visualAcuityConverterConvertsFiveMinuteToDecimalAndSnellen() {
+        // 五分 4.7 → 小数 10^-0.3 ≈ 0.5 → 20/40
+        String result = tools.visualAcuityConverter("five_minute", 4.7, null);
+        assertTrue(result.contains("小数记录法：**0.5**"));
+        assertTrue(result.contains("Snellen（美制/公制）：**20/40**"));
+        assertTrue(result.contains("轻度下降"));
+    }
+
+    @Test
+    void visualAcuityConverterAcceptsSnellenDenominator() {
+        String result = tools.visualAcuityConverter("snellen", 200, 20);
+        assertTrue(result.contains("小数记录法：**0.1**"));
+        assertTrue(result.contains("五分记录法（对数）：**4**"));
+        assertTrue(result.contains("logMAR：**1**"));
+    }
+
+    @Test
+    void visualAcuityConverterRejectsOutOfRangeDecimal() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.visualAcuityConverter("decimal", 0, null));
+        assertTrue(ex.getMessage().contains("0 到 3"));
+    }
+
+    @Test
+    void accommodationAmplitudeAppliesHofstetterFormulasAndNearPoint() {
+        // 最小 = 15 - 0.25*45 = 3.75；平均 = 18.5 - 0.30*45 = 5；最大 = 25 - 0.40*45 = 7
+        String result = tools.accommodationAmplitude(45, null);
+        assertTrue(result.contains("最小（Hofstetter 下限）：**3.75D**"));
+        assertTrue(result.contains("平均（预期值）：**5D**"));
+        assertTrue(result.contains("最大（上限）：**7D**"));
+        // 调节近点 = 100/5 = 20cm；舒适最近 = 100/(5/2) = 40cm
+        assertTrue(result.contains("调节近点（按平均调节力）：**20 cm**"));
+        assertTrue(result.contains("舒适持续用眼最近距离（保留一半调节力）：**40 cm**"));
+    }
+
+    @Test
+    void accommodationAmplitudeFlagsStrainedNearWorkAndSuggestsAdd() {
+        // 45 岁平均 5D，储备 2.5D；33cm 需求 100/33≈3.03D > 储备
+        String result = tools.accommodationAmplitude(45, 33.0);
+        assertTrue(result.contains("在 33 cm 处"));
+        assertTrue(result.contains("偏吃力"));
+        // 建议下加光 = round((3.03 - 2.5)/0.25)*0.25 = 0.5
+        assertTrue(result.contains("建议近附加（补足储备）：约 **+0.5D**"));
+    }
+
+    @Test
+    void accommodationAmplitudeMarksComfortableDistanceWithoutAdd() {
+        // 30 岁平均 = 18.5 - 9 = 9.5D，储备 4.75D；40cm 需求 2.5D < 储备
+        String result = tools.accommodationAmplitude(30, 40.0);
+        assertTrue(result.contains("状态：**舒适"));
+        assertTrue(!result.contains("建议近附加"));
+    }
+
+    @Test
+    void accommodationAmplitudeReportsExhaustedAccommodationForTheVeryOld() {
+        // 70 岁平均 = 18.5 - 21 < 0 → 封底为 0 → 近点无法测得
+        String result = tools.accommodationAmplitude(70, null);
+        assertTrue(result.contains("平均（预期值）：**0D**"));
+        assertTrue(result.contains("调节力已近耗竭"));
+    }
+
+    @Test
+    void accommodationAmplitudeRejectsOutOfRangeAge() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.accommodationAmplitude(200, null));
+        assertTrue(ex.getMessage().contains("age"));
+    }
+
+    @Test
+    void sunglassTintGuideRecommendsCategoryThreeForBrightSun() {
+        String result = tools.sunglassTintGuide("bright", null, null, null);
+        assertTrue(result.contains("分类：**3 类（深色）**"));
+        assertTrue(result.contains("可见光透过率（VLT）：**8%–18%**"));
+        assertTrue(!result.contains("白天驾驶：0–3 类"));
+    }
+
+    @Test
+    void sunglassTintGuideBumpsOneCategoryDeeperForLightSensitiveWearer() {
+        // sunny 基准 = 2 类，畏光 → 3 类
+        String result = tools.sunglassTintGuide("sunny", "high", null, null);
+        assertTrue(result.contains("分类：**3 类（深色）**"));
+        assertTrue(result.contains("因畏光 / 对强光敏感"));
+    }
+
+    @Test
+    void sunglassTintGuideCapsDayDrivingAtCategoryThree() {
+        // snow_water 基准 = 4 类，但白天驾驶不允许 4 类
+        String result = tools.sunglassTintGuide("snow_water", null, true, null);
+        assertTrue(result.contains("分类：**3 类（深色）**"));
+        assertTrue(result.contains("4 类（极深）镜片透光过低、法规不允许开车佩戴"));
+        assertTrue(result.contains("白天驾驶：0–3 类"));
+        assertTrue(result.contains("灰色（中性灰）：**首选**"));
+    }
+
+    @Test
+    void sunglassTintGuideTreatsIndoorNightDrivingAsNightDriving() {
+        String result = tools.sunglassTintGuide("indoor_night", null, true, null);
+        assertTrue(result.contains("分类：**0 类（近无色 / 极浅）**"));
+        assertTrue(result.contains("夜间 / 昏暗驾驶"));
+        assertTrue(result.contains("黄色「夜视镜」并不能真正提升夜间安全"));
+        assertTrue(result.contains("偏光：此环境无需偏光"));
+    }
+
+    @Test
+    void sunglassTintGuideRecommendsPolarizedAndPrescriptionOptions() {
+        String result = tools.sunglassTintGuide("snow_water", null, null, true);
+        assertTrue(result.contains("偏光：**建议**"));
+        assertTrue(result.contains("带度数（近视 / 散光 / 老花）选配"));
+        assertTrue(result.contains("多数变色片在车内不会变深"));
+        assertTrue(result.contains("更高折射率"));
+    }
+
+    @Test
+    void sunglassTintGuideRejectsUnknownEnvironment() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.sunglassTintGuide("space", null, null, null));
+        assertTrue(ex.getMessage().contains("environment"));
+    }
+
+    @Test
+    void lensMaterialAdvisorForcesImpactResistantPcForKidsAndBansGlass() {
+        String result = tools.lensMaterialAdvisor(-2, null, null, "kids", null);
+        assertTrue(result.contains("首选：**PC 聚碳酸酯"));
+        assertTrue(result.contains("玻璃：易碎裂溅入眼睛"));
+        assertTrue(result.contains("CR-39 普通树脂：抗冲击性不足"));
+    }
+
+    @Test
+    void lensMaterialAdvisorPrefersTrivexForKidsWhenClarityPrioritized() {
+        String result = tools.lensMaterialAdvisor(-2, null, null, "sports", "clarity");
+        assertTrue(result.contains("首选：**Trivex"));
+        assertTrue(result.contains("阿贝数(45)明显高于 PC"));
+    }
+
+    @Test
+    void lensMaterialAdvisorRecommendsTrivexForRimlessAndWarnsAgainstGlassAnd174() {
+        String result = tools.lensMaterialAdvisor(-3, null, "rimless", null, null);
+        assertTrue(result.contains("首选：**Trivex"));
+        assertTrue(result.contains("玻璃：无框需在镜片上钻孔"));
+        assertTrue(result.contains("1.74 高折射树脂：1.74 偏脆，无框钻孔"));
+    }
+
+    @Test
+    void lensMaterialAdvisorScalesIndexUpWithPowerForFullRim() {
+        assertTrue(tools.lensMaterialAdvisor(-1, null, null, null, null).contains("首选：**CR-39 普通树脂"));
+        assertTrue(tools.lensMaterialAdvisor(-3, null, null, null, null).contains("首选：**1.60 高折射树脂"));
+        assertTrue(tools.lensMaterialAdvisor(-5, null, null, null, null).contains("首选：**1.67 高折射树脂"));
+        String veryHigh = tools.lensMaterialAdvisor(-7, null, null, null, null);
+        assertTrue(veryHigh.contains("首选：**1.74 高折射树脂"));
+        assertTrue(veryHigh.contains("玻璃：玻璃重且易碎"));
+    }
+
+    @Test
+    void lensMaterialAdvisorWarnsAboutLowAbbeHalosForNightDriving() {
+        String result = tools.lensMaterialAdvisor(-5, null, null, "driving", null);
+        assertTrue(result.contains("首选：**1.67 高折射树脂"));
+        assertTrue(result.contains("夜间驾驶：低阿贝数材料"));
+    }
+
+    @Test
+    void lensMaterialAdvisorUsesWorstMeridianAsReferencePower() {
+        // sph -3 alone would be 1.60, but -3 + -3 = -6 pushes to 1.74
+        String result = tools.lensMaterialAdvisor(-3, -3.0, null, null, null);
+        assertTrue(result.contains("参考功率（最大子午线）：6D"));
+        assertTrue(result.contains("首选：**1.74 高折射树脂"));
+    }
+
+    @Test
+    void lensMaterialAdvisorRejectsUnknownFrameType() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.lensMaterialAdvisor(-2, null, "octagon", null, null));
+        assertTrue(ex.getMessage().contains("frame_type"));
+    }
+
+    @Test
+    void clearVisionRangeGivesMyopeFarPointAndExplanation() {
+        // SE = -2.00 → far point = 100/2 = 50cm
+        String result = tools.clearVisionRange(-2, null, null);
+        assertTrue(result.contains("低度近视（SE -2D）"));
+        assertTrue(result.contains("远点（能看清的最远处）：**50 cm**"));
+        assertTrue(result.contains("摘镜看手机 / 看书反而清楚"));
+        assertTrue(result.contains("填入 age 可估算最近清晰距离"));
+    }
+
+    @Test
+    void clearVisionRangeComputesMyopeNearPointFromAge() {
+        // SE = -5.00, age 25 → amp = 11; near = 100/16 ≈ 6.3cm; far = 100/5 = 20cm
+        String result = tools.clearVisionRange(-5, null, 25);
+        assertTrue(result.contains("远点（能看清的最远处）：**20 cm**"));
+        assertTrue(result.contains("近点（能看清的最近处）：**6.3 cm**"));
+        assertTrue(result.contains("调节幅度约 11D（Hofstetter 平均"));
+    }
+
+    @Test
+    void clearVisionRangeUsesSphericalEquivalentForAstigmatism() {
+        // SE = -3 + (-2/2) = -4 → far point = 100/4 = 25cm
+        String result = tools.clearVisionRange(-3, -2.0, null);
+        assertTrue(result.contains("等效球镜（SE = SPH + CYL/2）：**-4D**"));
+        assertTrue(result.contains("远点（能看清的最远处）：**25 cm**"));
+        assertTrue(result.contains("含散光"));
+    }
+
+    @Test
+    void clearVisionRangeShowsYoungHyperopeCompensating() {
+        // SE = +2, age 20 → amp = 12.5 >= 2 → can see far
+        String result = tools.clearVisionRange(2, null, 20);
+        assertTrue(result.contains("远视"));
+        assertTrue(result.contains("可看清远处**（调节代偿）"));
+    }
+
+    @Test
+    void clearVisionRangeFlagsHyperopeWhoCannotCompensate() {
+        // SE = +5, age 60 → amp = 0.5 < 5 → cannot compensate
+        String result = tools.clearVisionRange(5, null, 60);
+        assertTrue(result.contains("不足以克服 5D 的远视"));
+        assertTrue(result.contains("裸眼看远也难以看清"));
+    }
+
+    @Test
+    void clearVisionRangeKeepsEmmetropeClearToInfinity() {
+        // age 30 → amp 9.5 → near point 100/9.5 ≈ 10.5cm
+        String result = tools.clearVisionRange(0, null, 30);
+        assertTrue(result.contains("正视 / 接近平光"));
+        assertTrue(result.contains("清晰到无穷远"));
+        assertTrue(result.contains("近点（能看清的最近处）：**10.5 cm**"));
+    }
+
+    @Test
+    void clearVisionRangeRejectsOutOfRangeSphere() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.clearVisionRange(99, null, null));
+        assertTrue(ex.getMessage().contains("sph"));
+    }
+
+    @Test
+    void nearAcuityConverterReading1MAt40cmIs04Decimal() {
+        // decimal = 0.4 / 1.0 = 0.4 → 20/50, 8pt
+        String result = tools.nearAcuityConverter("m_unit", 1.0, null);
+        assertTrue(result.contains("印张尺寸（M 记法）：**1 M**"));
+        assertTrue(result.contains("印刷点数（约）：**8 pt**"));
+        assertTrue(result.contains("该距离近视力（小数）：**0.4**"));
+        assertTrue(result.contains("Snellen 等效：**20/50**"));
+    }
+
+    @Test
+    void nearAcuityConverterPointInputConvertsToMByDivide8() {
+        // 16pt → 2M; at 40cm decimal = 0.4/2 = 0.2 → 20/100
+        String result = tools.nearAcuityConverter("point", 16, null);
+        assertTrue(result.contains("印张尺寸（M 记法）：**2 M**"));
+        assertTrue(result.contains("该距离近视力（小数）：**0.2**"));
+        assertTrue(result.contains("Snellen 等效：**20/100**"));
+    }
+
+    @Test
+    void nearAcuityConverterNearerDistanceImprovesAcuity() {
+        // 1M at 25cm → decimal = 0.25 → 20/80
+        String result = tools.nearAcuityConverter("m_unit", 1.0, 25.0);
+        assertTrue(result.contains("测试距离 25 cm"));
+        assertTrue(result.contains("该距离近视力（小数）：**0.25**"));
+        assertTrue(result.contains("Snellen 等效：**20/80**"));
+    }
+
+    @Test
+    void nearAcuityConverterDecimalInputGivesEquivalentM() {
+        // decimal 0.5 at 40cm → M = 0.4/0.5 = 0.8
+        String result = tools.nearAcuityConverter("decimal", 0.5, null);
+        assertTrue(result.contains("近视力小数 0.5"));
+        assertTrue(result.contains("印张尺寸（M 记法）：**0.8 M**"));
+        assertTrue(result.contains("该距离近视力（小数）：**0.5**"));
+    }
+
+    @Test
+    void nearAcuityConverterRejectsOutOfRangeValue() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.nearAcuityConverter("m_unit", 50, null));
+        assertTrue(ex.getMessage().contains("M 记法"));
+    }
+
+    @Test
+    void prismResolverCombinesThreeAndFourIntoFiveAt53Degrees() {
+        // 3-4-5 直角三角形：合棱镜 5Δ，角度 atan2(4,3)=53.1°，基底颞侧偏上。
+        String result = tools.prismResolver("combine", 3.0, "out", 4.0, "up", null, null);
+        assertTrue(result.contains("合棱镜大小：**5Δ**"));
+        assertTrue(result.contains("方向角：**53.1°**"));
+        assertTrue(result.contains("基底方向：**颞侧(base-out) 偏 上方(base-up)**"));
+    }
+
+    @Test
+    void prismResolverCombineBaseInAndDownLandsInThirdQuadrant() {
+        // atan2(-1,-1) = 225°
+        String result = tools.prismResolver("combine", 1.0, "in", 1.0, "down", null, null);
+        assertTrue(result.contains("方向角：**225°**"));
+        assertTrue(result.contains("基底方向：**鼻侧(base-in) 偏 下方(base-down)**"));
+    }
+
+    @Test
+    void prismResolverResolvesFiveAt53BackIntoThreeAndFour() {
+        String result = tools.prismResolver("resolve", null, null, null, null, 5.0, 53.13);
+        assertTrue(result.contains("水平分量：**3Δ** 基底朝颞侧(base-out)"));
+        assertTrue(result.contains("垂直分量：**4Δ** 基底朝上(base-up)"));
+    }
+
+    @Test
+    void prismResolverResolveNinetyDegreesIsPureVertical() {
+        String result = tools.prismResolver("resolve", null, null, null, null, 2.5, 90.0);
+        assertTrue(result.contains("水平分量：**0**（纯垂直棱镜）"));
+        assertTrue(result.contains("垂直分量：**2.5Δ** 基底朝上(base-up)"));
+    }
+
+    @Test
+    void prismResolverCombineRequiresBaseForNonZeroComponent() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.prismResolver("combine", 2.0, null, null, null, null, null));
+        assertTrue(ex.getMessage().contains("horizontal_base"));
+    }
+
+    @Test
+    void prismResolverCombineRejectsTwoZeroComponents() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.prismResolver("combine", 0.0, null, 0.0, null, null, null));
+        assertTrue(ex.getMessage().contains("至少提供一个非零分量"));
+    }
+
+    @Test
+    void prismResolverRejectsUnknownMode() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.prismResolver("bogus", null, null, null, null, null, null));
+        assertTrue(ex.getMessage().contains("mode"));
+    }
+
+    @Test
+    void astigmatismTypeGuideBothMinusMeridiansIsCompoundMyopicWithTheRule() {
+        // 主子午线：-2.00 @180、-3.00 @90，两条都为负 → 复性近视散光；负柱镜轴位 180° → 顺规
+        String result = tools.astigmatismTypeGuide(-2, -1, 180);
+        assertTrue(result.contains("屈光类型：**复性近视散光"));
+        assertTrue(result.contains("轴向规则：**顺规散光"));
+        assertTrue(result.contains("沿轴位 180° 方向：光度 -2D"));
+        assertTrue(result.contains("沿 90° 方向"));
+    }
+
+    @Test
+    void astigmatismTypeGuidePlanoAndPlusMeridianIsSimpleHyperopic() {
+        // p1=0 @90, p2=+1.50 @180 → 单纯远视散光
+        String result = tools.astigmatismTypeGuide(0, 1.5, 90);
+        assertTrue(result.contains("屈光类型：**单纯远视散光"));
+    }
+
+    @Test
+    void astigmatismTypeGuideOppositeSignsIsMixedAgainstTheRule() {
+        // p1=+1.00 @90, p2=-2.00 @180 → 混合散光；负柱镜轴位 90° → 逆规
+        String result = tools.astigmatismTypeGuide(1, -3, 90);
+        assertTrue(result.contains("屈光类型：**混合散光"));
+        assertTrue(result.contains("轴向规则：**逆规散光"));
+    }
+
+    @Test
+    void astigmatismTypeGuideIsNotationIndependent() {
+        // -3.00 / -1.00 x 180 等价写法为 -4.00 / +1.00 x 90，两者判定应一致
+        String minus = tools.astigmatismTypeGuide(-3, -1, 180);
+        String plus = tools.astigmatismTypeGuide(-4, 1, 90);
+        for (String result : new String[] {minus, plus}) {
+            assertTrue(result.contains("屈光类型：**复性近视散光"));
+            assertTrue(result.contains("轴向规则：**顺规散光"));
+        }
+    }
+
+    @Test
+    void astigmatismTypeGuideFlagsObliqueAxis() {
+        String result = tools.astigmatismTypeGuide(-1, -0.75, 45);
+        assertTrue(result.contains("轴向规则：**斜轴散光"));
+    }
+
+    @Test
+    void astigmatismTypeGuideReportsNoAstigmatismWhenCylinderZero() {
+        String result = tools.astigmatismTypeGuide(-3, 0, null);
+        assertTrue(result.contains("无散光"));
+    }
+
+    @Test
+    void astigmatismTypeGuideRequiresAxisWhenCylinderPresent() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.astigmatismTypeGuide(-2, -1, null));
+        assertTrue(ex.getMessage().contains("轴位"));
+    }
+
+    @Test
+    void progressiveFitCheckTightForStandardButAmpleForShorterDesigns() {
+        // 装配高度 17mm：常规最小 18 → 不足；短通道舒适 16 → 充足
+        String result = tools.progressiveFitCheck(17.0, null, "standard");
+        assertTrue(result.contains("常规渐进（长通道）：最小 18 / 舒适 ≥20 mm → **不足**（距最小 18 还差 1 mm）"));
+        assertTrue(result.contains("短通道渐进：最小 14 / 舒适 ≥16 mm → **充足**（高于舒适线 1 mm）"));
+        assertTrue(result.contains("对「常规渐进（长通道）」**不足**"));
+        assertTrue(result.contains("可改选门槛更低的设计"));
+    }
+
+    @Test
+    void progressiveFitCheckRecommendsStandardWhenHeightIsTall() {
+        String result = tools.progressiveFitCheck(22.0, null, null);
+        assertTrue(result.contains("推荐「常规渐进（长通道）」"));
+        assertTrue(result.contains("目标设计：未指定"));
+    }
+
+    @Test
+    void progressiveFitCheckEstimatesHeightFromFrameB() {
+        // B=36 → 装配高度 ≈ 36/2 + 2 = 20mm，对常规充足
+        String result = tools.progressiveFitCheck(null, 36.0, null);
+        assertTrue(result.contains("由 B 粗估 ≈ B/2 + 2）：**20 mm**"));
+        assertTrue(result.contains("推荐「常规渐进（长通道）」"));
+    }
+
+    @Test
+    void progressiveFitCheckAdvisesAgainstProgressiveWhenVeryLow() {
+        // 11mm 低于个性化最小 13 → 不建议配渐进
+        String result = tools.progressiveFitCheck(11.0, null, null);
+        assertTrue(result.contains("不建议配渐进镜片"));
+    }
+
+    @Test
+    void progressiveFitCheckRequiresAtLeastOneHeightInput() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.progressiveFitCheck(null, null, null));
+        assertTrue(ex.getMessage().contains("至少提供"));
+    }
+
+    @Test
+    void minimumBlankSizeComputesMbsAndBlankExactlyFits() {
+        // 框 PD = 52 + 18 = 70；移心 = 70/2 - 62/2 = 4；MBS = 60 + 2×4 + 2 = 70
+        String result = tools.minimumBlankSize(52, 18, 62, 60.0, null, 70.0, null);
+        assertTrue(result.contains("框几何中心距（框 PD）：**70 mm**"));
+        assertTrue(result.contains("每片移心量：**4 mm**（向鼻侧内移）"));
+        assertTrue(result.contains("所用有效直径 ED：**60 mm**"));
+        assertTrue(result.contains("最小毛坯直径 MBS：**70 mm**（60 + 2 × 4 + 2）"));
+        assertTrue(result.contains("手头毛坯 70mm：**够用**，余量约 0mm"));
+    }
+
+    @Test
+    void minimumBlankSizeEstimatesEdFromBoxDiagonal() {
+        // 框 PD = 68；移心 = 34 - 32 = 2；ED = √(48²+36²) = 60；MBS = 60 + 4 + 2 = 66
+        String result = tools.minimumBlankSize(48, 20, 64, null, 36.0, null, null);
+        assertTrue(result.contains("每片移心量：**2 mm**（向鼻侧内移）"));
+        assertTrue(result.contains("所用有效直径 ED：**60 mm**"));
+        assertTrue(result.contains("√(A² + B²)"));
+        assertTrue(result.contains("最小毛坯直径 MBS：**66 mm**"));
+    }
+
+    @Test
+    void minimumBlankSizeFlagsTooSmallBlank() {
+        // 框 PD = 74；移心 = 37 - 30 = 7；MBS = 64 + 14 + 2 = 80
+        String result = tools.minimumBlankSize(56, 18, 60, 64.0, null, 70.0, null);
+        assertTrue(result.contains("最小毛坯直径 MBS：**80 mm**"));
+        assertTrue(result.contains("手头毛坯 70mm：**偏小**，还差约 10mm"));
+    }
+
+    @Test
+    void minimumBlankSizeRejectsOutOfRangePd() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.minimumBlankSize(52, 18, 30, null, null, null, null));
+        assertTrue(ex.getMessage().contains("pd"));
+    }
+
+    @Test
+    void verticalImbalanceComputesDifferentialPrism() {
+        // F_v: OD -1, OS -3 → 差 2D；drop 1cm → 差异棱镜 2.00Δ → 显著
+        String result = tools.verticalImbalanceCheck(-1, -3, null, null, null, null, 10.0);
+        assertTrue(result.contains("两眼垂直光度差：2D"));
+        assertTrue(result.contains("差异垂直棱镜：约 2Δ** → **显著"));
+        assertTrue(result.contains("右眼约 1Δ base-down"));
+        assertTrue(result.contains("左眼约 3Δ base-down"));
+    }
+
+    @Test
+    void verticalImbalanceEqualPowersAreTolerable() {
+        String result = tools.verticalImbalanceCheck(-2.5, -2.5, null, null, null, null, null);
+        assertTrue(result.contains("差异垂直棱镜：约 0Δ** → **可忽略 / 多可耐受"));
+        assertTrue(result.contains("两眼度数接近"));
+    }
+
+    @Test
+    void verticalImbalanceCylinderAtAxis180LoadsVerticalMeridian() {
+        // OD plano + -2cyl@180 → F_v = -2；OS plano → 0；差 2D × 1cm = 2Δ
+        String result = tools.verticalImbalanceCheck(0, 0, -2.0, null, 180, null, 10.0);
+        assertTrue(result.contains("差异垂直棱镜：约 2Δ"));
+    }
+
+    @Test
+    void verticalImbalanceCylinderAtAxis90DoesNotLoadVerticalMeridian() {
+        // cyl@90 → cos²90=0 → F_v = SPH；两眼同 -2 → 0 差异
+        String result = tools.verticalImbalanceCheck(-2, -2, -1.5, -1.5, 90, 90, null);
+        assertTrue(result.contains("差异垂直棱镜：约 0Δ"));
+    }
+
+    @Test
+    void verticalImbalanceRequiresAxisWhenCylinderPresent() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.verticalImbalanceCheck(-1, -2, -1.0, null, null, null, null));
+        assertTrue(ex.getMessage().contains("right_axis"));
+    }
+
+    @Test
+    void lensTiltFaceformInducesCylinderAtAxis90() {
+        // S' = 6·(1 + sin²20/(2·1.6)) ≈ 6.22；C' = S'·tan²20 ≈ 0.82 @90 → 明显
+        String result = tools.lensTiltCompensation(6, 20, "faceform", 1.6);
+        assertTrue(result.contains("引入散光 C'：约 +0.82D × 90°** → **明显（建议补偿）"));
+        assertTrue(result.contains("倾斜后等效球镜 S'：**+6.22D**"));
+    }
+
+    @Test
+    void lensTiltPantoscopicInducesCylinderAtAxis180() {
+        String result = tools.lensTiltCompensation(-8, 12, "pantoscopic", 1.5);
+        assertTrue(result.contains("× 180°"));
+        assertTrue(result.contains("明显（建议补偿）"));
+    }
+
+    @Test
+    void lensTiltZeroTiltLeavesPowerUnchanged() {
+        String result = tools.lensTiltCompensation(-3, 0, null, null);
+        assertTrue(result.contains("倾斜后等效球镜 S'：**-3D**（较原球镜 无变化）"));
+        assertTrue(result.contains("可忽略"));
+        // 默认 pantoscopic → 轴 180
+        assertTrue(result.contains("× 180°"));
+    }
+
+    @Test
+    void lensTiltSmallTiltOnLowPowerIsNegligible() {
+        String result = tools.lensTiltCompensation(-2, 8, null, null);
+        assertTrue(result.contains("可忽略"));
+    }
+
+    @Test
+    void lensTiltRejectsOutOfRangeIndex() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.lensTiltCompensation(-4, 10, "pantoscopic", 2.5));
+        assertTrue(ex.getMessage().contains("index"));
+    }
+
+    @Test
+    void spectacleMagnificationPlusWithShapeFactorMagnifies() {
+        // power +5, d=12mm, F1=+7, t=4mm, n=1.5
+        // PF=1.0638; SF=1.019; SM≈1.0841 → +8.41% → 明显
+        String result = tools.spectacleMagnification(5.0, 12.0, 7.0, 4.0, 1.5);
+        assertTrue(result.contains("总放大率 SM（PF×SF）：1.0841** → 像放大 **8.41%** → **明显"));
+        assertTrue(result.contains("镜度因子 PF：**1.0638"));
+        assertTrue(result.contains("外形因子 SF：**1.019"));
+    }
+
+    @Test
+    void spectacleMagnificationPowerOnlyNotesMissingShapeFactor() {
+        // power +5, d=12mm → PF=1.0638 → +6.38% → 可察觉
+        String result = tools.spectacleMagnification(5.0, null, null, null, null);
+        assertTrue(result.contains("总放大率 SM（仅 PF）：1.0638** → 像放大 **6.38%** → **可察觉"));
+        assertTrue(result.contains("仅计镜度因子"));
+    }
+
+    @Test
+    void spectacleMagnificationStrongMinusMinifies() {
+        // power -10, d=12mm → PF=1/1.12=0.8929 → -10.71% → 缩小、明显
+        String result = tools.spectacleMagnification(-10.0, 12.0, null, null, null);
+        assertTrue(result.contains("总放大率 SM（仅 PF）：0.8929** → 像缩小 **10.71%** → **明显"));
+    }
+
+    @Test
+    void spectacleMagnificationRejectsOutOfRangeIndex() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.spectacleMagnification(5.0, null, null, null, 2.5));
+        assertTrue(ex.getMessage().contains("index"));
+    }
+
+    @Test
+    void digitalEyestrainHeavyUseScoresHigh() {
+        // hours 9 → hoursScore 3; 3 症状; 未休息且 hours≥2 → +1; total 7 → 高
+        String result = tools.digitalEyestrainGuide(
+                9.0, List.of("dryness", "blur", "neck_shoulder"), false, 40.0, 32);
+        assertTrue(result.contains("风险评分：**7**（时长 3 + 症状 3 + 未规律休息 1）"));
+        assertTrue(result.contains("风险等级：**高**"));
+        assertTrue(result.contains("距离：40cm（评估：偏近"));
+        assertTrue(result.contains("【优先】遵循 20-20-20"));
+        assertTrue(result.contains("【优先】有意识地完整眨眼"));
+    }
+
+    @Test
+    void digitalEyestrainLightUseScoresLow() {
+        // hours 1 → hoursScore 0; 0 症状; 已规律休息 → +0; total 0 → 低
+        String result = tools.digitalEyestrainGuide(1.0, null, true, null, null);
+        assertTrue(result.contains("风险评分：**0**"));
+        assertTrue(result.contains("风险等级：**低**"));
+        assertTrue(result.contains("当前症状：未填写"));
+        assertTrue(result.contains("是否规律休息：是"));
+    }
+
+    @Test
+    void digitalEyestrainDoubleVisionTriggersDoctorFlag() {
+        String result = tools.digitalEyestrainGuide(3.0, List.of("double_vision"), null, null, null);
+        assertTrue(result.contains("⚠️ 建议就医"));
+    }
+
+    @Test
+    void digitalEyestrainPresbyopicAgeGetsNearAddNote() {
+        String result = tools.digitalEyestrainGuide(5.0, null, null, null, 48);
+        assertTrue(result.contains("老视（老花）阶段"));
+        assertTrue(result.contains("reading_add_estimator"));
+    }
+
+    @Test
+    void digitalEyestrainRejectsUnknownSymptom() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.digitalEyestrainGuide(3.0, List.of("itchy"), null, null, null));
+        assertTrue(ex.getMessage().contains("symptoms"));
+    }
+
+    @Test
+    void rxToleranceNearPerfectLensPasses() {
+        // ordered -4.00/-1.00x180 ADD+2; higher meridian -5.00 (≤6.5 → ±0.13D), cyl 1.00 → axis ±3°
+        String result = tools.rxToleranceCheck(-4.0, -1.0, 180, -4.0, -1.0, 178, 2.0, 2.0);
+        assertTrue(result.contains("**合格**：各项均在 ANSI Z80.1 / ISO 21987 允许公差之内"));
+        assertTrue(result.contains("球镜 SPH：订单 -4D，实测 -4D，偏差 0D，公差 ±0.13D → ✅ 合格"));
+        assertTrue(result.contains("轴位 AXIS：订单 180°，实测 178°，偏差 2°，公差 ±3° → ✅ 合格"));
+        assertTrue(result.contains("下加光 ADD：订单 +2D，实测 +2D，偏差 0D，公差 ±0.12D → ✅ 合格"));
+    }
+
+    @Test
+    void rxToleranceSphereErrorFailsSphere() {
+        String result = tools.rxToleranceCheck(-3.0, -1.0, 180, -3.5, -1.0, 180, null, null);
+        assertTrue(result.contains("**超差**：以下项目超出允许公差——球镜 SPH。"));
+        assertTrue(result.contains("球镜 SPH：订单 -3D，实测 -3.5D，偏差 0.5D，公差 ±0.13D → ❌ 超差"));
+    }
+
+    @Test
+    void rxToleranceHighCylinderTightensAxisTolerance() {
+        // cyl 2.00D → axis tolerance ±2°; 5° off → fails
+        String result = tools.rxToleranceCheck(-1.0, -2.0, 90, -1.0, -2.0, 95, null, null);
+        assertTrue(result.contains("以下项目超出允许公差——轴位 AXIS。"));
+        assertTrue(result.contains("轴位 AXIS：订单 90°，实测 95°，偏差 5°，公差 ±2° → ❌ 超差"));
+    }
+
+    @Test
+    void rxToleranceHighPowerUsesTwoPercentBand() {
+        // ordered -8.00 → |8.00| > 6.50 → tol = 2% of 8.00 = ±0.16D; 0.25 off → fails
+        String result = tools.rxToleranceCheck(-8.0, null, null, -8.25, null, null, null, null);
+        assertTrue(result.contains("球镜 SPH：订单 -8D，实测 -8.25D，偏差 0.25D，公差 ±0.16D → ❌ 超差"));
+        assertTrue(result.contains("轴位 AXIS：订单与实测均无柱镜，无需核验。"));
+    }
+
+    @Test
+    void rxTolerancePlusCylinderIsTransposedBeforeComparison() {
+        // ordered -2.00/-1.00x90; measured plus-cyl -3.00/+1.00x180 == -2.00/-1.00x90
+        String result = tools.rxToleranceCheck(-2.0, -1.0, 90, -3.0, 1.0, 180, null, null);
+        assertTrue(result.contains("统一为负柱镜记法后比对：SPH -2D / CYL -1D / AXIS 90°"));
+        assertTrue(result.contains("**合格**"));
+    }
+
+    @Test
+    void rxToleranceRequiresBothAddValues() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.rxToleranceCheck(-2.0, null, null, -2.0, null, null, 2.0, null));
+        assertTrue(ex.getMessage().contains("measured_add"));
+    }
+
+    @Test
+    void rxToleranceRejectsCylinderWithoutAxis() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> tools.rxToleranceCheck(-2.0, -1.0, null, -2.0, null, null, null, null));
+        assertTrue(ex.getMessage().contains("轴位"));
     }
 }

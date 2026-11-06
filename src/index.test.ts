@@ -29,7 +29,803 @@ test("exports the expected MCP tool set", () => {
     "reading_add_estimator",
     "prescription_transpose",
     "frame_fit_calculator",
+    "visual_acuity_converter",
+    "accommodation_amplitude",
+    "sunglass_tint_guide",
+    "lens_material_advisor",
+    "clear_vision_range",
+    "near_acuity_converter",
+    "prism_resolver",
+    "astigmatism_type_guide",
+    "progressive_fit_check",
+    "minimum_blank_size",
+    "vertical_imbalance_check",
+    "lens_tilt_compensation",
+    "spectacle_magnification",
+    "digital_eyestrain_guide",
+    "rx_tolerance_check",
   ]);
+});
+
+test("digital eyestrain: heavy use with symptoms and no breaks scores high", () => {
+  const tool = getTool("digital_eyestrain_guide");
+  // hours 9 → hoursScore 3; 3 symptoms; no breaks & hours≥2 → +1; total 7 → 高
+  const result = tool.handler({
+    screen_hours: 9,
+    symptoms: ["dryness", "blur", "neck_shoulder"],
+    takes_breaks: false,
+    screen_distance_cm: 40,
+    age: 32,
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /风险评分：\*\*7\*\*（时长 3 \+ 症状 3 \+ 未规律休息 1）/);
+  assert.match(text, /风险等级：\*\*高\*\*/);
+  // 距离 40cm < 50 → 偏近，且 20-20-20 与距离建议都应标【优先】
+  assert.match(text, /距离：40cm（评估：偏近/);
+  assert.match(text, /【优先】遵循 20-20-20/);
+  assert.match(text, /【优先】有意识地完整眨眼/);
+});
+
+test("digital eyestrain: light use with no symptoms and breaks scores low", () => {
+  const tool = getTool("digital_eyestrain_guide");
+  // hours 1 → hoursScore 0; 0 symptoms; takes_breaks true → +0; total 0 → 低
+  const result = tool.handler({ screen_hours: 1, takes_breaks: true });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /风险评分：\*\*0\*\*/);
+  assert.match(text, /风险等级：\*\*低\*\*/);
+  assert.match(text, /当前症状：未填写/);
+  assert.match(text, /是否规律休息：是/);
+});
+
+test("digital eyestrain: double vision triggers a see-a-doctor flag", () => {
+  const tool = getTool("digital_eyestrain_guide");
+  const result = tool.handler({ screen_hours: 3, symptoms: ["double_vision"] });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /⚠️ 建议就医/);
+});
+
+test("digital eyestrain: presbyopic age gets a near-add / progressive note", () => {
+  const tool = getTool("digital_eyestrain_guide");
+  const result = tool.handler({ screen_hours: 5, age: 48 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /老视（老花）阶段/);
+  assert.match(text, /reading_add_estimator/);
+});
+
+test("digital eyestrain rejects an unknown symptom", () => {
+  const tool = getTool("digital_eyestrain_guide");
+  assert.throws(() => tool.handler({ screen_hours: 3, symptoms: ["itchy"] }), /symptoms/);
+});
+
+test("rx tolerance: a near-perfect lens passes every check", () => {
+  const tool = getTool("rx_tolerance_check");
+  // ordered -4.00/-1.00x180 ADD+2; higher meridian -5.00 (≤6.5 → ±0.13D), cyl 1.00 → axis ±3°
+  const result = tool.handler({
+    ordered_sph: -4,
+    ordered_cyl: -1,
+    ordered_axis: 180,
+    measured_sph: -4,
+    measured_cyl: -1,
+    measured_axis: 178,
+    ordered_add: 2,
+    measured_add: 2,
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /\*\*合格\*\*：各项均在 ANSI Z80\.1 \/ ISO 21987 允许公差之内/);
+  assert.match(text, /球镜 SPH：订单 -4D，实测 -4D，偏差 0D，公差 ±0\.13D → ✅ 合格/);
+  assert.match(text, /轴位 AXIS：订单 180°，实测 178°，偏差 2°，公差 ±3° → ✅ 合格/);
+  assert.match(text, /下加光 ADD：订单 \+2D，实测 \+2D，偏差 0D，公差 ±0\.12D → ✅ 合格/);
+});
+
+test("rx tolerance: a 0.50D sphere error fails the sphere check", () => {
+  const tool = getTool("rx_tolerance_check");
+  const result = tool.handler({
+    ordered_sph: -3,
+    ordered_cyl: -1,
+    ordered_axis: 180,
+    measured_sph: -3.5,
+    measured_cyl: -1,
+    measured_axis: 180,
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /\*\*超差\*\*：以下项目超出允许公差——球镜 SPH。/);
+  assert.match(text, /球镜 SPH：订单 -3D，实测 -3\.5D，偏差 0\.5D，公差 ±0\.13D → ❌ 超差/);
+});
+
+test("rx tolerance: a high cylinder tightens the axis tolerance to ±2°", () => {
+  const tool = getTool("rx_tolerance_check");
+  // cyl 2.00D → axis tolerance ±2°; 5° off → fails
+  const result = tool.handler({
+    ordered_sph: -1,
+    ordered_cyl: -2,
+    ordered_axis: 90,
+    measured_sph: -1,
+    measured_cyl: -2,
+    measured_axis: 95,
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /以下项目超出允许公差——轴位 AXIS。/);
+  assert.match(text, /轴位 AXIS：订单 90°，实测 95°，偏差 5°，公差 ±2° → ❌ 超差/);
+});
+
+test("rx tolerance: a high power sphere uses the ±2% band, not ±0.13D", () => {
+  const tool = getTool("rx_tolerance_check");
+  // ordered -8.00 → |8.00| > 6.50 → tol = 2% of 8.00 = ±0.16D; 0.25 off → fails
+  const result = tool.handler({ ordered_sph: -8, measured_sph: -8.25 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /球镜 SPH：订单 -8D，实测 -8\.25D，偏差 0\.25D，公差 ±0\.16D → ❌ 超差/);
+  assert.match(text, /轴位 AXIS：订单与实测均无柱镜，无需核验。/);
+});
+
+test("rx tolerance: a plus-cylinder measurement is transposed before comparison", () => {
+  const tool = getTool("rx_tolerance_check");
+  // ordered -2.00/-1.00x90; measured given in plus-cyl -3.00/+1.00x180 == -2.00/-1.00x90
+  const result = tool.handler({
+    ordered_sph: -2,
+    ordered_cyl: -1,
+    ordered_axis: 90,
+    measured_sph: -3,
+    measured_cyl: 1,
+    measured_axis: 180,
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /统一为负柱镜记法后比对：SPH -2D \/ CYL -1D \/ AXIS 90°/);
+  assert.match(text, /\*\*合格\*\*/);
+});
+
+test("rx tolerance: requires both ADD values together", () => {
+  const tool = getTool("rx_tolerance_check");
+  assert.throws(
+    () => tool.handler({ ordered_sph: -2, measured_sph: -2, ordered_add: 2 }),
+    /measured_add/
+  );
+});
+
+test("rx tolerance rejects a cylinder without its axis", () => {
+  const tool = getTool("rx_tolerance_check");
+  assert.throws(
+    () => tool.handler({ ordered_sph: -2, ordered_cyl: -1, measured_sph: -2 }),
+    /轴位/
+  );
+});
+
+test("spectacle magnification: plus lens with shape factor magnifies (PF×SF)", () => {
+  const tool = getTool("spectacle_magnification");
+  // power +5, d=12mm, F1=+7, t=4mm, n=1.5
+  // PF=1/(1-0.012*5)=1.0638; SF=1/(1-(0.004/1.5)*7)=1.0190; SM≈1.0841 → +8.41% → noticeable+
+  const result = tool.handler({ power: 5, vertex_distance: 12, base_curve: 7, center_thickness: 4, index: 1.5 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /总放大率 SM（PF×SF）：1\.0841\*\* → 像放大 \*\*8\.41%\*\* → \*\*明显/);
+  assert.match(text, /镜度因子 PF：\*\*1\.0638/);
+  assert.match(text, /外形因子 SF：\*\*1\.019/);
+});
+
+test("spectacle magnification: power-only plus reports power factor and notes the missing shape factor", () => {
+  const tool = getTool("spectacle_magnification");
+  // power +5, d=12mm → PF=1.0638 → +6.38% → noticeable (5-8%)
+  const result = tool.handler({ power: 5 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /总放大率 SM（仅 PF）：1\.0638\*\* → 像放大 \*\*6\.38%\*\* → \*\*可察觉/);
+  assert.match(text, /仅计镜度因子/);
+});
+
+test("spectacle magnification: strong minus lens minifies the image", () => {
+  const tool = getTool("spectacle_magnification");
+  // power -10, d=12mm → PF=1/1.12=0.8929 → -10.71% → minify, significant
+  const result = tool.handler({ power: -10, vertex_distance: 12 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /总放大率 SM（仅 PF）：0\.8929\*\* → 像缩小 \*\*10\.71%\*\* → \*\*明显/);
+});
+
+test("spectacle magnification rejects an out-of-range refractive index", () => {
+  const tool = getTool("spectacle_magnification");
+  assert.throws(() => tool.handler({ power: 5, index: 2.5 }), /index/);
+});
+
+test("lens tilt: faceform induces cylinder at axis 90 and strengthens the sphere", () => {
+  const tool = getTool("lens_tilt_compensation");
+  const result = tool.handler({ power: 6, tilt_angle: 20, tilt_type: "faceform", index: 1.6 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // S' = 6·(1 + sin²20/(2·1.6)) ≈ 6·1.0366 ≈ 6.22; C' = S'·tan²20 ≈ 0.82 @90 → noticeable
+  assert.match(text, /引入散光 C'：约 \+0\.82D × 90°\*\* → \*\*明显（建议补偿）/);
+  assert.match(text, /倾斜后等效球镜 S'：\*\*\+6\.22D\*\*/);
+});
+
+test("lens tilt: pantoscopic induces cylinder at axis 180", () => {
+  const tool = getTool("lens_tilt_compensation");
+  const result = tool.handler({ power: -8, tilt_angle: 12, tilt_type: "pantoscopic", index: 1.5 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /× 180°/);
+  // induced cyl magnitude |-8·(1+sin²12/3)·tan²12| ≈ 0.37 → noticeable
+  assert.match(text, /明显（建议补偿）/);
+});
+
+test("lens tilt: zero tilt leaves the power unchanged and is negligible", () => {
+  const tool = getTool("lens_tilt_compensation");
+  const result = tool.handler({ power: -3, tilt_angle: 0 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /倾斜后等效球镜 S'：\*\*-3D\*\*（较原球镜 无变化）/);
+  assert.match(text, /可忽略/);
+  // defaults to pantoscopic → axis 180
+  assert.match(text, /× 180°/);
+});
+
+test("lens tilt: a small pantoscopic tilt on a low power is negligible", () => {
+  const tool = getTool("lens_tilt_compensation");
+  // -2.00, 8° panto, n=1.5: C' ≈ -2.02·tan²8 ≈ -0.04 → negligible
+  const result = tool.handler({ power: -2, tilt_angle: 8 });
+
+  assert.equal(result.isError, undefined);
+  assert.match(result.content[0].text, /可忽略/);
+});
+
+test("lens tilt rejects an out-of-range refractive index", () => {
+  const tool = getTool("lens_tilt_compensation");
+  assert.throws(() => tool.handler({ power: -4, tilt_angle: 10, index: 2.5 }), /index/);
+});
+
+test("vertical imbalance: anisometropic spheres, imbalance = ΔF_v × drop(cm)", () => {
+  const tool = getTool("vertical_imbalance_check");
+  const result = tool.handler({ right_sph: -1, left_sph: -3, reading_drop: 10 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // F_v: OD -1, OS -3 → diff 2D; drop 1cm → imbalance 2.00Δ → significant
+  assert.match(text, /两眼垂直光度差：2D/);
+  assert.match(text, /差异垂直棱镜：约 2Δ\*\* → \*\*显著/);
+  // per-eye: OD 1×1=1Δ base-down, OS 3×1=3Δ base-down
+  assert.match(text, /右眼约 1Δ base-down/);
+  assert.match(text, /左眼约 3Δ base-down/);
+});
+
+test("vertical imbalance: equal powers cancel to zero → tolerable", () => {
+  const tool = getTool("vertical_imbalance_check");
+  const result = tool.handler({ right_sph: -2.5, left_sph: -2.5 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /差异垂直棱镜：约 0Δ\*\* → \*\*可忽略 \/ 多可耐受/);
+  assert.match(text, /两眼度数接近/);
+});
+
+test("vertical imbalance: cylinder only loads the vertical meridian at axis 180", () => {
+  const tool = getTool("vertical_imbalance_check");
+  // OD plano sph, -2 cyl @180 → F_v = 0 + (-2)·cos²180 = -2; OS plano → F_v 0
+  const result = tool.handler({
+    right_sph: 0,
+    right_cyl: -2,
+    right_axis: 180,
+    left_sph: 0,
+    reading_drop: 10,
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // diff |−2 − 0| × 1cm = 2Δ
+  assert.match(text, /差异垂直棱镜：约 2Δ/);
+});
+
+test("vertical imbalance: cylinder at axis 90 does not load the vertical meridian", () => {
+  const tool = getTool("vertical_imbalance_check");
+  // cyl @90 → cos²90 = 0 → F_v = SPH only; both eyes -2 sph → no imbalance
+  const result = tool.handler({
+    right_sph: -2,
+    right_cyl: -1.5,
+    right_axis: 90,
+    left_sph: -2,
+    left_cyl: -1.5,
+    left_axis: 90,
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /差异垂直棱镜：约 0Δ/);
+});
+
+test("vertical imbalance requires an axis when a cylinder is present", () => {
+  const tool = getTool("vertical_imbalance_check");
+  assert.throws(
+    () => tool.handler({ right_sph: -1, right_cyl: -1, left_sph: -2 }),
+    /right_axis/
+  );
+});
+
+test("minimum blank size: MBS = ED + 2×decentration + allowance, blank exactly fits", () => {
+  const tool = getTool("minimum_blank_size");
+  const result = tool.handler({ frame_a: 52, dbl: 18, pd: 62, ed: 60, blank_diameter: 70 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // framePd = 52 + 18 = 70; decentration = 70/2 - 62/2 = 4 (inward)
+  assert.match(text, /框几何中心距（框 PD）：\*\*70 mm\*\*/);
+  assert.match(text, /每片移心量：\*\*4 mm\*\*（向鼻侧内移）/);
+  assert.match(text, /所用有效直径 ED：\*\*60 mm\*\*/);
+  // MBS = 60 + 2×4 + 2(default allowance) = 70
+  assert.match(text, /最小毛坯直径 MBS：\*\*70 mm\*\*（60 \+ 2 × 4 \+ 2）/);
+  assert.match(text, /手头毛坯 70mm：\*\*够用\*\*，余量约 0mm/);
+});
+
+test("minimum blank size estimates ED from the box diagonal when ED is absent", () => {
+  const tool = getTool("minimum_blank_size");
+  const result = tool.handler({ frame_a: 48, dbl: 20, pd: 64, frame_b: 36 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // framePd = 68; decentration = 34 - 32 = 2; ED = √(48²+36²) = 60
+  assert.match(text, /每片移心量：\*\*2 mm\*\*（向鼻侧内移）/);
+  assert.match(text, /所用有效直径 ED：\*\*60 mm\*\*/);
+  assert.match(text, /√\(A² \+ B²\)/);
+  // MBS = 60 + 2×2 + 2 = 66
+  assert.match(text, /最小毛坯直径 MBS：\*\*66 mm\*\*/);
+});
+
+test("minimum blank size flags a too-small blank with the missing margin", () => {
+  const tool = getTool("minimum_blank_size");
+  const result = tool.handler({ frame_a: 56, dbl: 18, pd: 60, ed: 64, blank_diameter: 70 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // framePd = 74; decentration = 37 - 30 = 7; MBS = 64 + 14 + 2 = 80
+  assert.match(text, /最小毛坯直径 MBS：\*\*80 mm\*\*/);
+  assert.match(text, /手头毛坯 70mm：\*\*偏小\*\*，还差约 10mm/);
+});
+
+test("minimum blank size requires the core frame and PD measurements", () => {
+  const tool = getTool("minimum_blank_size");
+  assert.throws(() => tool.handler({ frame_a: 52, dbl: 18 }), /pd/);
+});
+
+test("prism resolver combine: 3Δ out + 4Δ up → 5Δ at 53.1°", () => {
+  const tool = getTool("prism_resolver");
+  const result = tool.handler({
+    mode: "combine",
+    horizontal: 3,
+    horizontal_base: "out",
+    vertical: 4,
+    vertical_base: "up",
+  });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // 3-4-5 直角三角形：合棱镜 5Δ，角度 atan2(4,3)=53.1°，基底颞侧偏上。
+  assert.match(text, /合棱镜大小：\*\*5Δ\*\*/);
+  assert.match(text, /方向角：\*\*53\.1°\*\*/);
+  assert.match(text, /基底方向：\*\*颞侧\(base-out\) 偏 上方\(base-up\)\*\*/);
+});
+
+test("prism resolver combine: base-in + base-down lands in the 180–270° quadrant", () => {
+  const tool = getTool("prism_resolver");
+  const result = tool.handler({
+    mode: "combine",
+    horizontal: 1,
+    horizontal_base: "in",
+    vertical: 1,
+    vertical_base: "down",
+  });
+
+  const text = result.content[0].text;
+  // atan2(-1,-1) = 225°
+  assert.match(text, /方向角：\*\*225°\*\*/);
+  assert.match(text, /基底方向：\*\*鼻侧\(base-in\) 偏 下方\(base-down\)\*\*/);
+});
+
+test("prism resolver resolve: 5Δ at 53.13° → ~3Δ out + ~4Δ up (round-trips combine)", () => {
+  const tool = getTool("prism_resolver");
+  const result = tool.handler({ mode: "resolve", magnitude: 5, angle: 53.13 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /水平分量：\*\*3Δ\*\* 基底朝颞侧\(base-out\)/);
+  assert.match(text, /垂直分量：\*\*4Δ\*\* 基底朝上\(base-up\)/);
+});
+
+test("prism resolver resolve: 90° is a pure vertical (base-up) prism", () => {
+  const tool = getTool("prism_resolver");
+  const result = tool.handler({ mode: "resolve", magnitude: 2.5, angle: 90 });
+
+  const text = result.content[0].text;
+  assert.match(text, /水平分量：\*\*0\*\*（纯垂直棱镜）/);
+  assert.match(text, /垂直分量：\*\*2\.5Δ\*\* 基底朝上\(base-up\)/);
+});
+
+test("prism resolver combine requires a base direction for a non-zero component", () => {
+  const tool = getTool("prism_resolver");
+  assert.throws(
+    () => tool.handler({ mode: "combine", horizontal: 2 }),
+    /horizontal_base/
+  );
+});
+
+test("prism resolver combine rejects two zero components", () => {
+  const tool = getTool("prism_resolver");
+  assert.throws(
+    () => tool.handler({ mode: "combine", horizontal: 0, vertical: 0 }),
+    /至少提供一个非零分量/
+  );
+});
+
+test("near acuity converter: reading 1M at 40cm is 0.4 decimal (20/50)", () => {
+  const tool = getTool("near_acuity_converter");
+  // decimal = testDist(m) / M = 0.4 / 1.0 = 0.4 → 20/50, 8pt
+  const result = tool.handler({ notation: "m_unit", value: 1.0 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /印张尺寸（M 记法）：\*\*1 M\*\*/);
+  assert.match(text, /印刷点数（约）：\*\*8 pt\*\*/);
+  assert.match(text, /该距离近视力（小数）：\*\*0\.4\*\*/);
+  assert.match(text, /Snellen 等效：\*\*20\/50\*\*/);
+});
+
+test("near acuity converter: point-size input converts to M via ÷8", () => {
+  const tool = getTool("near_acuity_converter");
+  // 16pt → 2M; at 40cm decimal = 0.4/2 = 0.2 → 20/100
+  const result = tool.handler({ notation: "point", value: 16 });
+
+  const text = result.content[0].text;
+  assert.match(text, /印张尺寸（M 记法）：\*\*2 M\*\*/);
+  assert.match(text, /该距离近视力（小数）：\*\*0\.2\*\*/);
+  assert.match(text, /Snellen 等效：\*\*20\/100\*\*/);
+});
+
+test("near acuity converter: a nearer test distance improves the acuity for the same M", () => {
+  const tool = getTool("near_acuity_converter");
+  // 1M at 25cm → decimal = 0.25/1 = 0.25 → 20/80 (vs 0.4 at 40cm)
+  const result = tool.handler({ notation: "m_unit", value: 1.0, test_distance_cm: 25 });
+
+  const text = result.content[0].text;
+  assert.match(text, /测试距离 25 cm/);
+  assert.match(text, /该距离近视力（小数）：\*\*0\.25\*\*/);
+  assert.match(text, /Snellen 等效：\*\*20\/80\*\*/);
+});
+
+test("near acuity converter: decimal input is echoed back and gives the equivalent M", () => {
+  const tool = getTool("near_acuity_converter");
+  // decimal 0.5 at 40cm → M = 0.4/0.5 = 0.8 → 6.4 ≈ 6pt
+  const result = tool.handler({ notation: "decimal", value: 0.5 });
+
+  const text = result.content[0].text;
+  assert.match(text, /近视力小数 0\.5/);
+  assert.match(text, /印张尺寸（M 记法）：\*\*0\.8 M\*\*/);
+  assert.match(text, /该距离近视力（小数）：\*\*0\.5\*\*/);
+});
+
+test("near acuity converter rejects out-of-range values", () => {
+  const tool = getTool("near_acuity_converter");
+  assert.throws(() => tool.handler({ notation: "m_unit", value: 50 }), /M 记法/);
+  assert.throws(() => tool.handler({ notation: "decimal", value: 5 }), /近视力小数/);
+});
+
+test("clear vision range gives a myope's far point and the摘镜看近清楚 explanation", () => {
+  const tool = getTool("clear_vision_range");
+  // SE = -2.00 → far point = 100/2 = 50cm
+  const result = tool.handler({ sph: -2 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /低度近视（SE -2D）/);
+  assert.match(text, /远点（能看清的最远处）：\*\*50 cm\*\*/);
+  assert.match(text, /摘镜看手机 \/ 看书反而清楚/);
+  // no age → near point is left to accommodation
+  assert.match(text, /填入 age 可估算最近清晰距离/);
+});
+
+test("clear vision range computes a myope's near point from age", () => {
+  const tool = getTool("clear_vision_range");
+  // SE = -5.00, age 25 → amp = 18.5 - 7.5 = 11; near = 100/(5+11) ≈ 6.3cm; far = 100/5 = 20cm
+  const result = tool.handler({ sph: -5, age: 25 });
+
+  const text = result.content[0].text;
+  assert.match(text, /远点（能看清的最远处）：\*\*20 cm\*\*/);
+  assert.match(text, /近点（能看清的最近处）：\*\*6\.3 cm\*\*/);
+  assert.match(text, /调节幅度约 11D（Hofstetter 平均/);
+});
+
+test("clear vision range uses the spherical equivalent for astigmatism", () => {
+  const tool = getTool("clear_vision_range");
+  // SE = -3 + (-2/2) = -4 → far point = 100/4 = 25cm
+  const result = tool.handler({ sph: -3, cyl: -2 });
+
+  const text = result.content[0].text;
+  assert.match(text, /等效球镜（SE = SPH \+ CYL\/2）：\*\*-4D\*\*/);
+  assert.match(text, /远点（能看清的最远处）：\*\*25 cm\*\*/);
+  assert.match(text, /含散光/);
+});
+
+test("clear vision range shows a young hyperope compensating with accommodation", () => {
+  const tool = getTool("clear_vision_range");
+  // SE = +2, age 20 → amp = 18.5 - 6 = 12.5 >= 2 → can see far; residual 10.5 → near 100/10.5 ≈ 9.5cm
+  const result = tool.handler({ sph: 2, age: 20 });
+
+  const text = result.content[0].text;
+  assert.match(text, /远视/);
+  assert.match(text, /可看清远处\*\*（调节代偿）/);
+});
+
+test("clear vision range flags a hyperope whose accommodation can't compensate", () => {
+  const tool = getTool("clear_vision_range");
+  // SE = +5, age 60 → amp = 18.5 - 18 = 0.5 < 5 → cannot compensate
+  const result = tool.handler({ sph: 5, age: 60 });
+
+  const text = result.content[0].text;
+  assert.match(text, /不足以克服 5D 的远视/);
+  assert.match(text, /裸眼看远也难以看清/);
+});
+
+test("clear vision range keeps an emmetrope clear to infinity", () => {
+  const tool = getTool("clear_vision_range");
+  const result = tool.handler({ sph: 0, age: 30 });
+
+  const text = result.content[0].text;
+  assert.match(text, /正视 \/ 接近平光/);
+  assert.match(text, /清晰到无穷远/);
+  // age 30 → amp 9.5 → near point 100/9.5 ≈ 10.5cm
+  assert.match(text, /近点（能看清的最近处）：\*\*10\.5 cm\*\*/);
+});
+
+test("clear vision range rejects an out-of-range sphere", () => {
+  const tool = getTool("clear_vision_range");
+  assert.throws(() => tool.handler({ sph: 99 }), /sph/);
+});
+
+test("lens material advisor forces impact-resistant PC/Trivex for kids and bans glass", () => {
+  const tool = getTool("lens_material_advisor");
+  const result = tool.handler({ sph: -2, usage: "kids" });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // default (balanced) safety pick is PC
+  assert.match(text, /首选：\*\*PC 聚碳酸酯/);
+  assert.match(text, /玻璃：易碎裂溅入眼睛/);
+  assert.match(text, /CR-39 普通树脂：抗冲击性不足/);
+});
+
+test("lens material advisor prefers Trivex for kids when clarity is prioritized", () => {
+  const tool = getTool("lens_material_advisor");
+  const result = tool.handler({ sph: -2, usage: "sports", priority: "clarity" });
+
+  const text = result.content[0].text;
+  assert.match(text, /首选：\*\*Trivex/);
+  assert.match(text, /阿贝数\(45\)明显高于 PC/);
+});
+
+test("lens material advisor recommends Trivex for a rimless frame and warns against glass/1.74", () => {
+  const tool = getTool("lens_material_advisor");
+  const result = tool.handler({ sph: -3, frame_type: "rimless" });
+
+  const text = result.content[0].text;
+  assert.match(text, /首选：\*\*Trivex/);
+  assert.match(text, /玻璃：无框需在镜片上钻孔/);
+  assert.match(text, /1\.74 高折射树脂：1\.74 偏脆，无框钻孔/);
+});
+
+test("lens material advisor scales the index up with power for a full-rim frame", () => {
+  const tool = getTool("lens_material_advisor");
+  const low = tool.handler({ sph: -1 }).content[0].text;
+  const mid = tool.handler({ sph: -3 }).content[0].text;
+  const high = tool.handler({ sph: -5 }).content[0].text;
+  const veryHigh = tool.handler({ sph: -7 }).content[0].text;
+
+  assert.match(low, /首选：\*\*CR-39 普通树脂/);
+  assert.match(mid, /首选：\*\*1\.60 高折射树脂/);
+  assert.match(high, /首选：\*\*1\.67 高折射树脂/);
+  assert.match(veryHigh, /首选：\*\*1\.74 高折射树脂/);
+  // full-rim always warns off glass
+  assert.match(mid, /玻璃：玻璃重且易碎/);
+});
+
+test("lens material advisor warns about low-Abbe halos for night-focused driving", () => {
+  const tool = getTool("lens_material_advisor");
+  // high power → 1.67 (low Abbe) + driving usage
+  const result = tool.handler({ sph: -5, usage: "driving" });
+
+  const text = result.content[0].text;
+  assert.match(text, /首选：\*\*1\.67 高折射树脂/);
+  assert.match(text, /夜间驾驶：低阿贝数材料/);
+});
+
+test("lens material advisor uses the worst meridian (sph + cyl) as the reference power", () => {
+  const tool = getTool("lens_material_advisor");
+  // sph -3 alone would be 1.60, but -3 + -3 = -6 pushes to 1.74
+  const result = tool.handler({ sph: -3, cyl: -3 });
+
+  const text = result.content[0].text;
+  assert.match(text, /参考功率（最大子午线）：6D/);
+  assert.match(text, /首选：\*\*1\.74 高折射树脂/);
+});
+
+test("lens material advisor validates the frame_type enum", () => {
+  const tool = getTool("lens_material_advisor");
+  assert.throws(() => tool.handler({ sph: -2, frame_type: "octagon" }), /frame_type/);
+});
+
+test("sunglass tint guide recommends a category 3 dark lens for bright sun with VLT range", () => {
+  const tool = getTool("sunglass_tint_guide");
+  const result = tool.handler({ environment: "bright" });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /分类：\*\*3 类（深色）\*\*/);
+  assert.match(text, /可见光透过率（VLT）：\*\*8%–18%\*\*/);
+  // no driving flag → no driving-legality line
+  assert.doesNotMatch(text, /白天驾驶：0–3 类/);
+});
+
+test("sunglass tint guide bumps one category deeper for a light-sensitive wearer", () => {
+  const tool = getTool("sunglass_tint_guide");
+  // sunny base = category 2, high sensitivity → category 3
+  const result = tool.handler({ environment: "sunny", light_sensitivity: "high" });
+
+  const text = result.content[0].text;
+  assert.match(text, /分类：\*\*3 类（深色）\*\*/);
+  assert.match(text, /畏光 \/ 对强光敏感/);
+});
+
+test("sunglass tint guide caps day driving at category 3 and never allows category 4", () => {
+  const tool = getTool("sunglass_tint_guide");
+  // snow_water base = category 4, but daytime driving is not allowed at 4
+  const result = tool.handler({ environment: "snow_water", driving: true });
+
+  const text = result.content[0].text;
+  assert.match(text, /分类：\*\*3 类（深色）\*\*/);
+  assert.match(text, /4 类（极深）镜片透光过低、法规不允许开车佩戴/);
+  assert.match(text, /白天驾驶：0–3 类/);
+  // grey is the primary driving tint recommendation
+  assert.match(text, /灰色（中性灰）：\*\*首选\*\*/);
+});
+
+test("sunglass tint guide treats indoor_night + driving as night driving with a clear lens", () => {
+  const tool = getTool("sunglass_tint_guide");
+  const result = tool.handler({ environment: "indoor_night", driving: true });
+
+  const text = result.content[0].text;
+  assert.match(text, /分类：\*\*0 类（近无色 \/ 极浅）\*\*/);
+  assert.match(text, /夜间 \/ 昏暗驾驶/);
+  assert.match(text, /黄色「夜视镜」并不能真正提升夜间安全/);
+  // no polarized for night
+  assert.match(text, /偏光：此环境无需偏光/);
+});
+
+test("sunglass tint guide recommends polarized and prescription options when relevant", () => {
+  const tool = getTool("sunglass_tint_guide");
+  const result = tool.handler({ environment: "snow_water", has_prescription: true });
+
+  const text = result.content[0].text;
+  assert.match(text, /偏光：\*\*建议\*\*/);
+  assert.match(text, /带度数（近视 \/ 散光 \/ 老花）选配/);
+  // photochromic-in-car caveat
+  assert.match(text, /多数变色片在车内不会变深/);
+  // high category (4) triggers the higher-index thinning note
+  assert.match(text, /更高折射率/);
+});
+
+test("sunglass tint guide rejects an unknown environment", () => {
+  const tool = getTool("sunglass_tint_guide");
+  assert.throws(() => tool.handler({ environment: "space" }), /environment/);
+});
+
+test("accommodation amplitude applies Hofstetter formulas and near point for a 45-year-old", () => {
+  const tool = getTool("accommodation_amplitude");
+  const result = tool.handler({ age: 45 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // min = 15 - 0.25*45 = 3.75; avg = 18.5 - 0.30*45 = 5; max = 25 - 0.40*45 = 7
+  assert.match(text, /最小（Hofstetter 下限）：\*\*3\.75D\*\*/);
+  assert.match(text, /平均（预期值）：\*\*5D\*\*/);
+  assert.match(text, /最大（上限）：\*\*7D\*\*/);
+  // near point (avg) = 100/5 = 20cm; comfortable nearest = 100/(5/2) = 40cm
+  assert.match(text, /调节近点（按平均调节力）：\*\*20 cm\*\*/);
+  assert.match(text, /舒适持续用眼最近距离（保留一半调节力）：\*\*40 cm\*\*/);
+});
+
+test("accommodation amplitude flags strained near work and suggests a near add", () => {
+  const tool = getTool("accommodation_amplitude");
+  // age 45 → avg 5D, reserve 2.5D; at 33cm demand = 100/33 ≈ 3.03D > reserve
+  const result = tool.handler({ age: 45, working_distance_cm: 33 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /在 33 cm 处/);
+  assert.match(text, /偏吃力/);
+  // add = round((3.03 - 2.5)/0.25)*0.25 = 0.5
+  assert.match(text, /建议近附加（补足储备）：约 \*\*\+0\.5D\*\*/);
+});
+
+test("accommodation amplitude marks a comfortable distance without a near add", () => {
+  const tool = getTool("accommodation_amplitude");
+  // age 30 → avg = 18.5 - 9 = 9.5D, reserve 4.75D; at 40cm demand = 2.5D < reserve
+  const result = tool.handler({ age: 30, working_distance_cm: 40 });
+
+  const text = result.content[0].text;
+  assert.match(text, /状态：\*\*舒适/);
+  assert.doesNotMatch(text, /建议近附加/);
+});
+
+test("accommodation amplitude reports exhausted accommodation for the very old", () => {
+  const tool = getTool("accommodation_amplitude");
+  // age 70 → avg = 18.5 - 21 < 0 → clamped to 0 → near point not measurable
+  const result = tool.handler({ age: 70 });
+
+  const text = result.content[0].text;
+  assert.match(text, /平均（预期值）：\*\*0D\*\*/);
+  assert.match(text, /调节力已近耗竭/);
+});
+
+test("accommodation amplitude rejects an out-of-range age", () => {
+  const tool = getTool("accommodation_amplitude");
+  assert.throws(() => tool.handler({ age: 200 }), /age/);
+});
+
+test("visual acuity converter maps decimal 1.0 to all four equivalent notations", () => {
+  const tool = getTool("visual_acuity_converter");
+  const result = tool.handler({ notation: "decimal", value: 1.0 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /小数记录法：\*\*1\*\*/);
+  assert.match(text, /五分记录法（对数）：\*\*5\*\*/);
+  assert.match(text, /Snellen（美制\/公制）：\*\*20\/20\*\*/);
+  assert.match(text, /logMAR：\*\*0\*\*/);
+  assert.match(text, /视力水平：\*\*正常或以上\*\*/);
+});
+
+test("visual acuity converter converts a five-minute log reading back to decimal and Snellen", () => {
+  const tool = getTool("visual_acuity_converter");
+  // 五分 4.7 → 小数 10^(-0.3) ≈ 0.5 → 20/40
+  const result = tool.handler({ notation: "five_minute", value: 4.7 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /小数记录法：\*\*0\.5\*\*/);
+  assert.match(text, /Snellen（美制\/公制）：\*\*20\/40\*\*/);
+  assert.match(text, /轻度下降/);
+});
+
+test("visual acuity converter accepts a Snellen fraction via denominator + numerator", () => {
+  const tool = getTool("visual_acuity_converter");
+  const result = tool.handler({ notation: "snellen", value: 200, snellen_numerator: 20 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  assert.match(text, /小数记录法：\*\*0\.1\*\*/);
+  assert.match(text, /五分记录法（对数）：\*\*4\*\*/);
+  assert.match(text, /logMAR：\*\*1\*\*/);
+});
+
+test("visual acuity converter rejects an out-of-range decimal value", () => {
+  const tool = getTool("visual_acuity_converter");
+  assert.throws(() => tool.handler({ notation: "decimal", value: 0 }), /0 到 3/);
 });
 
 test("frame fit calculator computes frame PD and inward decentration for a wider frame", () => {
@@ -111,6 +907,118 @@ test("prescription transpose reports that a pure sphere has no cylinder form", (
 test("prescription transpose requires an axis when there is cylinder", () => {
   const tool = getTool("prescription_transpose");
   assert.throws(() => tool.handler({ sph: -2, cyl: -0.75 }), /轴位/);
+});
+
+test("astigmatism type guide: both meridians minus at axis 180 → compound myopic, with-the-rule", () => {
+  const tool = getTool("astigmatism_type_guide");
+  const result = tool.handler({ sph: -2, cyl: -1, axis: 180 });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // 主子午线：-2.00 @180、-3.00 @90，两条都为负 → 复性近视散光
+  assert.match(text, /屈光类型：\*\*复性近视散光/);
+  assert.match(text, /轴向规则：\*\*顺规散光/);
+  assert.match(text, /沿轴位 180° 方向：光度 -2D/);
+  assert.match(text, /沿 90° 方向.*光度 -3D/);
+});
+
+test("astigmatism type guide: one plano and one plus meridian → simple hyperopic", () => {
+  const tool = getTool("astigmatism_type_guide");
+  const result = tool.handler({ sph: 0, cyl: 1.5, axis: 90 });
+
+  const text = result.content[0].text;
+  // p1=0 @90, p2=+1.50 @180 → 单纯远视散光
+  assert.match(text, /屈光类型：\*\*单纯远视散光/);
+});
+
+test("astigmatism type guide: opposite-sign meridians → mixed astigmatism", () => {
+  const tool = getTool("astigmatism_type_guide");
+  const result = tool.handler({ sph: 1, cyl: -3, axis: 90 });
+
+  const text = result.content[0].text;
+  // p1=+1.00 @90, p2=-2.00 @180 → 混合散光；负柱镜轴位 90° → 逆规
+  assert.match(text, /屈光类型：\*\*混合散光/);
+  assert.match(text, /轴向规则：\*\*逆规散光/);
+});
+
+test("astigmatism type guide: rule is notation-independent (plus-cyl input transposes to minus axis)", () => {
+  const tool = getTool("astigmatism_type_guide");
+  // -3.00 / -1.00 x 180 等价写法为 -4.00 / +1.00 x 90；两者判定应一致（复性近视 + 顺规）
+  const minus = tool.handler({ sph: -3, cyl: -1, axis: 180 });
+  const plus = tool.handler({ sph: -4, cyl: 1, axis: 90 });
+
+  for (const text of [minus.content[0].text, plus.content[0].text]) {
+    assert.match(text, /屈光类型：\*\*复性近视散光/);
+    assert.match(text, /轴向规则：\*\*顺规散光/);
+  }
+});
+
+test("astigmatism type guide: oblique axis is flagged", () => {
+  const tool = getTool("astigmatism_type_guide");
+  const result = tool.handler({ sph: -1, cyl: -0.75, axis: 45 });
+
+  assert.match(result.content[0].text, /轴向规则：\*\*斜轴散光/);
+});
+
+test("astigmatism type guide: no cylinder means no astigmatism", () => {
+  const tool = getTool("astigmatism_type_guide");
+  const result = tool.handler({ sph: -3, cyl: 0 });
+
+  assert.equal(result.isError, undefined);
+  assert.match(result.content[0].text, /无散光/);
+});
+
+test("astigmatism type guide requires an axis when there is cylinder", () => {
+  const tool = getTool("astigmatism_type_guide");
+  assert.throws(() => tool.handler({ sph: -2, cyl: -1 }), /轴位/);
+});
+
+test("progressive fit check: 17mm is tight for standard but comfortable for shorter designs", () => {
+  const tool = getTool("progressive_fit_check");
+  const result = tool.handler({ fitting_height: 17, design: "standard" });
+
+  assert.equal(result.isError, undefined);
+  const text = result.content[0].text;
+  // 常规最小 18：17mm 还差 1mm → 不足
+  assert.match(text, /常规渐进（长通道）：.*→ \*\*不足\*\*（距最小 18 还差 1 mm）/);
+  // 短通道最小 14 / 舒适 16：17mm → 充足
+  assert.match(text, /短通道渐进：.*→ \*\*充足\*\*（高于舒适线 1 mm）/);
+  // 目标是常规但不足 → 结论应提示不建议并给更低门槛替代
+  assert.match(text, /对「常规渐进（长通道）」\*\*不足\*\*/);
+  assert.match(text, /可改选门槛更低的设计/);
+});
+
+test("progressive fit check: tall fitting height recommends standard when no design given", () => {
+  const tool = getTool("progressive_fit_check");
+  const result = tool.handler({ fitting_height: 22 });
+
+  const text = result.content[0].text;
+  assert.match(text, /推荐「常规渐进（长通道）」/);
+  assert.match(text, /目标设计：未指定/);
+});
+
+test("progressive fit check: estimates fitting height from frame B value", () => {
+  const tool = getTool("progressive_fit_check");
+  // B=36 → 装配高度 ≈ 36/2 + 2 = 20mm，对常规充足
+  const result = tool.handler({ frame_b: 36 });
+
+  const text = result.content[0].text;
+  assert.match(text, /由 B 粗估 ≈ B\/2 \+ 2）：\*\*20 mm\*\*/);
+  assert.match(text, /推荐「常规渐进（长通道）」/);
+});
+
+test("progressive fit check: very low height advises against progressive", () => {
+  const tool = getTool("progressive_fit_check");
+  const result = tool.handler({ fitting_height: 11 });
+
+  const text = result.content[0].text;
+  // 11mm 低于个性化最小 13 → 不建议配渐进
+  assert.match(text, /不建议配渐进镜片/);
+});
+
+test("progressive fit check requires at least one of fitting_height or frame_b", () => {
+  const tool = getTool("progressive_fit_check");
+  assert.throws(() => tool.handler({}), /至少提供/);
 });
 
 test("reading add estimator gives a typical add for a 50-year-old at 40cm and computes near total", () => {

@@ -60,7 +60,22 @@ public class ToolController {
                 tool("contact_lens_power", "隐形眼镜度数换算：按镜眼距（顶点距离）把框架镜球镜/柱镜换算成贴近角膜的隐形眼镜光度并按 0.25D 取整，说明高度数为何要补偿、散光可否折算等效球镜。"),
                 tool("reading_add_estimator", "老花（近附加 ADD）度数估算：按年龄给出典型近附加度数，按工作距离增减，并可结合看远球镜算出看近总度数，说明老花镜/渐进/办公镜片的选择。"),
                 tool("prescription_transpose", "散光记法转换（柱镜转换）：在负柱镜与正柱镜两种等价写法之间互换（新球镜=原球镜+原柱镜，新柱镜=−原柱镜，新轴位=原轴位±90°），并用等效球镜不变量自检。"),
-                tool("frame_fit_calculator", "镜架尺寸适配（光心偏移评估）：按盒式标注法用镜圈宽+鼻梁算出镜架几何中心距，与瞳距比较得出每片移心量与方向，评估贴合度，并用 Prentice 公式估算不移心时的水平棱镜。"));
+                tool("frame_fit_calculator", "镜架尺寸适配（光心偏移评估）：按盒式标注法用镜圈宽+鼻梁算出镜架几何中心距，与瞳距比较得出每片移心量与方向，评估贴合度，并用 Prentice 公式估算不移心时的水平棱镜。"),
+                tool("visual_acuity_converter", "视力记录法换算：在小数记录法、五分记录法（对数）、Snellen 分数、logMAR 四种等价写法之间互换，并给出该视力的大致水平（五分 L=5+lg(小数)，logMAR=−lg(小数)）。"),
+                tool("accommodation_amplitude", "调节幅度评估：用 Hofstetter 公式按年龄估算最小/平均/最大调节幅度（平均=18.5−0.30×年龄）与调节近点，判断某个用眼距离是否落在「保留一半调节力」的舒适储备之内，并在不足时给出建议近附加。"),
+                tool("sunglass_tint_guide", "太阳镜镜片色号（透光率）与颜色选择：按用光环境推荐 ISO 12312-1 的 0–4 类过滤分类与 VLT，结合是否畏光/驾驶/带度数给出镜片颜色（灰/茶棕/墨绿/黄琥珀）、偏光、变色片建议，并提醒镜片深浅≠防紫外线，任何太阳镜都应达到 UV400。"),
+                tool("lens_material_advisor", "镜片材料（基材）选择顾问：按度数、镜框类型（全框/半框/无框）、使用场景（日常/儿童/运动/安全防护/驾驶）与取舍偏好，在 CR-39、Trivex、PC、1.60/1.67/1.74 高折射树脂、玻璃之间推荐基材，综合抗冲击、阿贝数、厚度与重量给出首选/备选/不建议材料，与 lens_thickness_estimator、lens_coating_advisor 互补。"),
+                tool("clear_vision_range", "裸眼清晰视界估算（远点/近点）：按裸眼屈光度（含柱镜按等效球镜）推算不戴镜能看清的距离范围——近视远点=100÷度数(cm)，远点外看远模糊却能看清近处；可选填年龄按 Hofstetter 平均公式估算调节力算出近点与远视代偿，解释「为什么近视的人摘镜看手机反而清楚」。"),
+                tool("near_acuity_converter", "近用视力（近视力表）记法换算：在 M 记法、印刷点数(pt)、近视力小数三种写法间换算，并给出 Snellen/logMAR/五分等效与含 Jaeger 的近视力对照表（小数=测试距离m÷M，点数≈M×8）。"),
+                tool("prism_resolver", "棱镜合成与分解（Prentice 向量运算）：combine 把水平(base-in/out)+垂直(base-up/down)分量合成为单一合棱镜（大小√(h²+v²)与方向角），resolve 把合棱镜按方向角分解回水平、垂直分量。"),
+                tool("astigmatism_type_guide", "散光类型判定：按两条主子午线光度（SPH 与 SPH+CYL）的正负判定屈光类型（复性/单纯近视或远视散光、混合散光），按负柱镜轴位（±30° 窗口）判定轴向规则（顺规/逆规/斜轴），判定与正负柱镜记法无关。"),
+                tool("progressive_fit_check", "渐进镜片装配高度评估：判断镜框是否够高装配渐进片。给实测装配高度或镜框高度 B（粗估 ≈ B/2+2），对常规（≥18mm）/短通道（≥14mm）/个性化（≥13mm）三种设计评估充足/临界/不足，并推荐最合适的设计或在高度过低时建议换镜框/改单光双光。"),
+                tool("minimum_blank_size", "最小镜片毛坯直径（MBS）计算：MBS = 有效直径 ED + 2×每片移心量 + 加工余量（默认 2mm），移心量=(镜圈宽+鼻梁)/2−PD/2。给镜圈宽/鼻梁/PD（可选 ED，或镜框高度 B 由盒对角线 √(A²+B²) 保守估算 ED），算出最小毛坯直径并对照常见规格(65/70/75/80)判断是否易得；给手头毛坯直径则判断够不够用。"),
+                tool("vertical_imbalance_check", "近用垂直棱镜差（上下不平衡）评估：屈光参差者向下阅读时两片各按 Prentice 产生垂直棱镜（Δ=向下量cm×垂直光度D）。按左右眼 SPH（可含 CYL/AXIS）算各自垂直子午线光度 F_v=SPH+CYL·cos²轴位、每片垂直棱镜与基底方向，并给出差异棱镜=|F_v右−F_v左|×向下量，按阈值分级（<1Δ 可耐受/1–1.5Δ 临界/≥1.5Δ 显著），给出分开配近用镜/隐形/削底/压贴棱镜等方案。"),
+                tool("lens_tilt_compensation", "镜片倾斜（前倾角/面弯）引起的度数变化与补偿估算：镜片相对视线倾斜时如戴光度变化（球镜略增强并引入与旋转轴平行的散光，Martin 斜向屈光）。按球镜 power、倾斜角 tilt_angle、类型 tilt_type（pantoscopic 轴 180°/faceform 轴 90°）与折射率 index 算 S'=F·(1+sin²θ/(2n))、C'=S'·tan²θ，给出如戴等效度数与偏差，按引入散光<0.12/0.12–0.25/≥0.25D 分级与补偿建议。与 frame_fit_calculator、contact_lens_power 互补。"),
+                tool("spectacle_magnification", "眼镜放大率（视网膜像放大/缩小）估算：框架镜放大/缩小视网膜像——正镜（远视）显眼大、负镜（近视）显眼小，也是屈光参差不等像的根源。SM=镜度因子 PF×外形因子 SF，PF=1/(1−d·Fv)（d 镜眼距 m、Fv 后顶点度数），SF=1/(1−(t/n)·F1)（t 中心厚度 m、n 折射率、F1 前表面度数）。给球镜 power（必填）、镜眼距 vertex_distance（默认 12mm），可选 base_curve 与 center_thickness（齐备才计 SF）、index，输出放大率倍数、放大/缩小百分比与分级。与 anisometropia_guide、contact_lens_power 互补。"),
+                tool("digital_eyestrain_guide", "数字视疲劳（电脑视觉综合征 CVS）自助评估与护眼建议：按日均屏幕时长、当前症状（干涩/模糊/头痛/重影/颈肩酸痛/流泪/畏光，可多选）、是否规律休息、屏幕距离与年龄，估算视疲劳风险（低/中/高），并给出按「优先/建议/可选」分级的护眼措施——20-20-20 休息法、主动眨眼与干眼护理、屏幕距离与高度摆位、照明与反光控制、屈光矫正与办公/渐进镜片，以及何时就医的提示。与 lens_coating_advisor 互补。"),
+                tool("rx_tolerance_check", "配镜处方公差核验（ANSI Z80.1 / ISO 21987）：把订单处方 ordered 与到货实测 measured 逐项比对，判断单片成镜度数是否合格。球镜/子午线公差按参考度数（绝对值较大的主子午线）确定（≤6.50D ±0.13D、>6.50D ±2%），柱镜公差按柱镜大小分段（≤2.00D ±0.13D、2.00–4.50D ±0.15D、>4.50D ±4%），轴位公差随柱镜增大而收紧（≤0.25D ±14°…>1.50D ±2°），可选核验下加光 ADD（≤4.00D ±0.12D、>4.00D ±0.18D）。比对前把实测统一到订单的柱镜记法，正/负柱镜记法不同不会误判。与 prescription_interpreter、prescription_transpose、frame_fit_calculator 互补。"));
     }
 
     @PostMapping("/vision_check_guide")
@@ -161,6 +176,103 @@ public class ToolController {
                 req.lensWidth(), req.bridge(), req.pd(), req.power(), req.templeLength()));
     }
 
+    @PostMapping("/visual_acuity_converter")
+    public ToolResponse visualAcuityConverter(@RequestBody AcuityRequest req) {
+        return run("visual_acuity_converter", req, () -> tools.visualAcuityConverter(
+                req.notation(), req.value(), req.snellenNumerator()));
+    }
+
+    @PostMapping("/accommodation_amplitude")
+    public ToolResponse accommodationAmplitude(@RequestBody AccommodationRequest req) {
+        return run("accommodation_amplitude", req, () -> tools.accommodationAmplitude(
+                req.age(), req.workingDistanceCm()));
+    }
+
+    @PostMapping("/sunglass_tint_guide")
+    public ToolResponse sunglassTintGuide(@RequestBody SunglassTintRequest req) {
+        return run("sunglass_tint_guide", req, () -> tools.sunglassTintGuide(
+                req.environment(), req.lightSensitivity(), req.driving(), req.hasPrescription()));
+    }
+
+    @PostMapping("/lens_material_advisor")
+    public ToolResponse lensMaterialAdvisor(@RequestBody LensMaterialRequest req) {
+        return run("lens_material_advisor", req, () -> tools.lensMaterialAdvisor(
+                req.sph(), req.cyl(), req.frameType(), req.usage(), req.priority()));
+    }
+
+    @PostMapping("/clear_vision_range")
+    public ToolResponse clearVisionRange(@RequestBody ClearVisionRangeRequest req) {
+        return run("clear_vision_range", req,
+                () -> tools.clearVisionRange(req.sph(), req.cyl(), req.age()));
+    }
+
+    @PostMapping("/near_acuity_converter")
+    public ToolResponse nearAcuityConverter(@RequestBody NearAcuityRequest req) {
+        return run("near_acuity_converter", req,
+                () -> tools.nearAcuityConverter(req.notation(), req.value(), req.testDistanceCm()));
+    }
+
+    @PostMapping("/prism_resolver")
+    public ToolResponse prismResolver(@RequestBody PrismResolverRequest req) {
+        return run("prism_resolver", req,
+                () -> tools.prismResolver(req.mode(), req.horizontal(), req.horizontalBase(),
+                        req.vertical(), req.verticalBase(), req.magnitude(), req.angle()));
+    }
+
+    @PostMapping("/astigmatism_type_guide")
+    public ToolResponse astigmatismTypeGuide(@RequestBody AstigmatismTypeRequest req) {
+        return run("astigmatism_type_guide", req,
+                () -> tools.astigmatismTypeGuide(req.sph(), req.cyl(), req.axis()));
+    }
+
+    @PostMapping("/progressive_fit_check")
+    public ToolResponse progressiveFitCheck(@RequestBody ProgressiveFitRequest req) {
+        return run("progressive_fit_check", req,
+                () -> tools.progressiveFitCheck(req.fittingHeight(), req.frameB(), req.design()));
+    }
+
+    @PostMapping("/minimum_blank_size")
+    public ToolResponse minimumBlankSize(@RequestBody MinimumBlankSizeRequest req) {
+        return run("minimum_blank_size", req,
+                () -> tools.minimumBlankSize(req.frameA(), req.dbl(), req.pd(), req.ed(),
+                        req.frameB(), req.blankDiameter(), req.cutAllowance()));
+    }
+
+    @PostMapping("/vertical_imbalance_check")
+    public ToolResponse verticalImbalanceCheck(@RequestBody VerticalImbalanceRequest req) {
+        return run("vertical_imbalance_check", req,
+                () -> tools.verticalImbalanceCheck(req.rightSph(), req.leftSph(), req.rightCyl(),
+                        req.leftCyl(), req.rightAxis(), req.leftAxis(), req.readingDrop()));
+    }
+
+    @PostMapping("/lens_tilt_compensation")
+    public ToolResponse lensTiltCompensation(@RequestBody LensTiltRequest req) {
+        return run("lens_tilt_compensation", req,
+                () -> tools.lensTiltCompensation(req.power(), req.tiltAngle(), req.tiltType(), req.index()));
+    }
+
+    @PostMapping("/spectacle_magnification")
+    public ToolResponse spectacleMagnification(@RequestBody SpectacleMagnificationRequest req) {
+        return run("spectacle_magnification", req,
+                () -> tools.spectacleMagnification(req.power(), req.vertexDistance(), req.baseCurve(),
+                        req.centerThickness(), req.index()));
+    }
+
+    @PostMapping("/digital_eyestrain_guide")
+    public ToolResponse digitalEyestrainGuide(@RequestBody DigitalEyestrainRequest req) {
+        return run("digital_eyestrain_guide", req,
+                () -> tools.digitalEyestrainGuide(req.screenHours(), req.symptoms(), req.takesBreaks(),
+                        req.screenDistanceCm(), req.age()));
+    }
+
+    @PostMapping("/rx_tolerance_check")
+    public ToolResponse rxToleranceCheck(@RequestBody RxToleranceRequest req) {
+        return run("rx_tolerance_check", req,
+                () -> tools.rxToleranceCheck(req.orderedSph(), req.orderedCyl(), req.orderedAxis(),
+                        req.measuredSph(), req.measuredCyl(), req.measuredAxis(),
+                        req.orderedAdd(), req.measuredAdd()));
+    }
+
     private static Map<String, String> tool(String name, String description) {
         return Map.of("name", name, "description", description);
     }
@@ -226,5 +338,61 @@ public class ToolController {
     }
 
     public record FrameFitRequest(double lensWidth, double bridge, double pd, Double power, Double templeLength) {
+    }
+
+    public record AcuityRequest(String notation, double value, Integer snellenNumerator) {
+    }
+
+    public record AccommodationRequest(int age, Double workingDistanceCm) {
+    }
+
+    public record SunglassTintRequest(String environment, String lightSensitivity,
+                                      Boolean driving, Boolean hasPrescription) {
+    }
+
+    public record LensMaterialRequest(double sph, Double cyl, String frameType,
+                                      String usage, String priority) {
+    }
+
+    public record ClearVisionRangeRequest(double sph, Double cyl, Integer age) {
+    }
+
+    public record NearAcuityRequest(String notation, double value, Double testDistanceCm) {
+    }
+
+    public record PrismResolverRequest(String mode, Double horizontal, String horizontalBase,
+                                       Double vertical, String verticalBase,
+                                       Double magnitude, Double angle) {
+    }
+
+    public record AstigmatismTypeRequest(double sph, double cyl, Integer axis) {
+    }
+
+    public record ProgressiveFitRequest(Double fittingHeight, Double frameB, String design) {
+    }
+
+    public record MinimumBlankSizeRequest(double frameA, double dbl, double pd, Double ed,
+                                           Double frameB, Double blankDiameter, Double cutAllowance) {
+    }
+
+    public record VerticalImbalanceRequest(double rightSph, double leftSph, Double rightCyl,
+                                           Double leftCyl, Integer rightAxis, Integer leftAxis,
+                                           Double readingDrop) {
+    }
+
+    public record LensTiltRequest(double power, double tiltAngle, String tiltType, Double index) {
+    }
+
+    public record SpectacleMagnificationRequest(double power, Double vertexDistance, Double baseCurve,
+                                                Double centerThickness, Double index) {
+    }
+
+    public record DigitalEyestrainRequest(double screenHours, List<String> symptoms, Boolean takesBreaks,
+                                          Double screenDistanceCm, Integer age) {
+    }
+
+    public record RxToleranceRequest(double orderedSph, Double orderedCyl, Integer orderedAxis,
+                                     double measuredSph, Double measuredCyl, Integer measuredAxis,
+                                     Double orderedAdd, Double measuredAdd) {
     }
 }

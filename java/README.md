@@ -1,6 +1,6 @@
 # glass-agent（Java + Spring Boot 版）
 
-配眼镜指南**智能体**，基于 **Spring Boot 3 + Spring AI**。它把原 TypeScript MCP Server 的 15 个配镜工具移植为 Java 实现，并在此之上接入大模型：用户用自然语言提问，大模型通过 **Function Calling** 自动选择并调用工具。智能体会**主动追问必要信息**（度数、用途、预算、脸型等），信息足够后给出配镜建议，并在最后**附上京东 / 淘宝 / 拼多多的购买链接**。
+配眼镜指南**智能体**，基于 **Spring Boot 3 + Spring AI**。它把原 TypeScript MCP Server 的 31 个配镜工具移植为 Java 实现，并在此之上接入大模型：用户用自然语言提问，大模型通过 **Function Calling** 自动选择并调用工具。智能体会**主动追问必要信息**（度数、用途、预算、脸型等），信息足够后给出配镜建议，并在最后**附上京东 / 淘宝 / 拼多多的购买链接**。
 
 原 TypeScript / MCP 版本仍保留在仓库根目录，两者并存。
 
@@ -42,6 +42,21 @@
 - `reading_add_estimator`：按年龄估算老花（近附加 ADD）度数，按实际工作距离（默认 40cm）增减，并可结合看远球镜算出看近总度数，给出老花镜 / 渐进 / 办公镜片的选择建议（按 0.25D 步进取整）
 - `prescription_transpose`：在负柱镜与正柱镜两种等价记法间互换（新球镜 = 原球镜 + 原柱镜，新柱镜 = −原柱镜，新轴位 = 原轴位 ± 90°），展示换算过程并用等效球镜不变量自检
 - `frame_fit_calculator`：解析镜架规格标注（如 `52□18-140`），按盒式标注法算出镜架几何中心距（镜圈宽 + 鼻梁），与瞳距比较得出每片光心移心量与方向，评估镜架与瞳距的贴合度；给定度数时用 Prentice 公式估算「不移心」会产生的水平棱镜
+- `visual_acuity_converter`：在小数记录法、五分记录法（对数，中国 GB 标准）、Snellen 分数（20/20 或 6/6）、logMAR 四种等价视力记法间互换（五分 L = 5 + lg(小数)，logMAR = −lg(小数)），并给出该视力的大致水平
+- `accommodation_amplitude`：用 Hofstetter 公式按年龄估算调节幅度（最小 = 15 − 0.25×年龄，平均 = 18.5 − 0.30×年龄，最大 = 25 − 0.40×年龄），推算调节近点与「保留一半调节力」的舒适持续用眼最近距离；给定工作距离时判断该距离的调节需求是否在储备之内，不足时给出建议近附加
+- `sunglass_tint_guide`：按用光环境推荐太阳镜镜片过滤分类（ISO 12312-1 的 0–4 类）与可见光透过率（VLT），结合是否畏光 / 驾驶 / 带度数给出镜片颜色（灰 / 茶棕 / 墨绿 / 黄琥珀）、偏光、变色片与带度数选配建议，并提醒镜片深浅 ≠ 防紫外线、任何太阳镜都应达到 UV400
+- `lens_material_advisor`：按度数、镜框类型（全框 / 半框 / 无框）、使用场景（日常 / 儿童 / 运动 / 安全防护 / 驾驶）与取舍偏好，在 CR-39、Trivex、PC、1.60 / 1.67 / 1.74 高折射树脂、玻璃之间推荐镜片基材，综合抗冲击、阿贝数（边缘色散）、厚度与重量给出首选 / 备选 / 不建议材料，与 `lens_thickness_estimator`、`lens_coating_advisor` 互补
+- `clear_vision_range`：按裸眼屈光度（含柱镜按等效球镜 SE = SPH + CYL/2）推算不戴镜能看清的距离范围（远点 ↔ 近点）：近视远点 = 100 ÷ 度数(cm)，远点以外模糊、近处却清楚（即「近视摘镜看手机反而清楚」），正视清晰到无穷远，远视需动用调节力代偿；可选填年龄按 Hofstetter 平均公式估算调节力算出近点与远视代偿，与 `accommodation_amplitude` 互补
+- `near_acuity_converter`：近用视力（近视力表）记法换算——在 M 记法（1M 视标在 1m 处张角 5′）、印刷点数（≈ M × 8）、近视力小数三种写法间换算，按测试距离（默认 40cm）算出该距离的近视力小数（= 测试距离m ÷ M）并推出 Snellen / logMAR / 五分等效与对照表（含 Jaeger 近似），与看远的 `visual_acuity_converter` 互补
+- `prism_resolver`：棱镜合成与分解（Prentice 向量运算）——`combine` 把水平（base-in/out）与垂直（base-up/down）两个棱镜分量合成为单一合棱镜（大小 = √(水平² + 垂直²)，方向角：颞侧 0°、上 90°、鼻侧 180°、下 270°，逆时针）；`resolve` 把合棱镜（大小 + 方向角）分解回水平、垂直分量。采用以鼻子为参照、左右眼一致的 base-in/out 表述，提示 0.25Δ 处方取整
+- `astigmatism_type_guide`：散光类型判定——按两条主子午线光度（P₁ = SPH、P₂ = SPH + CYL）的正负判定屈光类型（都为负→复性近视散光、都为正→复性远视散光、一条平光→单纯近视/远视散光、一正一负→混合散光），按负柱镜轴位（±30° 窗口：0–30°/150–180° 顺规、60–120° 逆规、其余斜轴）判定轴向规则（正柱镜输入会先转成负柱镜轴位，判定与记法无关），报出两条主子午线、等效球镜与按轴向规则给出的适应提示，与 `prescription_interpreter`、`prescription_transpose` 互补
+- `progressive_fit_check`：渐进镜片装配高度评估——判断镜框是否「够高」装配渐进多焦点镜片（装配高度 = 瞳孔中心到镜片最低缘的垂直距离）。可给实测 `fitting_height`，或给镜框高度 `frame_b`（B 值）由工具粗估（≈ B/2 + 2）；对常规/长通道（最小约 18mm）、短通道（约 14mm）、个性化/自由曲面（约 13mm）三种设计评估充足 / 临界 / 不足，给定目标 `design` 时报出可行性与余量，不给时按「优先常规 > 短通道 > 个性化」推荐，高度低于所有门槛（< 13mm）则建议换更高镜框或改用单光 / 双光，与 `progressive_lens_assessment`、`frame_fit_calculator` 互补
+- `minimum_blank_size`：最小镜片毛坯直径（MBS）计算——`MBS = 有效直径 ED + 2 × 每片移心量 + 加工余量`（默认 2mm），移心量 = (镜圈宽 + 鼻梁)/2 − PD/2。给镜圈宽/鼻梁/PD（可选 `ed`，或镜框高度 `frameB` 由盒对角线 `√(A²+B²)` 保守估算 ED），算出框几何中心距、每片移心量、所用 ED 与最小毛坯直径，并对照常见毛坯规格（65/70/75/80mm）判断是否易得；给手头毛坯直径 `blankDiameter` 时判断够不够用并给出余量，与 `frame_fit_calculator` 互补
+- `vertical_imbalance_check`：近用垂直棱镜差（上下不平衡）评估（Prentice 向量）——屈光参差者向下阅读时两片各产生垂直棱镜。按左右眼球镜 `rightSph`/`leftSph`（可含 `rightCyl`/`leftCyl` + `rightAxis`/`leftAxis`）算出各自垂直子午线光度 `F_v = SPH + CYL·cos²(轴位)`、每片在给定向下注视量 `readingDrop`（默认 8mm）下的垂直棱镜与基底方向，并给出差异棱镜 `= |F_v右 − F_v左| × 向下量(cm)`，按经验阈值分级（<1Δ 多可耐受、1–1.5Δ 临界、≥1.5Δ 显著常需处理），给出分开配近用镜 / 隐形眼镜 / 削底(slab-off) / 压贴棱镜等方案，与 `anisometropia_guide`、`prism_resolver` 互补
+- `lens_tilt_compensation`：镜片倾斜（前倾角 / 面弯）引起的度数变化与补偿估算（Martin 斜向屈光）——镜片相对视线倾斜时如戴光度变化（球镜略增强并引入与旋转轴平行的散光）。按球镜 `power`、倾斜角 `tiltAngle`、类型 `tiltType`（`pantoscopic` 前倾角引入轴 180°／`faceform` 面弯引入轴 90°）与折射率 `index`（默认 1.5）算等效球镜 `S' = F·(1 + sin²θ/(2n))`、引入散光 `C' = S'·tan²θ`，给出如戴等效度数与偏差，按引入散光大小分级（<0.12D 可忽略、0.12–0.25D 临界、≥0.25D 明显需补偿）。高度数、大面弯时偏差放大，高端 / 自由曲面镜片会做「如戴位置补偿」抵消；适度前倾角（约 8–12°）属正常设计，与 `frame_fit_calculator`、`contact_lens_power` 互补
+- `spectacle_magnification`：眼镜放大率（视网膜像放大 / 缩小）估算——框架镜会把视网膜像放大或缩小（正镜 / 远视显眼大、负镜 / 近视显眼小），也是屈光参差引起不等像（aniseikonia）的根源。放大率 SM = 镜度因子 × 外形因子：`PF = 1 / (1 − d·Fv)`（d 镜眼距 m、Fv 后顶点度数），`SF = 1 / (1 − (t/n)·F1)`（t 中心厚度 m、n 折射率、F1 前表面 / 基弧面度数）。给球镜 `power`（必填）、镜眼距 `vertexDistance`（默认 12mm），可选前表面度数 `baseCurve` 与中心厚度 `centerThickness`（两者齐备才计外形因子，否则只给镜度因子）、折射率 `index`（默认 1.5），输出放大率倍数、放大 / 缩小百分比与量级分级（<5% 较小、5–8% 可察觉、≥8% 明显），与 `anisometropia_guide`、`contact_lens_power` 互补
+- `digital_eyestrain_guide`：数字视疲劳（电脑视觉综合征 CVS）自助评估与护眼建议——按日均屏幕时长 `screenHours`、当前症状 `symptoms`（`dryness` 干涩 / `blur` 模糊 / `headache` 头痛 / `double_vision` 重影 / `neck_shoulder` 颈肩酸痛 / `tearing` 流泪 / `light_sensitive` 畏光，可多选）、是否规律休息 `takesBreaks`、屏幕距离 `screenDistanceCm` 与年龄 `age`，估算视疲劳风险（低 / 中 / 高），并给出按「优先 / 建议 / 可选」分级的护眼措施——20-20-20 休息法、主动眨眼与干眼护理、屏幕距离与高度摆位、照明与反光控制、屈光矫正与办公 / 渐进镜片，以及就医提示（重影、模糊+头痛或症状≥4 项时触发），侧重用眼习惯，与 `lens_coating_advisor` 互补
+- `rx_tolerance_check`：配镜处方公差核验（ANSI Z80.1 / ISO 21987）——把「订单处方 ordered」与「到货实测 measured」逐项比对，判断单片成镜度数是否合格。球镜 / 子午线公差按参考度数（两条主子午线中绝对值较大者）确定（≤ 6.50D ±0.13D、> 6.50D ±2%），柱镜公差按柱镜大小分段（≤ 2.00D ±0.13D、2.00–4.50D ±0.15D、> 4.50D ±4%），轴位公差随柱镜增大而收紧（≤ 0.25D ±14°、≤ 0.50D ±7°、≤ 0.75D ±5°、≤ 1.50D ±3°、> 1.50D ±2°），可选核验下加光 ADD（≤ 4.00D ±0.12D、> 4.00D ±0.18D）。比对前把实测统一到订单的柱镜记法，故正 / 负柱镜记法不同不会误判；输出逐项偏差、对应公差、合格 / 超差标记与总结论，与 `prescription_interpreter`、`prescription_transpose`、`frame_fit_calculator` 互补
 
 ## 环境要求
 
@@ -166,6 +181,106 @@ curl -X POST http://localhost:8080/api/tools/frame_fit_calculator \
   -d '{"lensWidth":52,"bridge":18,"pd":62,"power":-4.0,"templeLength":140}'
 ```
 
+视力记录法换算（`notation` = decimal / five_minute / logmar / snellen，`value` 必填；Snellen 时 `value` 填分母，`snellenNumerator` 默认 20）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/visual_acuity_converter \
+  -H 'Content-Type: application/json' \
+  -d '{"notation":"decimal","value":1.0}'
+```
+
+太阳镜镜片色号与颜色选择（`environment` 必填：indoor_night / overcast / sunny / bright / snow_water；`lightSensitivity`、`driving`、`hasPrescription` 可选）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/sunglass_tint_guide \
+  -H 'Content-Type: application/json' \
+  -d '{"environment":"bright","lightSensitivity":"high","driving":true,"hasPrescription":true}'
+```
+
+镜片材料（基材）选择顾问（`sph` 必填；`cyl`、`frameType`（full_rim / half_rim / rimless）、`usage`（general / kids / sports / safety / driving）、`priority`（balanced / thinnest / clarity / lightweight）可选）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/lens_material_advisor \
+  -H 'Content-Type: application/json' \
+  -d '{"sph":-4,"cyl":-1,"frameType":"rimless","usage":"general","priority":"balanced"}'
+```
+
+裸眼清晰视界估算（远点 / 近点）（`sph` 必填；`cyl`、`age` 可选）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/clear_vision_range \
+  -H 'Content-Type: application/json' \
+  -d '{"sph":-3,"cyl":-0.5,"age":25}'
+```
+
+近用视力（近视力表）记法换算（`notation` 取 `m_unit` / `point` / `decimal`，`value` 必填；`testDistanceCm` 可选，默认 40）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/near_acuity_converter \
+  -H 'Content-Type: application/json' \
+  -d '{"notation":"m_unit","value":1.0,"testDistanceCm":40}'
+```
+
+棱镜合成与分解（`mode` 取 `combine` / `resolve`；combine 填 `horizontal`+`horizontalBase`(in/out) 与 `vertical`+`verticalBase`(up/down)，resolve 填 `magnitude`+`angle`）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/prism_resolver \
+  -H 'Content-Type: application/json' \
+  -d '{"mode":"combine","horizontal":3,"horizontalBase":"out","vertical":4,"verticalBase":"up"}'
+
+curl -X POST http://localhost:8080/api/tools/astigmatism_type_guide \
+  -H 'Content-Type: application/json' \
+  -d '{"sph":-2,"cyl":-1,"axis":180}'
+```
+
+渐进镜片装配高度评估（给 `fittingHeight` 实测，或给 `frameB` 由工具粗估；`design` 可选 `standard`/`short`/`premium`，不填则推荐）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/progressive_fit_check \
+  -H 'Content-Type: application/json' \
+  -d '{"fittingHeight":17,"design":"standard"}'
+```
+
+最小镜片毛坯直径（给镜圈宽 `frameA`、鼻梁 `dbl`、瞳距 `pd`；可选 `ed` 或镜框高度 `frameB`、手头毛坯 `blankDiameter`）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/minimum_blank_size \
+  -H 'Content-Type: application/json' \
+  -d '{"frameA":54,"dbl":18,"pd":62,"frameB":38,"blankDiameter":70}'
+```
+
+近用垂直棱镜差（给左右眼球镜 `rightSph`/`leftSph`，可含 `rightCyl`/`leftCyl` + `rightAxis`/`leftAxis`，可选向下注视量 `readingDrop`）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/vertical_imbalance_check \
+  -H 'Content-Type: application/json' \
+  -d '{"rightSph":-1,"leftSph":-3,"readingDrop":10}'
+```
+
+眼镜放大率（给球镜 `power`、镜眼距 `vertexDistance`，可选前表面度数 `baseCurve` + 中心厚度 `centerThickness` 以计外形因子、折射率 `index`）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/spectacle_magnification \
+  -H 'Content-Type: application/json' \
+  -d '{"power":5,"vertexDistance":12,"baseCurve":7,"centerThickness":4,"index":1.5}'
+```
+
+数字视疲劳评估（给日均屏幕时长 `screenHours`，可选症状 `symptoms`、是否规律休息 `takesBreaks`、屏幕距离 `screenDistanceCm`、年龄 `age`）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/digital_eyestrain_guide \
+  -H 'Content-Type: application/json' \
+  -d '{"screenHours":9,"symptoms":["dryness","blur","neck_shoulder"],"takesBreaks":false,"screenDistanceCm":40,"age":32}'
+```
+
+配镜处方公差核验（给订单 `orderedSph`/`orderedCyl`/`orderedAxis` 与实测 `measuredSph`/`measuredCyl`/`measuredAxis`，可选 `orderedAdd`/`measuredAdd`）：
+
+```bash
+curl -X POST http://localhost:8080/api/tools/rx_tolerance_check \
+  -H 'Content-Type: application/json' \
+  -d '{"orderedSph":-4,"orderedCyl":-1,"orderedAxis":180,"measuredSph":-4,"measuredCyl":-1,"measuredAxis":178,"orderedAdd":2,"measuredAdd":2}'
+```
+
 查看 / 清空工具调用历史（进程内保存最近 50 次，最新在前）：
 
 ```bash
@@ -195,7 +310,7 @@ java/
 └── src/main/java/com/glass/agent/
     ├── GlassAgentApplication.java      # 启动类
     ├── tool/
-    │   ├── GlassAdvisorTools.java      # 16 个工具的业务逻辑 + @Tool 注解
+    │   ├── GlassAdvisorTools.java      # 31 个工具的业务逻辑 + @Tool 注解
     │   ├── ToolCallHistory.java        # 进程内工具调用历史（最近 50 次）
     │   └── Diopters.java               # 度数格式化帮助函数
     ├── agent/

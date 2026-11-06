@@ -518,6 +518,555 @@ export const tools: ToolDefinition[] = [
     sample: { lens_width: 52, bridge: 18, pd: 62, power: -4, temple_length: 140 },
     handler: handleFrameFitCalculator,
   },
+  {
+    name: "visual_acuity_converter",
+    description:
+      "视力记录法换算：视力表结果常见四种等价写法——小数记录法（decimal，如 1.0）、五分记录法 / 对数记录法（five_minute，如 5.0，中国 GB 标准）、Snellen 分数（snellen，如 20/20 或 6/6）、logMAR（如 0.00，科研常用）。本工具把任一种记法换算成其余三种，并给出该视力所处的大致水平。换算关系：五分 L = 5 + lg(小数)，logMAR = −lg(小数)，Snellen 分子/分母 = 分子 ÷ 小数。仅做记法换算与科普，不替代验光，也不代表屈光度数。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        notation: {
+          type: "string",
+          enum: ["decimal", "five_minute", "logmar", "snellen"],
+          description:
+            "输入视力所用的记法：decimal(小数记录，如 1.0) / five_minute(五分记录/对数记录，如 5.0) / logmar(如 0.00) / snellen(分数，如 20/20，此时 value 填分母)。",
+        },
+        value: {
+          type: "number",
+          description:
+            "视力数值：decimal 填小数视力(0.01–2.0)；five_minute 填五分值(3.0–5.5)；logmar 填 logMAR 值(-0.3–2.5)；snellen 填分数的分母（如 20/40 就填 40），分子由 snellen_numerator 决定。",
+        },
+        snellen_numerator: {
+          type: "number",
+          enum: [20, 6],
+          description:
+            "仅 Snellen 记法用：分子（测试距离），美制 20（英尺）或公制 6（米），默认 20。其它记法忽略。",
+        },
+      },
+      required: ["notation", "value"],
+    },
+    sample: { notation: "decimal", value: 1.0 },
+    handler: handleVisualAcuityConverter,
+  },
+  {
+    name: "accommodation_amplitude",
+    description:
+      "调节幅度（Amplitude of Accommodation）评估：眼睛把焦点从远处调到近处的最大屈光能力称为调节力，随年龄下降是老视（老花）的根源。用 Hofstetter 经验公式按年龄估算最小 / 平均 / 最大调节幅度（最小 = 15 − 0.25×年龄，平均 = 18.5 − 0.30×年龄，最大 = 25 − 0.40×年龄，单位D），推算调节近点（眼睛能看清的最近距离）与「保留一半调节力做储备」时的舒适持续用眼最近距离；若提供实际工作距离，判断该距离的调节需求是否落在舒适储备之内，并在不足时给出建议近附加。仅供科普参考，实际以主觉验光和调节功能检查为准。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        age: {
+          type: "number",
+          description: "年龄（岁），整数。调节力随年龄下降，约 40 岁后看近逐渐吃力。",
+        },
+        working_distance_cm: {
+          type: "number",
+          description:
+            "主要用眼（看近）距离，单位cm，常见看书 33-40、电脑 50-70；不填则只给调节幅度与近点，不做该距离的舒适度判断。",
+        },
+      },
+      required: ["age"],
+    },
+    sample: { age: 45, working_distance_cm: 33 },
+    handler: handleAccommodationAmplitude,
+  },
+  {
+    name: "sunglass_tint_guide",
+    description:
+      "太阳镜镜片色号（透光率）与颜色选择：按主要用光环境推荐镜片的过滤分类（ISO 12312-1 的 0–4 类，对应可见光透过率 VLT 由高到低），并结合是否畏光、是否用于驾驶、是否需要带度数，给出镜片颜色（灰 / 茶棕 / 墨绿 / 黄琥珀）、是否值得选偏光、变色片与带度数太阳镜的建议，同时提醒「镜片深浅 ≠ 防紫外线，任何太阳镜都应达到 UV400」。仅做选购科普，不替代验光与专业验配。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        environment: {
+          type: "string",
+          enum: ["indoor_night", "overcast", "sunny", "bright", "snow_water"],
+          description:
+            "主要用光环境：indoor_night(室内/夜间/黄昏，几乎无强光) / overcast(阴天、多云、光线较弱的白天) / sunny(普通晴天、日常户外) / bright(强烈日照：正午、盛夏、海边城市) / snow_water(雪地、高原、水面、沙漠等极强反射光)。",
+        },
+        light_sensitivity: {
+          type: "string",
+          enum: ["normal", "high"],
+          description:
+            "对强光/眩光的敏感度：normal(一般) / high(畏光、易被强光晃)。high 会在推荐分类上再调深一档（封顶 4 类）。默认 normal。",
+        },
+        driving: {
+          type: "boolean",
+          description:
+            "是否主要用于驾驶。白天驾驶时 4 类（极深）镜片透光过低、法规不允许，会自动改为 3 类；若环境选 indoor_night 则按夜间驾驶处理（只用无色/极浅片）。默认 false。",
+        },
+        has_prescription: {
+          type: "boolean",
+          description:
+            "是否需要带度数（近视 / 散光 / 老花）。为 true 时补充带度数太阳镜、变色片、磁吸夹片等选配建议。默认 false。",
+        },
+      },
+      required: ["environment"],
+    },
+    sample: { environment: "bright", light_sensitivity: "high", driving: true, has_prescription: true },
+    handler: handleSunglassTintGuide,
+  },
+  {
+    name: "lens_material_advisor",
+    description:
+      "镜片材料（基材）选择顾问：按度数、镜框类型（全框 / 半框 / 无框）、使用场景（日常 / 儿童 / 运动 / 安全防护 / 驾驶）与取舍偏好（均衡 / 最薄 / 最清晰 / 最轻），在 CR-39、Trivex、PC（聚碳酸酯）、1.60 / 1.67 / 1.74 高折射树脂、玻璃之间推荐镜片基材，综合抗冲击、阿贝数（边缘色散）、厚度与重量，给出首选材料、备选与不建议材料及原因。与只看减薄的 lens_thickness_estimator、只看镀膜的 lens_coating_advisor 互补。仅做选购科普，不替代专业验配。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sph: {
+          type: "number",
+          description: "球镜度数，单位D，如 -4.00。近视填负数，远视填正数。",
+        },
+        cyl: {
+          type: "number",
+          description: "柱镜度数，单位D，如 -1.00。无散光可不填（默认0）。",
+        },
+        frame_type: {
+          type: "string",
+          enum: ["full_rim", "half_rim", "rimless"],
+          description:
+            "镜框类型：full_rim(全框) / half_rim(半框，尼龙丝嵌入镜片沟槽) / rimless(无框，靠螺丝在镜片上钻孔固定)。无框 / 半框对材料韧性要求更高。默认 full_rim。",
+        },
+        usage: {
+          type: "string",
+          enum: ["general", "kids", "sports", "safety", "driving"],
+          description:
+            "使用场景：general(日常) / kids(儿童) / sports(运动) / safety(安全防护，如实验室 / 工地) / driving(以驾驶为主)。kids / sports / safety 会强制要求抗冲击材料。默认 general。",
+        },
+        priority: {
+          type: "string",
+          enum: ["balanced", "thinnest", "clarity", "lightweight"],
+          description:
+            "取舍偏好：balanced(均衡) / thinnest(尽量薄) / clarity(尽量清晰、少色散，看重阿贝数) / lightweight(尽量轻)。默认 balanced。",
+        },
+      },
+      required: ["sph"],
+    },
+    sample: { sph: -4, cyl: -1, frame_type: "rimless", usage: "general", priority: "balanced" },
+    handler: handleLensMaterialAdvisor,
+  },
+  {
+    name: "clear_vision_range",
+    description:
+      "裸眼清晰视界估算（远点 / 近点）：根据裸眼屈光度（球镜，可含柱镜按等效球镜 SE = SPH + CYL/2）推算不戴镜时能看清的距离范围——近视的「远点」= 100 ÷ 近视度数(cm)，远点以外看远模糊、却能看清很近处；远视要动用调节力把焦点拉回。可选填年龄，按 Hofstetter 平均公式(调节幅度 ≈ 18.5 − 0.30×年龄)估算调节力，进而算出近点、以及「远视裸眼能否看清远处」。解释「为什么近视的人摘镜看手机反而清楚」。仅做科普，不替代专业验光。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sph: {
+          type: "number",
+          description: "裸眼球镜屈光度，单位D，近视填负数（如 -3.00）、远视填正数、正视填0。",
+        },
+        cyl: {
+          type: "number",
+          description:
+            "柱镜度数，单位D，无散光可不填（默认0）。有散光时按等效球镜 SE = SPH + CYL/2 做粗略估算。",
+        },
+        age: {
+          type: "number",
+          description:
+            "年龄（岁，整数），可选。用于按 Hofstetter 平均公式估算调节幅度，进而算出近点与远视代偿；不填则只给远点与定性说明。",
+        },
+      },
+      required: ["sph"],
+    },
+    sample: { sph: -3, cyl: -0.5, age: 25 },
+    handler: handleClearVisionRange,
+  },
+  {
+    name: "near_acuity_converter",
+    description:
+      "近用视力（近视力表）记法换算：近视力卡常用三种写法——M 记法（m_unit，国际标准，1M 视标在 1 m 处张角 5′）、印刷点数（point，如 8pt）、以及直接的近视力小数（decimal）。本工具把任一写法按测试距离（默认 40cm）换算成其余写法与 Snellen / logMAR / 五分等效，并给出常用近视力对照表（含 Jaeger J 记法的近似）。核心换算：该距离近视力小数 = 测试距离(m) ÷ M 值，点数 ≈ M × 8。Jaeger 各家视力卡不统一，仅作近似参考。仅做记法换算与科普，不替代验光。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        notation: {
+          type: "string",
+          enum: ["m_unit", "point", "decimal"],
+          description:
+            "输入近视力所用的记法：m_unit(M 记法，如 1.0 表示 1M) / point(印刷点数，如 8 表示 8pt) / decimal(直接给该距离的近视力小数，如 0.5)。",
+        },
+        value: {
+          type: "number",
+          description:
+            "数值：m_unit 填 M 值(0.1–20)；point 填点数(1–160)；decimal 填近视力小数(0.01–2)。",
+        },
+        test_distance_cm: {
+          type: "number",
+          description:
+            "近视力测试距离，单位cm，默认 40（常见近用参考距离）。该距离越远、同一 M 视标对应的视力越好（小数 = 距离m ÷ M）。范围 10–100。",
+        },
+      },
+      required: ["notation", "value"],
+    },
+    sample: { notation: "m_unit", value: 1.0, test_distance_cm: 40 },
+    handler: handleNearAcuityConverter,
+  },
+  {
+    name: "prism_resolver",
+    description:
+      "棱镜合成与分解（Prentice 棱镜向量运算）：处方中的棱镜可拆成水平（基底朝鼻侧 base-in / 颞侧 base-out）与垂直（基底朝上 base-up / 下 base-down）两个分量，它们按向量相加。本工具两种模式：combine 把水平 + 垂直分量合成为单一「合棱镜」（大小 Δ 与基底方向角）；resolve 把一个合棱镜（大小 + 方向角）分解回水平、垂直分量。合成大小 = √(水平² + 垂直²)；方向角采用「颞侧(base-out)=0°、上=90°、鼻侧(base-in)=180°、下=270°，逆时针」的几何约定（临床 360° 基底记法左右眼不同，这里改用 in/out/up/down 分量表述避免歧义）。常用于合并两条处方棱镜、把斜向棱镜拆给磨房加工。仅做棱镜换算与科普，不替代验光与处方。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        mode: {
+          type: "string",
+          enum: ["combine", "resolve"],
+          description:
+            "模式：combine(把水平+垂直分量合成为合棱镜) / resolve(把合棱镜分解为水平+垂直分量)。",
+        },
+        horizontal: {
+          type: "number",
+          description:
+            "【combine】水平棱镜大小，单位Δ（棱镜度，≥0）；为 0 或不填表示无水平分量。范围 0–50。",
+        },
+        horizontal_base: {
+          type: "string",
+          enum: ["in", "out"],
+          description:
+            "【combine】水平棱镜基底方向：in=基底朝鼻侧(base-in)，out=基底朝颞侧(base-out)。当 horizontal>0 时必填。",
+        },
+        vertical: {
+          type: "number",
+          description:
+            "【combine】垂直棱镜大小，单位Δ（≥0）；为 0 或不填表示无垂直分量。范围 0–50。",
+        },
+        vertical_base: {
+          type: "string",
+          enum: ["up", "down"],
+          description:
+            "【combine】垂直棱镜基底方向：up=基底朝上(base-up)，down=基底朝下(base-down)。当 vertical>0 时必填。",
+        },
+        magnitude: {
+          type: "number",
+          description:
+            "【resolve】合棱镜大小，单位Δ（>0）。范围 0.01–50。",
+        },
+        angle: {
+          type: "number",
+          description:
+            "【resolve】合棱镜方向角，单位度（0–360）。约定：颞侧 base-out=0°、上=90°、鼻侧 base-in=180°、下=270°，逆时针为正。",
+        },
+      },
+      required: ["mode"],
+    },
+    sample: { mode: "combine", horizontal: 3, horizontal_base: "out", vertical: 4, vertical_base: "up" },
+    handler: handlePrismResolver,
+  },
+  {
+    name: "astigmatism_type_guide",
+    description:
+      "散光类型判定：根据球镜 SPH、柱镜 CYL 与轴位 AXIS，判断散光的「屈光类型」与「轴向规则」。屈光类型按两条主子午线光度的正负判定——两条都为负 = 复性近视散光，都为正 = 复性远视散光，一条为平光(0)另一条为负/正 = 单纯近视/远视散光，一正一负 = 混合散光。轴向规则按「负柱镜轴位」判定（取 ±30° 窗口）——轴位在 0–30° 或 150–180° = 顺规散光(with-the-rule)、60–120° = 逆规散光(against-the-rule)、其余 = 斜轴散光(oblique)。两条主子午线光度（SPH 与 SPH+CYL）在正/负柱镜记法下相同，判定结果与记法无关。仅做分类科普，不替代验光与诊断。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sph: {
+          type: "number",
+          description: "球镜度数 SPH，单位D，近视填负数、远视填正数，如 -2.00。",
+        },
+        cyl: {
+          type: "number",
+          description:
+            "柱镜度数 CYL，单位D。负散光记法填负数（如 -1.00），正散光记法填正数；填 0 表示无散光。",
+        },
+        axis: {
+          type: "number",
+          description: "散光轴位 AXIS，0-180 度的整数。有散光（cyl≠0）时必填；无散光时不要填。",
+        },
+      },
+      required: ["sph", "cyl"],
+    },
+    sample: { sph: -2, cyl: -1, axis: 180 },
+    handler: handleAstigmatismTypeGuide,
+  },
+  {
+    name: "progressive_fit_check",
+    description:
+      "渐进镜片装配高度评估：判断镜框在垂直方向是否「够高」装配渐进多焦点镜片。渐进片需要足够的装配高度（瞳孔中心到镜片最低缘的垂直距离）来容纳从看远到看近的过渡通道。常规（长通道）渐进最小约 18mm（舒适 ≥20mm）、短通道约 14mm（舒适 ≥16mm）、个性化/自由曲面约 13mm（舒适 ≥15mm）。可直接给实测装配高度 fitting_height，或给镜框高度 frame_b 由本工具粗估（≈ B/2 + 2mm）。给定目标设计 design 时评估其可行性与余量；不给时按「优先常规 > 短通道 > 个性化」推荐最合适的设计，装配高度过低（< 13mm）则建议换更高的镜框或改用单光/双光方案。仅做科普估算，实际装配高度须由视光师现场标记测量。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        fitting_height: {
+          type: "number",
+          description:
+            "装配高度（瞳孔中心到镜片最低缘的垂直距离），单位mm，常见 14-24，如 20。与 frame_b 至少提供一个；两者都给时以本值为准。",
+        },
+        frame_b: {
+          type: "number",
+          description:
+            "镜框垂直方向镜圈内高度（盒式标注法的 B 值），单位mm，常见 28-42，如 36。未提供 fitting_height 时用它粗估装配高度（≈ B/2 + 2）。",
+        },
+        design: {
+          type: "string",
+          enum: ["standard", "short", "premium"],
+          description:
+            "想评估的渐进设计：standard(常规/长通道)、short(短通道)、premium(个性化/自由曲面)。不填则由工具推荐最合适的设计。",
+        },
+      },
+    },
+    sample: { fitting_height: 17, design: "standard" },
+    handler: handleProgressiveFitCheck,
+  },
+  {
+    name: "minimum_blank_size",
+    description:
+      "最小镜片毛坯直径（MBS）计算：加工时镜片要从一块圆形毛坯上切出，毛坯必须足够大，才能在把光心移到瞳孔位置后仍完整覆盖镜框形状。标准公式 MBS = 有效直径 ED + 2 × 每片移心量 + 加工余量（默认 2mm）；其中移心量 = (镜圈宽 A + 鼻梁 DBL) ÷ 2 − 瞳距 PD ÷ 2，取绝对值。给定镜圈宽度 A、鼻梁 DBL、瞳距 PD（可选有效直径 ED，或镜框高度 B 由本工具按盒对角线 √(A²+B²) 保守估算 ED），算出框几何中心距、每片移心量、所用 ED 与最小毛坯直径，并对照常见毛坯规格（65/70/75/80mm）判断是否容易获得；若提供手头毛坯直径 blank_diameter，则判断够不够用并给出余量。与 frame_fit_calculator（移心/棱镜）互补。仅做科普估算，实际加工以视光师/加工中心的 ED 实测为准。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        frame_a: {
+          type: "number",
+          description: "镜圈宽度（镜片水平宽度 A / eye size），单位mm，常见 48-58，如 52。",
+        },
+        dbl: {
+          type: "number",
+          description: "鼻梁宽度（两镜片间距 DBL / bridge），单位mm，常见 14-22，如 18。",
+        },
+        pd: {
+          type: "number",
+          description: "佩戴者双眼远用瞳距 PD，单位mm，成人常见约 54-74，如 62。单眼瞳距按 PD÷2 估算。",
+        },
+        ed: {
+          type: "number",
+          description:
+            "镜片有效直径 ED（盒式标注中心到镜圈最远缘距离的 2 倍），单位mm，常见 50-65；不填则由 frame_b 估算，再不填则用 A 粗估。",
+        },
+        frame_b: {
+          type: "number",
+          description:
+            "镜框垂直方向镜圈内高度（盒式标注法 B 值），单位mm，常见 28-42；未提供 ed 时用它按盒对角线 √(A²+B²) 保守估算 ED。",
+        },
+        blank_diameter: {
+          type: "number",
+          description:
+            "手头 / 打算使用的镜片毛坯直径，单位mm，常见 65/70/75/80；提供时判断是否够切这副镜架并给出余量。不填则只给所需最小直径。",
+        },
+        cut_allowance: {
+          type: "number",
+          description: "加工余量（防崩边 / 定位误差留量），单位mm，默认 2，通常 2-3。",
+        },
+      },
+      required: ["frame_a", "dbl", "pd"],
+    },
+    sample: { frame_a: 54, dbl: 18, pd: 62, frame_b: 38, blank_diameter: 70 },
+    handler: handleMinimumBlankSize,
+  },
+  {
+    name: "vertical_imbalance_check",
+    description:
+      "近用垂直棱镜差（上下不平衡）评估：屈光参差者向下阅读时，视线落在镜片光心下方，两片各自按 Prentice 公式产生垂直棱镜（棱镜量 Δ = 向下移位量cm × 该子午线光度D）。因两眼垂直方向光度不同，两侧垂直棱镜不相等，形成需要垂直融像来克服的「差异棱镜」，过大时会在看书 / 看手机时引起眼疲劳、复视或串行。本工具按左右眼球镜 SPH（可含柱镜 CYL / 轴位 AXIS）算出各自垂直子午线光度（F_v = SPH + CYL·cos²(轴位)）、各眼在给定向下注视量（reading_drop，默认 8mm）下的垂直棱镜及基底方向，并给出两眼差异棱镜 = |F_v右 − F_v左| × 向下量(cm)，按经验阈值分级（<1Δ 多可耐受、1–1.5Δ 临界、≥1.5Δ 显著常需处理），并给出分开配近用镜 / 隐形眼镜 / 削底(slab-off) / 压贴棱镜等方案。水平方向因融像储备较大一般不计。仅做科普估算，不替代验光与双眼视功能评估。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        right_sph: {
+          type: "number",
+          description: "右眼 OD 球镜 SPH，单位D，近视填负数、远视填正数，如 -1.00。范围 -30~30。",
+        },
+        left_sph: {
+          type: "number",
+          description: "左眼 OS 球镜 SPH，单位D，近视填负数、远视填正数，如 -3.00。范围 -30~30。",
+        },
+        right_cyl: {
+          type: "number",
+          description: "右眼柱镜 CYL，单位D，默认 0；非 0 时必须同时提供 right_axis。范围 -10~10。",
+        },
+        left_cyl: {
+          type: "number",
+          description: "左眼柱镜 CYL，单位D，默认 0；非 0 时必须同时提供 left_axis。范围 -10~10。",
+        },
+        right_axis: {
+          type: "number",
+          description: "右眼散光轴位 AXIS，0-180 度整数；right_cyl≠0 时必填，否则不要填。",
+        },
+        left_axis: {
+          type: "number",
+          description: "左眼散光轴位 AXIS，0-180 度整数；left_cyl≠0 时必填，否则不要填。",
+        },
+        reading_drop: {
+          type: "number",
+          description:
+            "向下阅读时视线落点相对镜片光心的向下移位量，单位mm，默认 8（常见 8-10）。范围 0-20。",
+        },
+      },
+      required: ["right_sph", "left_sph"],
+    },
+    sample: { right_sph: -1, left_sph: -3, reading_drop: 10 },
+    handler: handleVerticalImbalanceCheck,
+  },
+  {
+    name: "lens_tilt_compensation",
+    description:
+      "镜片倾斜（前倾角 / 面弯）引起的度数变化与补偿估算：镜片相对视线倾斜时，到达眼睛的「如戴」光度会发生变化——球镜略增强，并额外引入一个轴位与旋转轴平行的散光（斜向屈光 / Martin 公式）。前倾角（pantoscopic，镜片上缘向脸部倾斜，绕水平轴）引入轴位 180° 的散光；面弯 / 包裹角（faceform / wrap，常见于运动镜、太阳镜，绕垂直轴）引入轴位 90° 的散光。按镜片球镜光度 power、倾斜角 tilt_angle、倾斜类型 tilt_type（默认 pantoscopic）与折射率 index（默认 1.5）计算：等效球镜 S' = F·(1 + sin²θ/(2n))、引入散光 C' = S'·tan²θ（轴位随类型），给出如戴等效度数、与原度数的偏差、按经验阈值（引入散光 <0.12D 可忽略、0.12–0.25D 临界、≥0.25D 明显需补偿）的分级与建议。高度数、大面弯（运动 / 包裹型太阳镜）时偏差放大，高端 / 自由曲面镜片会做「如戴位置（position-of-wear）补偿」抵消。适度前倾角（约 8–12°）属正常设计。仅做科普估算，散光处方需按主子午线分别评估，实际以视光师与加工为准。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        power: {
+          type: "number",
+          description:
+            "镜片球镜光度 F，单位D，近视填负数、远视填正数，如 -4.00。散光处方可按某条主子午线光度分别评估。范围 -20~20。",
+        },
+        tilt_angle: {
+          type: "number",
+          description:
+            "镜片相对视线的倾斜角 θ，单位度（°），如前倾角 10 或面弯 20。范围 0-40（0 表示不倾斜）。",
+        },
+        tilt_type: {
+          type: "string",
+          description:
+            "倾斜类型：pantoscopic（前倾角，绕水平轴，引入轴位 180° 散光）/ faceform（面弯 / 包裹角，绕垂直轴，引入轴位 90° 散光）。默认 pantoscopic。",
+        },
+        index: {
+          type: "number",
+          description: "镜片折射率 n，如 1.50 / 1.60 / 1.67 / 1.74。默认 1.5。范围 1.4-1.9。",
+        },
+      },
+      required: ["power", "tilt_angle"],
+    },
+    sample: { power: 6, tilt_angle: 20, tilt_type: "faceform", index: 1.6 },
+    handler: handleLensTiltCompensation,
+  },
+  {
+    name: "spectacle_magnification",
+    description:
+      "眼镜放大率（视网膜像放大 / 缩小）估算：框架镜会把视网膜上的像放大或缩小——这正是「远视（正镜）戴镜后眼睛显大、近视（负镜）戴镜后眼睛显小」的原因，也是两眼度数差（屈光参差）会引起不等像（aniseikonia）的根源。放大率 SM = 镜度因子 × 外形因子：镜度因子 PF = 1 / (1 − d·Fv)（d 为镜眼距 / 顶点距离，单位 m；Fv 为后顶点度数 D），外形因子 SF = 1 / (1 − (t/n)·F1)（t 为中心厚度 m，n 为折射率，F1 为前表面 / 基弧面度数 D）。给定球镜度数 power（必填）、镜眼距 vertex_distance（默认 12mm），可选前表面度数 base_curve 与中心厚度 center_thickness（两者齐备才计外形因子，否则只给镜度因子）、折射率 index（默认 1.5），输出放大率倍数、放大 / 缩小百分比与量级分级，并说明其与不等像、隐形眼镜换片的关系。正镜 SM>1（放大）、负镜 SM<1（缩小）。仅为科普估算，散光请按主子午线分别评估，两眼不等像评估请配合 anisometropia_guide。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        power: {
+          type: "number",
+          description:
+            "镜片后顶点球镜度数 Fv，单位 D，近视填负数、远视填正数，如 +4.00 或 -6.00。散光处方可按某条主子午线光度分别评估。范围 -20~20。",
+        },
+        vertex_distance: {
+          type: "number",
+          description:
+            "镜眼距（顶点距离）d，镜片后表面到角膜的距离，单位 mm，默认 12。范围 0-20。隐形眼镜≈0。",
+        },
+        base_curve: {
+          type: "number",
+          description:
+            "镜片前表面（基弧面）度数 F1，单位 D，通常为正值，如 +4.00 ~ +8.00。与 center_thickness 同时提供时才计入外形因子。范围 0-20。",
+        },
+        center_thickness: {
+          type: "number",
+          description:
+            "镜片中心厚度 t，单位 mm，如 2.0。与 base_curve 同时提供时才计入外形因子。范围 0-15。",
+        },
+        index: {
+          type: "number",
+          description: "镜片折射率 n，如 1.50 / 1.60 / 1.67 / 1.74。默认 1.5。范围 1.4-1.9。",
+        },
+      },
+      required: ["power"],
+    },
+    sample: { power: 5, vertex_distance: 12, base_curve: 7, center_thickness: 4, index: 1.5 },
+    handler: handleSpectacleMagnification,
+  },
+  {
+    name: "digital_eyestrain_guide",
+    description:
+      "数字视疲劳（电脑视觉综合征 CVS）自助评估与护眼建议：按日均屏幕时长、当前症状、是否规律休息、屏幕距离与年龄，估算视疲劳风险（低 / 中 / 高），并给出按「优先 / 建议 / 可选」分级的护眼措施——20-20-20 休息法、主动眨眼与干眼护理、屏幕距离与高度摆位、照明与反光控制、屈光矫正与办公 / 渐进镜片，以及何时需要就医的提示。这是一份用眼习惯层面的科普指南（与侧重镀膜选购的 lens_coating_advisor 互补），不替代专业眼科 / 视光检查。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        screen_hours: {
+          type: "number",
+          description: "日均屏幕（电脑 / 手机 / 平板）使用时长，单位小时。范围 0-24。",
+        },
+        symptoms: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: [
+              "dryness",
+              "blur",
+              "headache",
+              "double_vision",
+              "neck_shoulder",
+              "tearing",
+              "light_sensitive",
+            ],
+          },
+          description:
+            "当前症状，可多选：dryness(眼干涩/异物感), blur(视物模糊/聚焦变慢), headache(头痛/眉骨胀), double_vision(重影/复视), neck_shoulder(颈肩酸痛), tearing(流泪), light_sensitive(畏光)。无症状可不填。",
+        },
+        takes_breaks: {
+          type: "boolean",
+          description: "是否已规律休息（如遵循 20-20-20 法则、每小时起身活动）。默认否。",
+        },
+        screen_distance_cm: {
+          type: "number",
+          description: "眼睛到主屏幕的距离，单位 cm。范围 15-120。推荐约 50-70cm。可不填。",
+        },
+        age: {
+          type: "number",
+          description: "年龄，用于判断是否需结合老花（近附加）/ 办公 / 渐进镜片的提示。范围 5-120。可不填。",
+        },
+      },
+      required: ["screen_hours"],
+    },
+    sample: {
+      screen_hours: 9,
+      symptoms: ["dryness", "blur", "neck_shoulder"],
+      takes_breaks: false,
+      screen_distance_cm: 40,
+      age: 32,
+    },
+    handler: handleDigitalEyestrainGuide,
+  },
+  {
+    name: "rx_tolerance_check",
+    description:
+      "配镜处方公差核验（ANSI Z80.1 / ISO 21987）：把「订单处方 ordered」与「到货实测 measured」逐项比对，按国际公差标准判断单片成镜度数是否合格。球镜 / 子午线公差按参考度数（两条主子午线中绝对值较大者）确定：≤ 6.50D 时 ±0.13D，> 6.50D 按 ±2%；柱镜公差按柱镜大小分段（≤ 2.00D ±0.13D、2.00–4.50D ±0.15D、> 4.50D ±4%）；柱镜轴位公差随柱镜增大而收紧（≤ 0.25D ±14°、≤ 0.50D ±7°、≤ 0.75D ±5°、≤ 1.50D ±3°、> 1.50D ±2°）；可选核验下加光 ADD（≤ 4.00D ±0.12D、> 4.00D ±0.18D）。比对前会把实测处方统一到订单的柱镜记法，故正 / 负柱镜记法不同不会误判。输出逐项偏差、对应公差与合格 / 超差判定及总结论。仅为按通用阈值的估算，正式验收以标准原文与焦度计为准。与 prescription_interpreter、prescription_transpose、frame_fit_calculator 互补。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ordered_sph: {
+          type: "number",
+          description: "订单（开具）球镜 SPH，单位 D，近视填负、远视填正，如 -4.00。范围 -30~30。",
+        },
+        ordered_cyl: {
+          type: "number",
+          description: "订单柱镜 CYL，单位 D，可正可负，无散光可不填（默认 0）。范围 -10~10。",
+        },
+        ordered_axis: {
+          type: "number",
+          description: "订单轴位 AXIS，整数 0-180，单位 °。订单有柱镜时必填、无柱镜时不要填。",
+        },
+        measured_sph: {
+          type: "number",
+          description: "到货实测球镜 SPH（焦度计读数），单位 D。范围 -30~30。",
+        },
+        measured_cyl: {
+          type: "number",
+          description:
+            "到货实测柱镜 CYL，单位 D，可正可负，无散光可不填（默认 0）。记法可与订单不同，会自动统一后比对。范围 -10~10。",
+        },
+        measured_axis: {
+          type: "number",
+          description: "到货实测轴位 AXIS，整数 0-180，单位 °。实测有柱镜时必填、无柱镜时不要填。",
+        },
+        ordered_add: {
+          type: "number",
+          description: "订单下加光 ADD，单位 D，如 +2.00。需与 measured_add 同时提供才核验 ADD。范围 0-6。",
+        },
+        measured_add: {
+          type: "number",
+          description: "到货实测下加光 ADD，单位 D。需与 ordered_add 同时提供才核验 ADD。范围 0-6。",
+        },
+      },
+      required: ["ordered_sph", "measured_sph"],
+    },
+    sample: {
+      ordered_sph: -4,
+      ordered_cyl: -1,
+      ordered_axis: 180,
+      measured_sph: -4,
+      measured_cyl: -1,
+      measured_axis: 178,
+      ordered_add: 2,
+      measured_add: 2,
+    },
+    handler: handleRxToleranceCheck,
+  },
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -2085,6 +2634,260 @@ function handlePrescriptionTranspose(args: ToolArgs): ToolResult {
 - 本工具只做记法换算与科普，不改变镜片本身，也不替代验光。`);
 }
 
+/** 按两条主子午线的矫正光度（p1=SPH、p2=SPH+CYL）判定散光屈光类型。 */
+function astigmatismRefractiveType(p1: number, p2: number): string {
+  if (p1 < 0 && p2 < 0) return "复性近视散光（compound myopic）";
+  if (p1 > 0 && p2 > 0) return "复性远视散光（compound hyperopic）";
+  if ((p1 === 0 && p2 < 0) || (p2 === 0 && p1 < 0)) return "单纯近视散光（simple myopic）";
+  if ((p1 === 0 && p2 > 0) || (p2 === 0 && p1 > 0)) return "单纯远视散光（simple hyperopic）";
+  return "混合散光（mixed）";
+}
+
+/** 按负柱镜轴位（±30° 窗口）判定散光轴向规则。 */
+function astigmatismAxisRule(minusAxis: number): string {
+  if (minusAxis <= 30 || minusAxis >= 150) return "顺规散光（with-the-rule，循规）";
+  if (minusAxis >= 60 && minusAxis <= 120) return "逆规散光（against-the-rule）";
+  return "斜轴散光（oblique）";
+}
+
+function handleAstigmatismTypeGuide(args: ToolArgs): ToolResult {
+  const sph = expectNumber(args, "sph", { min: -30, max: 30 });
+  const cyl = expectNumber(args, "cyl", { min: -10, max: 10 });
+  const axis = optionalNumber(args, "axis", { min: 0, max: 180, integer: true });
+  validateAxis("处方", cyl, axis);
+
+  const se = sph + cyl / 2;
+
+  if (cyl === 0) {
+    return textResult(`## 散光类型判定
+
+> 两条主子午线光度相同，没有柱镜分量，即不存在散光，无所谓类型与轴向规则。
+
+**输入**
+- 处方：${renderPrescriptionLine(sph, cyl)}（${describeEye(sph, cyl)}）
+
+**结果**
+- 柱镜为 0，无散光。仅为球性屈光（${sph < 0 ? "近视" : sph > 0 ? "远视" : "正视 / 平光"}），等效球镜 ${formatSignedDiopter(se)}。
+
+**提醒**
+- 本工具只做分类科普，不替代验光与诊断。`);
+  }
+
+  // 两条主子午线：沿轴位方向光度 = SPH，垂直方向光度 = SPH + CYL（与正/负柱镜记法无关）。
+  const axisMeridian = axis as number;
+  const perpMeridian = transposeAxis(axisMeridian);
+  const pAxis = sph;
+  const pPerp = sph + cyl;
+
+  const refractiveType = astigmatismRefractiveType(pAxis, pPerp);
+
+  // 轴向规则按「负柱镜轴位」判定：若输入是正柱镜，先转成负柱镜轴位。
+  const minusAxis = cyl < 0 ? axisMeridian : transposeAxis(axisMeridian);
+  const minusCyl = cyl < 0 ? cyl : -cyl;
+  const minusSph = cyl < 0 ? sph : sph + cyl;
+  const axisRule = astigmatismAxisRule(minusAxis);
+
+  const notes: string[] = [];
+  notes.push(
+    "两条主子午线光度（SPH 与 SPH+CYL）在正、负柱镜两种记法下完全相同，所以屈光类型的判定与记法无关。"
+  );
+  notes.push(
+    `轴向规则按「负柱镜轴位」判定（本例负柱镜轴位 ${minusAxis}°，取 ±30° 窗口：0–30° 或 150–180° 顺规、60–120° 逆规、其余斜轴）。`
+  );
+  if (axisRule.startsWith("顺规")) {
+    notes.push("顺规散光最常见（尤其年轻人角膜垂直向更陡），多数人对低度顺规散光适应较好。");
+  } else if (axisRule.startsWith("逆规")) {
+    notes.push("逆规散光随年龄增长更常见，可能更明显地影响对比度与夜间视力，建议足矫并留意适应。");
+  } else {
+    notes.push("斜轴散光的像位于斜向，初次配戴或轴位改变时更易出现视物倾斜 / 变形，需要更充分的适应期。");
+  }
+  if (Math.abs(cyl) >= 2) {
+    notes.push("柱镜 ≥ 2.00D 属较高散光，首次足矫可能不适，必要时分步适应，并由视光师现场试戴确认轴位。");
+  }
+
+  return textResult(`## 散光类型判定
+
+> 散光可从两个维度描述：一是「屈光类型」——看两条主子午线的焦点相对视网膜落在哪里（由两条子午线光度的正负决定）；二是「轴向规则」——看矫正用负柱镜的轴位落在哪个方向（顺规 / 逆规 / 斜轴）。
+
+**输入**
+- 处方：${renderPrescriptionLine(sph, cyl, axisMeridian)}（${describeEye(sph, cyl)}）
+- 等效球镜（SPH + CYL/2）：${formatSignedDiopter(se)}
+
+**两条主子午线**
+- 沿轴位 ${axisMeridian}° 方向：光度 ${formatSignedDiopter(pAxis)}（= SPH）
+- 沿 ${perpMeridian}° 方向（垂直于轴位）：光度 ${formatSignedDiopter(pPerp)}（= SPH + CYL）
+
+**判定结果**
+- 屈光类型：**${refractiveType}**
+- 轴向规则：**${axisRule}**
+- 换算用负柱镜记法：${renderPrescriptionLine(minusSph, minusCyl, minusAxis)}
+
+**说明**
+${renderBulletList(notes, "判定完成。")}
+
+**提醒**
+- 分类用于科普理解，不代表「度数准不准」或「能不能适应」，也不是诊断。
+- 散光短期内明显加重、双眼差异大、或矫正视力上不去（尤其不规则散光 / 疑似圆锥角膜），应到医院进一步检查。
+- 本工具只做分类科普，不替代验光与诊断。`);
+}
+
+type ProgressiveDesignKey = "standard" | "short" | "premium";
+
+type ProgressiveDesign = {
+  key: ProgressiveDesignKey;
+  label: string;
+  min: number;
+  comfortable: number;
+  note: string;
+};
+
+// 各渐进设计的典型最小/舒适装配高度（mm），为行业常见经验区间。
+const PROGRESSIVE_DESIGNS: ProgressiveDesign[] = [
+  {
+    key: "standard",
+    label: "常规渐进（长通道）",
+    min: 18,
+    comfortable: 20,
+    note: "通道长、看近与中间区域大、周边畸变最小，视觉最自然，价格通常也最友好；代价是对镜框高度要求最高。",
+  },
+  {
+    key: "short",
+    label: "短通道渐进",
+    min: 14,
+    comfortable: 16,
+    note: "通道较短，可适配偏小 / 偏扁的镜框；代价是看近区稍小、周边像散与变形略明显，视近时低头幅度要更到位。",
+  },
+  {
+    key: "premium",
+    label: "个性化 / 自由曲面渐进",
+    min: 13,
+    comfortable: 15,
+    note: "按个人参数优化的短通道设计，能在较低的镜框里尽量保住可用通道；价格较高，仍建议尽量给足高度。",
+  },
+];
+
+type ProgressiveVerdict = "ample" | "tight" | "insufficient";
+
+function progressiveVerdict(h: number, design: ProgressiveDesign): ProgressiveVerdict {
+  if (h >= design.comfortable) return "ample";
+  if (h >= design.min) return "tight";
+  return "insufficient";
+}
+
+function progressiveVerdictLabel(verdict: ProgressiveVerdict): string {
+  return verdict === "ample" ? "充足" : verdict === "tight" ? "临界" : "不足";
+}
+
+function progressiveDesignLine(h: number, design: ProgressiveDesign): string {
+  const verdict = progressiveVerdict(h, design);
+  const label = progressiveVerdictLabel(verdict);
+  let detail: string;
+  if (verdict === "ample") {
+    detail = `高于舒适线 ${mm(h - design.comfortable)} mm`;
+  } else if (verdict === "tight") {
+    detail = `已达最小 ${mm(design.min)}，但距舒适线还差 ${mm(design.comfortable - h)} mm`;
+  } else {
+    detail = `距最小 ${mm(design.min)} 还差 ${mm(design.min - h)} mm`;
+  }
+  return `- ${design.label}：最小 ${mm(design.min)} / 舒适 ≥${mm(design.comfortable)} mm → **${label}**（${detail}）`;
+}
+
+function handleProgressiveFitCheck(args: ToolArgs): ToolResult {
+  const fittingHeight = optionalNumber(args, "fitting_height", { min: 8, max: 40 });
+  const frameB = optionalNumber(args, "frame_b", { min: 20, max: 60 });
+  const design = optionalEnum(args, "design", ["standard", "short", "premium"] as const);
+
+  if (fittingHeight === undefined && frameB === undefined) {
+    throw new Error("请至少提供装配高度 fitting_height 或镜框高度 frame_b 之一");
+  }
+
+  let h: number;
+  let basisLine: string;
+  if (fittingHeight !== undefined) {
+    h = fittingHeight;
+    basisLine = `- 实测装配高度：**${mm(h)} mm**`;
+    if (frameB !== undefined) {
+      basisLine += `\n- 镜框高度 B：${mm(frameB)} mm（已提供装配高度，B 值仅作参考）`;
+    }
+  } else {
+    // 粗估：瞳孔中心通常略高于镜圈几何中心，装配高度 ≈ B/2 + 2mm。
+    h = (frameB as number) / 2 + 2;
+    basisLine = `- 镜框高度 B：${mm(frameB as number)} mm\n- 装配高度（由 B 粗估 ≈ B/2 + 2）：**${mm(h)} mm**（估算值，实际以视光师现场标记为准）`;
+  }
+
+  const designLines = PROGRESSIVE_DESIGNS.map((d) => progressiveDesignLine(h, d)).join("\n");
+
+  const notes: string[] = [];
+  let conclusion: string;
+
+  if (design !== undefined) {
+    const target = PROGRESSIVE_DESIGNS.find((d) => d.key === design) as ProgressiveDesign;
+    const verdict = progressiveVerdict(h, target);
+    if (verdict === "ample") {
+      conclusion = `装配高度 ${mm(h)} mm 对「${target.label}」**充足**（≥ 舒适线 ${mm(target.comfortable)} mm），可以放心装配。`;
+    } else if (verdict === "tight") {
+      conclusion = `装配高度 ${mm(h)} mm 对「${target.label}」**临界可装配**：达到了最小 ${mm(target.min)} mm，但未到舒适线 ${mm(target.comfortable)} mm（还差 ${mm(target.comfortable - h)} mm），看近区会偏小、通道偏紧，建议尽量把镜框配得再高一点或由视光师确认。`;
+    } else {
+      const needMin = target.min - h;
+      const roomier = PROGRESSIVE_DESIGNS.filter((d) => progressiveVerdict(h, d) !== "insufficient");
+      conclusion =
+        `装配高度 ${mm(h)} mm 对「${target.label}」**不足**（低于最小 ${mm(target.min)} mm，还差 ${mm(needMin)} mm），不建议装配，否则通道被截断、看远或看近区域缺失。`;
+      conclusion +=
+        roomier.length > 0
+          ? `\n可改选门槛更低的设计：${roomier.map((d) => d.label).join(" / ")}；或换一副更高的镜框（镜框高度 B 每增加约 2mm，装配高度约增加 1mm）。`
+          : `\n当前高度连门槛最低的个性化设计都不够，建议换更高的镜框，或改用单光 / 双光方案（见下）。`;
+    }
+    notes.push(
+      `上表给出三种设计在装配高度 ${mm(h)} mm 下的通用评估，便于与目标设计「${target.label}」对比。`
+    );
+    notes.push(target.note);
+  } else {
+    // 不指定设计时推荐：优先常规 > 短通道 > 个性化；先取舒适、再取临界。
+    const comfortable = PROGRESSIVE_DESIGNS.find((d) => progressiveVerdict(h, d) === "ample");
+    const feasible = PROGRESSIVE_DESIGNS.find((d) => progressiveVerdict(h, d) === "tight");
+    if (comfortable !== undefined) {
+      conclusion = `推荐「${comfortable.label}」：装配高度 ${mm(h)} mm 对它充足，是在该高度下视觉体验与性价比最佳的选择。`;
+      notes.push(comfortable.note);
+      if (comfortable.key !== "standard") {
+        notes.push("常规（长通道）渐进在更高的镜框里视野更自然，若还能挑到更高的镜框可优先考虑。");
+      }
+    } else if (feasible !== undefined) {
+      conclusion = `推荐「${feasible.label}」：装配高度 ${mm(h)} mm 仅达到它的最小值 ${mm(feasible.min)} mm（临界），可以装配但通道偏紧、看近区偏小；若能换到更高的镜框，可升级到视野更大的设计。`;
+      notes.push(feasible.note);
+      notes.push("临界高度下首次配戴更需要适应，建议由视光师现场试戴确认通道与看近区是否够用。");
+    } else {
+      conclusion = `当前装配高度 ${mm(h)} mm 低于所有渐进设计的最小门槛（个性化设计也需约 13mm），**不建议配渐进镜片**。建议换一副更高的镜框（镜框高度 B 增加约 2mm，装配高度约增加 1mm），或改用单光看远 + 单独老花镜、或双光镜片等方案。`;
+      notes.push("镜框太扁 / 太小时强行装配渐进，会牺牲看近区甚至截断通道，得不偿失。");
+    }
+  }
+
+  notes.push(
+    "装配高度指瞳孔中心到镜片最低缘的垂直距离，须在佩戴者戴正镜架后由视光师现场标记瞳孔位置测量；B 值只是镜框几何高度，实际装配高度还受镜架在脸上的位置、鼻托与前倾角影响。"
+  );
+  notes.push("通道越短，看近区越小、周边像散 / 变形越明显；在高度允许时优先选更长的通道。");
+
+  return textResult(`## 渐进镜片装配高度评估
+
+> 渐进多焦点镜片从上到下由看远区经「渐进通道」过渡到看近区，需要足够的**装配高度**（瞳孔中心到镜片最低缘的垂直距离）来容纳这段通道。镜框太扁、装配高度不够，通道就会被截断、看近区被削掉。不同设计对最小高度要求不同：常规（长通道）最高，短通道、个性化（自由曲面）可适配更扁的镜框。
+
+**输入**
+${basisLine}
+${design !== undefined ? `- 目标设计：${(PROGRESSIVE_DESIGNS.find((d) => d.key === design) as ProgressiveDesign).label}` : "- 目标设计：未指定（由工具推荐）"}
+
+**各设计最小装配高度评估**
+${designLines}
+
+**结论**
+${conclusion}
+
+**说明**
+${renderBulletList(notes, "评估完成。")}
+
+**提醒**
+- 本工具只做科普估算，最小高度为行业常见经验值，不同品牌 / 系列的实际要求可能不同，务必以镜片厂商规格与视光师现场测量为准。
+- 装配高度还要配合瞳距（水平方向）一起定位，可配合 \`frame_fit_calculator\`；是否需要渐进可先用 \`progressive_lens_assessment\` 评估。`);
+}
+
 function frameFitRating(absDec: number): string {
   if (absDec < 2) return "很合适";
   if (absDec < 4) return "合适";
@@ -2186,6 +2989,1810 @@ ${renderBulletList(notes, "数值看起来合理。")}
 - 移心量只反映镜架规格与瞳距的匹配度，不代表镜架戴在脸上是否舒适；镜圈弧度、鼻托、镜腿宽度与脸宽也很重要。
 - 高度数、渐进 / 多焦点镜片对光心（含瞳高）定位更敏感，务必以视光师现场测量为准。
 - 本工具只做科普估算，不替代专业验配。`);
+}
+
+function handleMinimumBlankSize(args: ToolArgs): ToolResult {
+  const frameA = expectNumber(args, "frame_a", { min: 30, max: 70 });
+  const dbl = expectNumber(args, "dbl", { min: 10, max: 30 });
+  const pd = expectNumber(args, "pd", { min: 40, max: 85 });
+  const edInput = optionalNumber(args, "ed", { min: 20, max: 80 });
+  const frameB = optionalNumber(args, "frame_b", { min: 20, max: 60 });
+  const blankDiameter = optionalNumber(args, "blank_diameter", { min: 40, max: 85 });
+  const cutAllowance = optionalNumber(args, "cut_allowance", { min: 0, max: 6 }) ?? 2;
+
+  // 盒式标注法：框几何中心距 = 镜圈宽 + 鼻梁；单眼瞳距 = PD / 2。
+  const framePd = frameA + dbl;
+  const monoPd = pd / 2;
+  // 每片移心量：把光心从框几何中心移到瞳孔所需的位移，取绝对值参与毛坯计算。
+  const decentration = framePd / 2 - monoPd;
+  const absDec = Math.abs(decentration);
+  const decDirection =
+    decentration > 0.05 ? "向鼻侧内移" : decentration < -0.05 ? "向颞侧外移" : "几乎无需移心";
+
+  // 有效直径 ED：优先用实测值；否则用盒对角线 √(A²+B²) 保守估算（毛坯宁大勿小）；再否则用 A 粗估。
+  let ed: number;
+  let edSource: string;
+  if (edInput !== undefined) {
+    ed = edInput;
+    edSource = `实测有效直径 ED ${mm(ed)}mm`;
+  } else if (frameB !== undefined) {
+    ed = Math.sqrt(frameA * frameA + frameB * frameB);
+    edSource = `由盒对角线保守估算 ED ≈ √(A² + B²) = √(${mm(frameA)}² + ${mm(frameB)}²) ≈ ${mm(ed)}mm`;
+  } else {
+    ed = frameA;
+    edSource = `缺少 ED 与 B，暂以镜圈宽 A ${mm(frameA)}mm 粗估（实际 ED 通常更大，务必实测）`;
+  }
+
+  // 标准公式：最小毛坯直径 = 有效直径 + 2 × 移心量 + 加工余量。
+  const mbs = ed + 2 * absDec + cutAllowance;
+
+  const notes: string[] = [];
+  notes.push(
+    `每片移心量 ${mm(absDec)}mm（${decDirection}）：框几何中心距 ${mm(framePd)}mm 与瞳距 ${mm(pd)}mm 之差的一半；框越宽于瞳距、移心越多，所需毛坯越大。`
+  );
+  notes.push(`有效直径来源：${edSource}。`);
+
+  // 对照常见毛坯规格判断获取难度。
+  let availability: string;
+  if (mbs <= 65) {
+    availability = "≤ 65mm，常规单光毛坯（多为 65/70mm 起）即可轻松切出，最易获得。";
+  } else if (mbs <= 70) {
+    availability = "在 65–70mm 之间，常见 70mm 毛坯可覆盖，一般无需特殊订货。";
+  } else if (mbs <= 75) {
+    availability = "在 70–75mm 之间，需要较大的 75mm 毛坯；部分高折射率 / 渐进片在该直径下可选规格变少，下单前先确认库存。";
+  } else {
+    availability = "超过 75mm，需 80mm 或特殊订货的大毛坯；建议改选几何中心距更贴合瞳距（A + DBL 更接近 PD）的镜架，或确认该材料是否有此直径。";
+  }
+  notes.push(`最小毛坯直径约 ${mm(mbs)}mm——${availability}`);
+
+  let blankLine = "";
+  if (blankDiameter !== undefined) {
+    const margin = blankDiameter - mbs;
+    if (margin >= 0) {
+      blankLine = `\n- 手头毛坯 ${mm(blankDiameter)}mm：**够用**，余量约 ${mm(margin)}mm（直径方向，含 ${mm(cutAllowance)}mm 加工余量后仍有富余）。`;
+    } else {
+      blankLine = `\n- 手头毛坯 ${mm(blankDiameter)}mm：**偏小**，还差约 ${mm(-margin)}mm，直接切这副镜架可能切不全或光心移不到位；需换更大毛坯或更贴合瞳距的镜架。`;
+    }
+  }
+
+  if (absDec >= 4) {
+    notes.push(
+      "移心量偏大会同时推高毛坯直径和镜片边缘厚度（高度数尤甚）；若毛坯规格受限，优先考虑更贴合瞳距的镜架。"
+    );
+  }
+
+  return textResult(`## 最小镜片毛坯直径（MBS）
+
+> 镜片要从一块圆形毛坯上切出，加工时还要把**光心移到瞳孔正前方**。毛坯必须大到：覆盖镜框形状（有效直径 ED）+ 两侧各让出一个移心量 + 一点加工余量。标准公式 **MBS = ED + 2 × 移心量 + 加工余量**。本工具只做科普估算，实际以加工中心的 ED 实测为准。
+
+**输入**
+- 镜圈宽度 A：${mm(frameA)} mm
+- 鼻梁宽度 DBL：${mm(dbl)} mm
+- 双眼瞳距 PD：${mm(pd)} mm（单眼 ${mm(monoPd)} mm）${frameB !== undefined ? `\n- 镜框高度 B：${mm(frameB)} mm` : ""}${edInput !== undefined ? `\n- 有效直径 ED：${mm(edInput)} mm` : ""}
+- 加工余量：${mm(cutAllowance)} mm
+
+**测算结果**
+- 框几何中心距（框 PD）：**${mm(framePd)} mm**（A ${mm(frameA)} + DBL ${mm(dbl)}）
+- 每片移心量：**${mm(absDec)} mm**（${decDirection}）
+- 所用有效直径 ED：**${mm(ed)} mm**
+- 最小毛坯直径 MBS：**${mm(mbs)} mm**（${mm(ed)} + 2 × ${mm(absDec)} + ${mm(cutAllowance)}）${blankLine}
+
+**说明**
+${renderBulletList(notes, "数值看起来合理。")}
+
+**提醒**
+- ED 若非实测，本工具用盒对角线 √(A²+B²) 保守估算（偏大更安全），或在只有 A 时粗估；真实 ED 取决于镜片形状，务必以加工中心测量为准。
+- 本公式假设双眼对称、光心只做水平移心；如需配合瞳高（垂直移心）或大散光 / 渐进定位，所需毛坯可能更大。
+- 想看移心引入的水平棱镜，可配合 \`frame_fit_calculator\`。
+- 本工具只做科普估算，不替代专业验配与加工。`);
+}
+
+/** 近用垂直棱镜差分级阈值（Δ）。 */
+const VERTICAL_IMBALANCE_TOLERABLE = 1.0;
+const VERTICAL_IMBALANCE_BORDERLINE = 1.5;
+
+/** 某片在垂直子午线（90°）上的光度：F_v = SPH + CYL·cos²(axis)。 */
+function verticalMeridianPower(sph: number, cyl: number, axis: number): number {
+  const rad = (axis * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  return sph + cyl * cos * cos;
+}
+
+function handleVerticalImbalanceCheck(args: ToolArgs): ToolResult {
+  const rightSph = expectNumber(args, "right_sph", { min: -30, max: 30 });
+  const leftSph = expectNumber(args, "left_sph", { min: -30, max: 30 });
+  const rightCyl = optionalNumber(args, "right_cyl", { min: -10, max: 10 }) ?? 0;
+  const leftCyl = optionalNumber(args, "left_cyl", { min: -10, max: 10 }) ?? 0;
+  const rightAxis = optionalNumber(args, "right_axis", { min: 0, max: 180, integer: true });
+  const leftAxis = optionalNumber(args, "left_axis", { min: 0, max: 180, integer: true });
+  const readingDrop = optionalNumber(args, "reading_drop", { min: 0, max: 20 }) ?? 8;
+
+  if (rightCyl !== 0 && rightAxis === undefined) {
+    throw new Error("右眼有柱镜（right_cyl≠0）时必须提供 right_axis");
+  }
+  if (leftCyl !== 0 && leftAxis === undefined) {
+    throw new Error("左眼有柱镜（left_cyl≠0）时必须提供 left_axis");
+  }
+
+  // 垂直子午线光度。无柱镜时轴位不参与（cos² 项乘 0）。
+  const fvRight = verticalMeridianPower(rightSph, rightCyl, rightAxis ?? 0);
+  const fvLeft = verticalMeridianPower(leftSph, leftCyl, leftAxis ?? 0);
+
+  const dropCm = readingDrop / 10;
+  // 向下注视：正镜呈 base-up，负镜呈 base-down；以 base-up 为正号。
+  const prismRight = fvRight * dropCm;
+  const prismLeft = fvLeft * dropCm;
+  // 差异棱镜 = 两眼垂直光度差 × 向下量（标准配镜公式）。
+  const imbalance = Math.abs(fvRight - fvLeft) * dropCm;
+
+  const baseWord = (fv: number): string =>
+    fv > 0.05 ? "base-up（基底朝上）" : fv < -0.05 ? "base-down（基底朝下）" : "几乎无垂直棱镜";
+
+  let level: string;
+  let advice: string;
+  if (imbalance < VERTICAL_IMBALANCE_TOLERABLE) {
+    level = "可忽略 / 多可耐受";
+    advice =
+      "差异棱镜较小，多数人靠垂直融像储备即可克服，通常无需特殊处理；按常规配镜即可，若近距离仍有不适再复查。";
+  } else if (imbalance < VERTICAL_IMBALANCE_BORDERLINE) {
+    level = "临界（部分人有症状）";
+    advice =
+      "处于临界范围，长时间近距离用眼（阅读 / 手机 / 电脑）可能出现眼疲劳或偶发复视；可优先考虑单独配一副近用 / 工作镜（把两眼近用光心分别对准向下注视点），或改用隐形眼镜。";
+  } else {
+    level = "显著（常需处理）";
+    advice =
+      "差异棱镜明显，近距离阅读易出现复视、串行、眼酸胀，建议采取补偿方案：① 单独配近用镜并下移光心；② 隐形眼镜（镜片随眼转动、光心始终对准瞳孔，几乎不产生差异棱镜）；③ 双光片用削底(slab-off)工艺或 Fresnel 压贴棱镜补偿；④ 请视光师做双眼视功能评估后定方案。";
+  }
+
+  const notes: string[] = [];
+  notes.push(
+    `垂直子午线光度：右眼 F_v=${formatSignedDiopter(fvRight)}、左眼 F_v=${formatSignedDiopter(fvLeft)}（F_v = SPH + CYL·cos²轴位；无散光时即 SPH）。`
+  );
+  notes.push(
+    `向下 ${mm(readingDrop)}mm 注视时每片垂直棱镜：右眼约 ${trimTrailingZeros(Math.abs(prismRight).toFixed(2))}Δ ${baseWord(fvRight)}、左眼约 ${trimTrailingZeros(Math.abs(prismLeft).toFixed(2))}Δ ${baseWord(fvLeft)}。`
+  );
+  if (imbalance >= VERTICAL_IMBALANCE_TOLERABLE) {
+    const higherEye = fvRight > fvLeft ? "右眼" : "左眼";
+    notes.push(
+      `两眼垂直棱镜方向 / 大小不一致，${higherEye}偏正（base-up 更强），向下看时两眼影像被上下拉开，需靠垂直融像维持单像。`
+    );
+  }
+  if (Math.abs(rightSph - leftSph) < 0.25 && Math.abs(rightCyl - leftCyl) < 0.25) {
+    notes.push("两眼度数接近，垂直方向差异很小，通常不构成问题。");
+  }
+
+  return textResult(`## 近用垂直棱镜差（上下不平衡）评估
+
+> 向下阅读时，视线落在镜片光心下方，每片按 **Prentice 公式**（棱镜 Δ = 向下量cm × 垂直光度D）产生垂直棱镜。屈光参差者两眼垂直光度不同，两侧棱镜不相等，形成需要垂直融像克服的「差异棱镜」——过大会在看书 / 看手机时引起眼疲劳、复视。水平方向因融像储备大，一般不单独评估。以下为科普估算，实际以验光与双眼视功能检查为准。
+
+**双眼度数**
+- 右眼 OD：${renderPrescriptionLine(rightSph, rightCyl, rightCyl !== 0 ? rightAxis : undefined)}
+- 左眼 OS：${renderPrescriptionLine(leftSph, leftCyl, leftCyl !== 0 ? leftAxis : undefined)}
+- 向下注视量：${mm(readingDrop)} mm（光心下方）
+
+**测算结果**
+- 两眼垂直光度差：${formatDiopter(Math.abs(fvRight - fvLeft))}
+- **差异垂直棱镜：约 ${trimTrailingZeros(imbalance.toFixed(2))}Δ** → **${level}**
+- 判读阈值：< ${trimTrailingZeros(VERTICAL_IMBALANCE_TOLERABLE.toFixed(1))}Δ 多可耐受、${trimTrailingZeros(VERTICAL_IMBALANCE_TOLERABLE.toFixed(1))}–${trimTrailingZeros(VERTICAL_IMBALANCE_BORDERLINE.toFixed(1))}Δ 临界、≥ ${trimTrailingZeros(VERTICAL_IMBALANCE_BORDERLINE.toFixed(1))}Δ 显著
+
+**建议**
+- ${advice}
+
+**说明**
+${renderBulletList(notes, "数值看起来合理。")}
+
+**提醒**
+- 本评估只针对**垂直**方向的差异棱镜（上下不平衡），这是屈光参差近用时最常见的症状来源；水平方向通常可被较大的融像储备代偿。
+- 向下注视量默认 8mm（常见 8–10mm），实际取决于镜架高度、瞳高与习惯坐姿，差异棱镜随该值线性增减。
+- 渐进 / 双光片在向下注视区同样会产生差异棱镜，需视光师结合子段高度 / 加工工艺评估。
+- 想把处方棱镜合成 / 分解，可配合 \`prism_resolver\`；想看整体屈光参差与影像不等，可配合 \`anisometropia_guide\`。
+- 本工具只做科普估算，不替代专业验光与处方。`);
+}
+
+const TILT_CYL_NEGLIGIBLE = 0.12;
+const TILT_CYL_NOTICEABLE = 0.25;
+
+function handleLensTiltCompensation(args: ToolArgs): ToolResult {
+  const power = expectNumber(args, "power", { min: -20, max: 20 });
+  const tiltAngle = expectNumber(args, "tilt_angle", { min: 0, max: 40 });
+  const tiltType = optionalEnum(args, "tilt_type", ["pantoscopic", "faceform"] as const) ?? "pantoscopic";
+  const index = optionalNumber(args, "index", { min: 1.4, max: 1.9 }) ?? 1.5;
+
+  const rad = (tiltAngle * Math.PI) / 180;
+  const sin = Math.sin(rad);
+  const tan = Math.tan(rad);
+  // Martin 斜向屈光：倾斜后等效球镜 S' = F·(1 + sin²θ/(2n))，引入散光 C' = S'·tan²θ。
+  const effectiveSphere = power * (1 + (sin * sin) / (2 * index));
+  const inducedCyl = effectiveSphere * tan * tan;
+  const sphereShift = effectiveSphere - power;
+  // 前倾角绕水平轴（引入轴 180°）；面弯绕垂直轴（引入轴 90°）。
+  const inducedAxis = tiltType === "pantoscopic" ? 180 : 90;
+  const absCyl = Math.abs(inducedCyl);
+
+  const typeLabel =
+    tiltType === "pantoscopic" ? "前倾角（pantoscopic，绕水平轴）" : "面弯 / 包裹角（faceform / wrap，绕垂直轴）";
+
+  let level: string;
+  let advice: string;
+  if (tiltAngle === 0 || absCyl < TILT_CYL_NEGLIGIBLE) {
+    level = "可忽略";
+    advice =
+      "倾斜引入的散光小于约 0.12D（不足一个 0.25D 步进），对视觉基本无影响，按常规配镜即可，无需特别补偿。";
+  } else if (absCyl < TILT_CYL_NOTICEABLE) {
+    level = "临界（约一个处方步进）";
+    advice =
+      "倾斜引入的散光接近 0.25D，对多数人影响有限；若对清晰度敏感、或镜片度数 / 面弯还会更大，可请视光师考虑做如戴位置（position-of-wear）补偿，或适当减小倾斜。";
+  } else {
+    level = "明显（建议补偿）";
+    advice =
+      "倾斜引入的散光达到或超过 0.25D，可能带来视物变形、边缘模糊或视疲劳，建议：① 选用会做「如戴位置补偿」的高端 / 自由曲面（freeform）镜片，按实际前倾角 / 面弯 / 镜眼距反算镜片面；② 面弯过大的运动 / 包裹型镜架适当减小包裹角；③ 高度数者尤其注意，偏差随度数线性放大。";
+  }
+
+  const notes: string[] = [];
+  notes.push(
+    `倾斜后等效球镜 S' = F·(1 + sin²θ/(2n)) = ${formatSignedDiopter(power)}·(1 + sin²${trimTrailingZeros(tiltAngle.toFixed(0))}°/(2×${trimTrailingZeros(index.toFixed(2))})) ≈ ${formatSignedDiopter(effectiveSphere)}。`
+  );
+  notes.push(
+    `引入散光 C' = S'·tan²θ ≈ ${formatSignedDiopter(inducedCyl)}，轴位 ${inducedAxis}°（与旋转轴平行）。`
+  );
+  if (tiltType === "pantoscopic") {
+    notes.push(
+      "适度前倾角（约 8–12°）是镜架的正常设计，镜片通常按此下移光心并留有余量；真正需要留意的是前倾角过大，或运动 / 包裹型镜架的面弯。"
+    );
+  } else {
+    notes.push(
+      "面弯 / 包裹角常见于运动镜、太阳镜等包裹型镜架，是倾斜补偿里更常见的问题来源——包裹角越大、度数越高，引入的散光越明显。"
+    );
+  }
+  if (Math.abs(power) >= 4) {
+    notes.push("镜片度数较高，倾斜引入的偏差被放大，更建议选用带如戴补偿的镜片。");
+  }
+
+  return textResult(`## 镜片倾斜（${typeLabel.split("（")[0]}）引起的度数变化与补偿
+
+> 镜片相对视线倾斜时，到达眼睛的「如戴」光度会变化：球镜略增强，并引入一个轴位与旋转轴平行的散光（斜向屈光 / Martin 公式）。以下为科普估算，散光处方需按主子午线分别评估，实际以视光师与加工为准。
+
+**输入**
+- 镜片球镜光度 F：${formatSignedDiopter(power)}
+- 倾斜角 θ：${trimTrailingZeros(tiltAngle.toFixed(1))}°
+- 倾斜类型：${typeLabel}
+- 折射率 n：${trimTrailingZeros(index.toFixed(2))}
+
+**测算结果**
+- 倾斜后等效球镜 S'：**${formatSignedDiopter(effectiveSphere)}**（较原球镜 ${sphereShift === 0 ? "无变化" : `绝对值增大约 ${formatDiopter(Math.abs(sphereShift))}`}）
+- **引入散光 C'：约 ${formatSignedDiopter(inducedCyl)} × ${inducedAxis}°** → **${level}**
+- 如戴等效度数：约 ${formatSignedDiopter(effectiveSphere)} / ${formatSignedDiopter(inducedCyl)} × ${inducedAxis}°
+- 判读阈值（按引入散光大小）：< ${trimTrailingZeros(TILT_CYL_NEGLIGIBLE.toFixed(2))}D 可忽略、${trimTrailingZeros(TILT_CYL_NEGLIGIBLE.toFixed(2))}–${trimTrailingZeros(TILT_CYL_NOTICEABLE.toFixed(2))}D 临界、≥ ${trimTrailingZeros(TILT_CYL_NOTICEABLE.toFixed(2))}D 明显
+
+**建议**
+- ${advice}
+
+**说明**
+${renderBulletList(notes, "数值看起来合理。")}
+
+**提醒**
+- 本工具按「球镜光度」估算；散光处方应分别代入两条主子午线光度评估，叠加后的实际如戴度数更复杂，请以验光师为准。
+- 「如戴位置补偿」还需结合镜眼距（顶点距离）、前倾角、面弯一起反算，本工具只给其中倾斜一项的量级。
+- 想评估镜架与瞳距的水平贴合 / 光心移位，可配合 \`frame_fit_calculator\`；想把框架镜换算成隐形眼镜度数（顶点补偿），可配合 \`contact_lens_power\`。
+- 本工具只做科普估算，不替代专业验光与处方。`);
+}
+
+// 单片放大率量级分级门槛（放大 / 缩小百分比的绝对值，单位 %）。
+const SM_PERCENT_SMALL = 5;
+const SM_PERCENT_NOTICEABLE = 8;
+
+function handleSpectacleMagnification(args: ToolArgs): ToolResult {
+  const power = expectNumber(args, "power", { min: -20, max: 20 });
+  const vertexMm = optionalNumber(args, "vertex_distance", { min: 0, max: 20 }) ?? 12;
+  const baseCurve = optionalNumber(args, "base_curve", { min: 0, max: 20 });
+  const centerThicknessMm = optionalNumber(args, "center_thickness", { min: 0, max: 15 });
+  const index = optionalNumber(args, "index", { min: 1.4, max: 1.9 }) ?? 1.5;
+
+  const d = vertexMm / 1000; // m
+  // 镜度因子 PF = 1 / (1 − d·Fv)。
+  const powerFactor = 1 / (1 - d * power);
+  if (!Number.isFinite(powerFactor) || powerFactor <= 0) {
+    throw new Error("镜度与镜眼距组合超出可估算范围，请检查输入");
+  }
+
+  // 外形因子 SF = 1 / (1 − (t/n)·F1)，需同时提供基弧面度数与中心厚度。
+  let shapeFactor: number | undefined;
+  const hasShape = baseCurve !== undefined && centerThicknessMm !== undefined;
+  if (hasShape) {
+    const t = (centerThicknessMm as number) / 1000; // m
+    shapeFactor = 1 / (1 - (t / index) * (baseCurve as number));
+    if (!Number.isFinite(shapeFactor) || shapeFactor <= 0) {
+      throw new Error("基弧面度数与中心厚度组合超出可估算范围，请检查输入");
+    }
+  }
+
+  const sm = shapeFactor === undefined ? powerFactor : powerFactor * shapeFactor;
+  const percent = (sm - 1) * 100;
+  const absPercent = Math.abs(percent);
+  const direction = percent > 0.05 ? "放大" : percent < -0.05 ? "缩小" : "基本无变化";
+
+  let level: string;
+  let advice: string;
+  if (absPercent < SM_PERCENT_SMALL) {
+    level = "较小";
+    advice =
+      "单片放大 / 缩小量较小（绝对值 < 约 5%），通常不易察觉；若两眼度数相近，不等像一般不成问题。";
+  } else if (absPercent < SM_PERCENT_NOTICEABLE) {
+    level = "可察觉";
+    advice =
+      "单片放大 / 缩小量约 5%–8%，部分人能感到像的大小变化或外观差异；若双眼这一数值相差较大（屈光参差），可能引起不等像不适，建议用 anisometropia_guide 评估两眼之差。";
+  } else {
+    level = "明显";
+    advice =
+      "单片放大 / 缩小量 ≥ 约 8%，外观与成像变化较明显：正镜（远视）戴镜显眼大、负镜（近视）显眼小；若两眼度数差大，不等像耐受往往成为难点。可考虑隐形眼镜（镜眼距≈0，放大率更接近 1）、或请视光师在基弧 / 厚度上做等像（iseikonic）设计。";
+  }
+
+  const smNotes: string[] = [];
+  smNotes.push(
+    `镜度因子 PF = 1 / (1 − d·Fv) = 1 / (1 − ${trimTrailingZeros((d).toFixed(3))}×${formatSignedDiopter(power)}) ≈ ${trimTrailingZeros(powerFactor.toFixed(4))}（${((powerFactor - 1) * 100 >= 0 ? "+" : "")}${trimTrailingZeros(((powerFactor - 1) * 100).toFixed(2))}%）。`
+  );
+  if (hasShape) {
+    smNotes.push(
+      `外形因子 SF = 1 / (1 − (t/n)·F1) = 1 / (1 − (${trimTrailingZeros(((centerThicknessMm as number) / 1000).toFixed(4))}/${trimTrailingZeros(index.toFixed(2))})×${formatSignedDiopter(baseCurve as number)}) ≈ ${trimTrailingZeros((shapeFactor as number).toFixed(4))}（${(((shapeFactor as number) - 1) * 100 >= 0 ? "+" : "")}${trimTrailingZeros((((shapeFactor as number) - 1) * 100).toFixed(2))}%）。`
+    );
+    smNotes.push("外形因子来自镜片前表面曲率与中心厚度：基弧越弯、中心越厚，放大越多（对正镜尤其明显）。");
+  } else {
+    smNotes.push(
+      "未同时提供基弧面度数（base_curve）与中心厚度（center_thickness），本次仅计镜度因子；补齐两者可一并估算外形因子，得到更完整的总放大率。"
+    );
+  }
+  smNotes.push(
+    "镜眼距越大，正镜放大 / 负镜缩小越明显——这也是隐形眼镜（镜眼距≈0）放大率更接近 1、成像更接近真实大小的原因。"
+  );
+
+  const shapeInputLine = hasShape
+    ? `- 前表面度数 F1：${formatSignedDiopter(baseCurve as number)}，中心厚度 t：${trimTrailingZeros((centerThicknessMm as number).toFixed(2))}mm`
+    : "- 前表面度数 / 中心厚度：未提供（仅计镜度因子）";
+
+  return textResult(`## 眼镜放大率（视网膜像放大 / 缩小）估算
+
+> 框架镜会把视网膜上的像放大或缩小：正镜（远视）放大、负镜（近视）缩小。总放大率 SM = 镜度因子 PF × 外形因子 SF。以下为科普估算，散光请按主子午线分别评估，实际以视光师为准。
+
+**输入**
+- 后顶点球镜度数 Fv：${formatSignedDiopter(power)}
+- 镜眼距 d：${trimTrailingZeros(vertexMm.toFixed(1))}mm
+${shapeInputLine}
+- 折射率 n：${trimTrailingZeros(index.toFixed(2))}
+
+**测算结果**
+- 镜度因子 PF：**${trimTrailingZeros(powerFactor.toFixed(4))}**${hasShape ? `\n- 外形因子 SF：**${trimTrailingZeros((shapeFactor as number).toFixed(4))}**` : ""}
+- **总放大率 SM${hasShape ? "（PF×SF）" : "（仅 PF）"}：${trimTrailingZeros(sm.toFixed(4))}** → 像${direction} **${trimTrailingZeros(absPercent.toFixed(2))}%** → **${level}**
+- 判读阈值（按单片放大 / 缩小百分比绝对值）：< ${SM_PERCENT_SMALL}% 较小、${SM_PERCENT_SMALL}%–${SM_PERCENT_NOTICEABLE}% 可察觉、≥ ${SM_PERCENT_NOTICEABLE}% 明显
+
+**建议**
+- ${advice}
+
+**说明**
+${renderBulletList(smNotes, "数值看起来合理。")}
+
+**提醒**
+- 本工具按「球镜后顶点度数」估算；散光处方应分别代入两条主子午线光度评估，两条主子午线放大率不同即为子午线性不等像。
+- 不等像（aniseikonia）是两眼放大率之差造成的，经验上框架镜每 1.00D 屈光参差约对应 1.5% 像差；要评估两眼之差与耐受，请配合 \`anisometropia_guide\`。
+- 想把框架镜换算成镜眼距≈0 的隐形眼镜度数（顶点补偿），可配合 \`contact_lens_power\`。
+- 本工具只做科普估算，不替代专业验光与处方。`);
+}
+
+const DIGITAL_SYMPTOMS = [
+  "dryness",
+  "blur",
+  "headache",
+  "double_vision",
+  "neck_shoulder",
+  "tearing",
+  "light_sensitive",
+] as const;
+type DigitalSymptom = (typeof DIGITAL_SYMPTOMS)[number];
+
+const DIGITAL_SYMPTOM_LABELS: Record<DigitalSymptom, string> = {
+  dryness: "眼干涩 / 异物感",
+  blur: "视物模糊 / 聚焦变慢",
+  headache: "头痛 / 眉骨胀",
+  double_vision: "重影 / 复视",
+  neck_shoulder: "颈肩酸痛",
+  tearing: "流泪",
+  light_sensitive: "畏光",
+};
+
+function parseDigitalSymptoms(args: ToolArgs): DigitalSymptom[] {
+  const raw = args["symptoms"];
+  if (raw === undefined || raw === null) {
+    return [];
+  }
+  if (!Array.isArray(raw)) {
+    throw new Error("参数 symptoms 必须是字符串数组");
+  }
+  const result: DigitalSymptom[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string" || !(DIGITAL_SYMPTOMS as readonly string[]).includes(item)) {
+      throw new Error(`参数 symptoms 的取值必须是以下之一：${DIGITAL_SYMPTOMS.join(", ")}`);
+    }
+    if (!result.includes(item as DigitalSymptom)) {
+      result.push(item as DigitalSymptom);
+    }
+  }
+  return result;
+}
+
+function handleDigitalEyestrainGuide(args: ToolArgs): ToolResult {
+  const hours = expectNumber(args, "screen_hours", { min: 0, max: 24 });
+  const symptoms = parseDigitalSymptoms(args);
+  const takesBreaks = optionalBoolean(args, "takes_breaks") ?? false;
+  const distanceCm = optionalNumber(args, "screen_distance_cm", { min: 15, max: 120 });
+  const age = optionalNumber(args, "age", { min: 5, max: 120 });
+
+  const has = (s: DigitalSymptom) => symptoms.includes(s);
+  const midHours = hours >= 4;
+  const highHours = hours >= 6;
+
+  // 风险打分：时长分 + 症状数 + 未规律休息惩罚。
+  const hoursScore = hours < 2 ? 0 : hours < 4 ? 1 : hours < 7 ? 2 : hours < 10 ? 3 : 4;
+  const breakPenalty = !takesBreaks && hours >= 2 ? 1 : 0;
+  const totalScore = hoursScore + symptoms.length + breakPenalty;
+
+  let level: string;
+  let levelSummary: string;
+  if (totalScore <= 1) {
+    level = "低";
+    levelSummary = "数字视疲劳风险较低，保持良好用眼习惯即可。";
+  } else if (totalScore <= 4) {
+    level = "中";
+    levelSummary = "存在一定数字视疲劳风险，建议落实下面的护眼措施并观察。";
+  } else {
+    level = "高";
+    levelSummary = "数字视疲劳风险较高，建议尽快调整用眼习惯，症状持续时及时就医。";
+  }
+
+  // 屏幕距离评估。
+  let distanceLine: string;
+  if (distanceCm === undefined) {
+    distanceLine = "- 眼睛到屏幕距离：未填写（推荐约 50–70cm，约一臂距离）";
+  } else {
+    let label: string;
+    if (distanceCm < 50) {
+      label = "偏近";
+    } else if (distanceCm > 70) {
+      label = "偏远";
+    } else {
+      label = "合适";
+    }
+    distanceLine = `- 眼睛到屏幕距离：${String(Math.round(distanceCm))}cm（评估：${label}，推荐 50–70cm）`;
+  }
+
+  // 分级建议。
+  const recs: Array<{ tag: string; text: string }> = [];
+
+  recs.push({
+    tag: midHours || !takesBreaks ? "优先" : "建议",
+    text:
+      "遵循 20-20-20 休息法：每近距离用眼约 20 分钟，抬头远眺 6 米（约 20 英尺）外至少 20 秒；每用眼 1 小时起身活动一下。" +
+      (takesBreaks ? "你已表示有规律休息，继续保持。" : "目前未规律休息，这是最容易见效的一步。"),
+  });
+
+  if (has("dryness") || has("tearing") || has("light_sensitive") || highHours) {
+    recs.push({
+      tag: has("dryness") ? "优先" : "建议",
+      text:
+        "有意识地完整眨眼：盯屏幕时眨眼次数会明显下降，导致眼表干涩、异物感甚至反射性流泪；可配合不含防腐剂的人工泪液，避免空调 / 风扇直吹，保持环境湿度。",
+    });
+  }
+
+  recs.push({
+    tag: distanceCm !== undefined && distanceCm < 50 ? "优先" : "建议",
+    text:
+      "屏幕摆位：眼睛到屏幕约 50–70cm（约一臂），屏幕上沿与视线齐平或略低，视线自然下视约 15–20°，可缩小睑裂暴露面积、减轻干眼与调节负担。",
+  });
+
+  if (has("light_sensitive") || midHours) {
+    recs.push({
+      tag: "建议",
+      text:
+        "改善照明与反光：让屏幕亮度与环境亮度接近，避免屏幕正对窗户或强光源产生反光，房间不要全黑；镜片加减反射（AR）膜有助减少眩光（可用 lens_coating_advisor 评估是否值得）。",
+    });
+  }
+
+  if (has("blur") || has("headache") || has("double_vision") || (age !== undefined && age >= 40)) {
+    if (age !== undefined && age >= 40) {
+      recs.push({
+        tag: "建议",
+        text:
+          "矫正与镜片：你的年龄已进入老视（老花）阶段，长时间近距离用眼吃力可能与调节力下降有关——可评估近附加（reading_add_estimator）或办公 / 渐进镜片（progressive_lens_assessment），别用看远度数硬撑近距离工作。",
+      });
+    } else {
+      recs.push({
+        tag: "建议",
+        text:
+          "矫正到位：持续模糊 / 头痛也可能来自未矫正或过矫的近视、远视、散光，或双眼协调（集合 / 调节）问题；若戴镜仍不适，建议复查验光与双眼视功能。",
+      });
+    }
+  }
+
+  // 就医提示。
+  const seeDoctor =
+    has("double_vision") || (has("headache") && has("blur")) || symptoms.length >= 4;
+  const doctorLine = seeDoctor
+    ? "⚠️ 建议就医：出现重影 / 复视、持续头痛、明显视力下降、眼痛或长期干眼等，单靠护眼习惯往往难以缓解，请到眼科或专业视光门诊检查，排查未矫正屈光不正、双眼视功能异常、干眼症等。"
+    : "目前症状以疲劳为主，可先按上面的护眼建议调整 1–2 周；若出现重影、持续头痛、明显视力下降或眼痛，或调整后仍不缓解，请及时就医。";
+
+  const symptomLine =
+    symptoms.length === 0
+      ? "- 当前症状：未填写"
+      : `- 当前症状：${symptoms.map((s) => DIGITAL_SYMPTOM_LABELS[s]).join("、")}`;
+  const ageLine =
+    age === undefined ? "- 年龄：未填写" : `- 年龄：${String(Math.round(age))} 岁`;
+
+  const recLines = recs.map((r) => `- 【${r.tag}】${r.text}`).join("\n");
+
+  return textResult(`## 数字视疲劳（电脑视觉综合征）评估与护眼建议
+
+> 长时间看屏幕引起的眼干、酸胀、模糊、头痛等统称「数字视疲劳 / 电脑视觉综合征（CVS）」。以下按你的用眼情况做科普评估与分级建议（【优先】最值得先做），不替代专业眼科 / 视光检查。
+
+**输入**
+- 日均屏幕时长：${trimTrailingZeros(hours.toFixed(1))} 小时
+${symptomLine}
+- 是否规律休息：${takesBreaks ? "是" : "否"}
+${distanceLine}
+${ageLine}
+
+**风险评估**
+- 风险评分：**${totalScore}**（时长 ${hoursScore} + 症状 ${symptoms.length} + 未规律休息 ${breakPenalty}）
+- 风险等级：**${level}**
+- ${levelSummary}
+
+**护眼建议（按优先级）**
+${recLines}
+
+**就医提示**
+- ${doctorLine}
+
+**说明**
+- 评分仅为粗略自助分级：时长越长、症状越多、没有规律休息，风险越高；它衡量的是「用眼负荷与不适」，不是某种眼病的诊断。
+- 数字视疲劳多为功能性、可逆，调整用眼习惯后常能缓解；但重影、持续头痛、视力明显下降需排查器质性或双眼视问题。
+- 本工具侧重用眼习惯，镜片镀膜（防蓝光 / 减反射等）是否值得购买请配合 \`lens_coating_advisor\`；是否需要近附加 / 渐进请配合 \`reading_add_estimator\`、\`progressive_lens_assessment\`。
+- 本工具只做科普评估，不替代专业眼科与视光检查。`);
+}
+
+// 配镜处方公差（ANSI Z80.1 / ISO 21987 常用阈值）。
+const RX_SPHERE_TOL_LOW = 0.13; // 参考度数（绝对值较大的主子午线）≤ 6.50D 时的球镜/子午线公差
+const RX_SPHERE_HIGH_THRESHOLD = 6.5; // 超过此值改按百分比
+const RX_SPHERE_HIGH_PCT = 0.02; // 高度数球镜/子午线公差 = 2%
+const RX_CYL_TOL_LOW = 0.13; // 柱镜 ≤ 2.00D
+const RX_CYL_TOL_MID = 0.15; // 柱镜 2.00–4.50D
+const RX_CYL_HIGH_PCT = 0.04; // 柱镜 > 4.50D 按 4%
+const RX_ADD_TOL_LOW = 0.12; // 下加光 ≤ 4.00D
+const RX_ADD_TOL_HIGH = 0.18; // 下加光 > 4.00D
+const RX_TOL_EPS = 1e-9;
+
+function rxSphereTolerance(higherMeridianAbs: number): number {
+  return higherMeridianAbs <= RX_SPHERE_HIGH_THRESHOLD
+    ? RX_SPHERE_TOL_LOW
+    : RX_SPHERE_HIGH_PCT * higherMeridianAbs;
+}
+
+function rxCylinderTolerance(cylMag: number): number {
+  if (cylMag <= 2.0) return RX_CYL_TOL_LOW;
+  if (cylMag <= 4.5) return RX_CYL_TOL_MID;
+  return RX_CYL_HIGH_PCT * cylMag;
+}
+
+// 柱镜轴位公差：随柱镜增大而收紧（ANSI Z80.1 阶梯）。
+function rxAxisTolerance(cylMag: number): number {
+  if (cylMag <= 0.25) return 14;
+  if (cylMag <= 0.5) return 7;
+  if (cylMag <= 0.75) return 5;
+  if (cylMag <= 1.5) return 3;
+  return 2;
+}
+
+function axisCircularDiff(a: number, b: number): number {
+  let d = Math.abs(a - b);
+  if (d > 90) d = 180 - d;
+  return d;
+}
+
+function formatTolDiopter(value: number): string {
+  return `±${trimTrailingZeros(value.toFixed(2))}D`;
+}
+
+function handleRxToleranceCheck(args: ToolArgs): ToolResult {
+  const orderedSph = expectNumber(args, "ordered_sph", { min: -30, max: 30 });
+  const orderedCyl = optionalNumber(args, "ordered_cyl", { min: -10, max: 10 }) ?? 0;
+  const orderedAxis = optionalNumber(args, "ordered_axis", { min: 0, max: 180, integer: true });
+  validateAxis("订单处方", orderedCyl, orderedAxis);
+
+  const measuredSph = expectNumber(args, "measured_sph", { min: -30, max: 30 });
+  const measuredCylRaw = optionalNumber(args, "measured_cyl", { min: -10, max: 10 }) ?? 0;
+  const measuredAxisRaw = optionalNumber(args, "measured_axis", { min: 0, max: 180, integer: true });
+  validateAxis("实测处方", measuredCylRaw, measuredAxisRaw);
+
+  const orderedAdd = optionalNumber(args, "ordered_add", { min: 0, max: 6 });
+  const measuredAdd = optionalNumber(args, "measured_add", { min: 0, max: 6 });
+  if ((orderedAdd === undefined) !== (measuredAdd === undefined)) {
+    throw new Error("核验下加光 ADD 时需同时提供 ordered_add 与 measured_add");
+  }
+
+  // 统一柱镜记法：以订单柱镜的符号为准（订单无柱镜时按负柱镜记法），必要时转置实测处方再比对。
+  const targetNegative = orderedCyl <= 0;
+  let mSph = measuredSph;
+  let mCyl = measuredCylRaw;
+  let mAxis = measuredAxisRaw;
+  let transposed = false;
+  if (mCyl !== 0 && mCyl < 0 !== targetNegative) {
+    mSph = measuredSph + measuredCylRaw;
+    mCyl = -measuredCylRaw;
+    mAxis = measuredAxisRaw === undefined ? undefined : transposeAxis(measuredAxisRaw);
+    transposed = true;
+  }
+
+  // 订单两条主子午线：沿轴位方向 = SPH，垂直方向 = SPH + CYL。参考度数取绝对值较大者。
+  const m1 = orderedSph;
+  const m2 = orderedSph + orderedCyl;
+  const higherMeridian = Math.abs(m1) >= Math.abs(m2) ? m1 : m2;
+  const sphereTol = rxSphereTolerance(Math.abs(higherMeridian));
+  const cylMag = Math.abs(orderedCyl);
+  const cylTol = rxCylinderTolerance(cylMag);
+  const axisTol = rxAxisTolerance(cylMag);
+
+  const sphereDelta = mSph - orderedSph;
+  const cylDelta = mCyl - orderedCyl;
+
+  const failed: string[] = [];
+  const lines: string[] = [];
+
+  const spherePass = Math.abs(sphereDelta) <= sphereTol + RX_TOL_EPS;
+  if (!spherePass) failed.push("球镜 SPH");
+  lines.push(
+    `球镜 SPH：订单 ${formatSignedDiopter(orderedSph)}，实测 ${formatSignedDiopter(mSph)}，偏差 ${formatDiopter(
+      Math.abs(sphereDelta)
+    )}，公差 ${formatTolDiopter(sphereTol)} → ${spherePass ? "✅ 合格" : "❌ 超差"}`
+  );
+
+  const cylPass = Math.abs(cylDelta) <= cylTol + RX_TOL_EPS;
+  if (!cylPass) failed.push("柱镜 CYL");
+  lines.push(
+    `柱镜 CYL：订单 ${formatSignedDiopter(orderedCyl)}，实测 ${formatSignedDiopter(mCyl)}，偏差 ${formatDiopter(
+      Math.abs(cylDelta)
+    )}，公差 ${formatTolDiopter(cylTol)} → ${cylPass ? "✅ 合格" : "❌ 超差"}`
+  );
+
+  // 轴位仅在订单与实测都带柱镜时可比对。
+  if (orderedCyl !== 0 && mCyl !== 0) {
+    const axisDelta = axisCircularDiff(mAxis as number, orderedAxis as number);
+    const axisPass = axisDelta <= axisTol + RX_TOL_EPS;
+    if (!axisPass) failed.push("轴位 AXIS");
+    lines.push(
+      `轴位 AXIS：订单 ${orderedAxis}°，实测 ${mAxis}°，偏差 ${axisDelta}°，公差 ±${axisTol}° → ${
+        axisPass ? "✅ 合格" : "❌ 超差"
+      }`
+    );
+  } else if (orderedCyl !== 0 && mCyl === 0) {
+    failed.push("柱镜 CYL");
+    lines.push("轴位 AXIS：实测无柱镜，轴位无从比对（柱镜项已判超差）。");
+  } else if (orderedCyl === 0 && mCyl !== 0) {
+    lines.push("轴位 AXIS：订单无柱镜，无基准轴位可比；实测多出的柱镜已并入柱镜项核验。");
+  } else {
+    lines.push("轴位 AXIS：订单与实测均无柱镜，无需核验。");
+  }
+
+  if (orderedAdd !== undefined && measuredAdd !== undefined) {
+    const addTol = orderedAdd <= 4.0 ? RX_ADD_TOL_LOW : RX_ADD_TOL_HIGH;
+    const addDelta = measuredAdd - orderedAdd;
+    const addPass = Math.abs(addDelta) <= addTol + RX_TOL_EPS;
+    if (!addPass) failed.push("下加光 ADD");
+    lines.push(
+      `下加光 ADD：订单 ${formatSignedDiopter(orderedAdd)}，实测 ${formatSignedDiopter(
+        measuredAdd
+      )}，偏差 ${formatDiopter(Math.abs(addDelta))}，公差 ${formatTolDiopter(addTol)} → ${
+        addPass ? "✅ 合格" : "❌ 超差"
+      }`
+    );
+  }
+
+  const verdict = failed.length === 0 ? "合格" : "超差";
+  const conclusion =
+    failed.length === 0
+      ? "**合格**：各项均在 ANSI Z80.1 / ISO 21987 允许公差之内，可按此验收。"
+      : `**超差**：以下项目超出允许公差——${failed.join("、")}。建议联系加工方复核或重做，并确认装配（移心、轴位）是否正确。`;
+
+  const measuredLine = transposed
+    ? `${renderPrescriptionLine(measuredSph, measuredCylRaw, measuredAxisRaw)}（原始输入）→ 统一为${
+        targetNegative ? "负" : "正"
+      }柱镜记法后比对：${renderPrescriptionLine(mSph, mCyl, mAxis)}`
+    : renderPrescriptionLine(mSph, mCyl, mAxis);
+
+  const orderedAddLine =
+    orderedAdd !== undefined ? ` / ADD ${formatSignedDiopter(orderedAdd)}` : "";
+  const measuredAddLine =
+    measuredAdd !== undefined ? ` / ADD ${formatSignedDiopter(measuredAdd)}` : "";
+
+  const notes: string[] = [];
+  notes.push(
+    `球镜 / 子午线公差按「参考度数（两条主子午线中绝对值较大者 = ${formatSignedDiopter(
+      higherMeridian
+    )}）」确定：≤ 6.50D 时 ±0.13D，> 6.50D 时按 ±2%，故本例为 ${formatTolDiopter(sphereTol)}。`
+  );
+  notes.push(
+    `柱镜公差按柱镜大小分段：≤ 2.00D ±0.13D、2.00–4.50D ±0.15D、> 4.50D ±4%；本例柱镜 ${formatDiopter(
+      cylMag
+    )} → ${formatTolDiopter(cylTol)}。`
+  );
+  notes.push(
+    `轴位公差随柱镜增大而收紧：≤ 0.25D ±14°、≤ 0.50D ±7°、≤ 0.75D ±5°、≤ 1.50D ±3°、> 1.50D ±2°；本例 → ±${axisTol}°（柱镜越大，轴位偏一点影响越大）。`
+  );
+  if (orderedAdd !== undefined) {
+    notes.push("下加光 ADD 公差：≤ 4.00D ±0.12D、> 4.00D ±0.18D。");
+  }
+  notes.push(
+    "正、负柱镜记法描述同一副镜片；比对前会把实测处方统一到订单的柱镜记法，所以记法不同不会误判（转换可参考 prescription_transpose）。"
+  );
+
+  return textResult(`## 配镜处方公差核验（ANSI Z80.1 / ISO 21987）
+
+> 把「订单处方（ordered）」与「到货实测（measured）」逐项比对，按国际公差标准判断单片是否合格。公差并非固定值：球镜越高、柱镜越大，允许的误差越宽（高度数改按百分比），而轴位公差随柱镜增大而收紧。以下为按通用阈值的估算，正式验收以相应标准原文与检测设备（焦度计）为准。
+
+**输入**
+- 订单处方（ordered）：${renderPrescriptionLine(orderedSph, orderedCyl, orderedAxis)}${orderedAddLine}
+- 实测处方（measured）：${measuredLine}${measuredAddLine}
+- 订单两条主子午线：沿轴位方向 ${formatSignedDiopter(m1)}、垂直方向 ${formatSignedDiopter(
+    m2
+  )}；参考度数（绝对值较大者）${formatSignedDiopter(higherMeridian)}
+
+**逐项核验**
+${renderBulletList(lines, "无可核验项目。")}
+
+**结论**
+- ${conclusion}
+
+**说明**
+${renderBulletList(notes, "核验完成。")}
+
+**提醒**
+- 公差针对「单片成镜度数」；一副眼镜还需核验瞳距 / 光心高度、棱镜、基弧、镜片厚度与外观，可配合 \`frame_fit_calculator\`、\`prism_resolver\`。
+- 不同标准 / 年份的阈值略有差异，本工具用常见通用值做估算，不作为正式检测报告。
+- 本工具只做科普核验，验收判定与处理请以专业机构和设备为准。`);
+}
+
+function acuityLevelLabel(decimal: number): string {
+  if (decimal >= 1.0) return "正常或以上";
+  if (decimal >= 0.8) return "接近正常";
+  if (decimal >= 0.5) return "轻度下降";
+  if (decimal >= 0.3) return "中度下降";
+  if (decimal >= 0.1) return "明显下降";
+  return "重度下降（低视力范围）";
+}
+
+function formatDecimalAcuity(decimal: number): string {
+  return trimTrailingZeros(decimal.toFixed(2));
+}
+
+function handleVisualAcuityConverter(args: ToolArgs): ToolResult {
+  const notation = expectEnum(args, "notation", [
+    "decimal",
+    "five_minute",
+    "logmar",
+    "snellen",
+  ] as const);
+  const value = expectNumber(args, "value");
+  const snellenNumerator = optionalEnumNumber(args, "snellen_numerator", [20, 6]) ?? 20;
+
+  // 先把任一记法统一换算成「小数视力 decimal」，再由它推出其余三种。
+  let decimal: number;
+  switch (notation) {
+    case "decimal":
+      if (value <= 0 || value > 3) throw new Error("小数视力 value 应在 0 到 3 之间");
+      decimal = value;
+      break;
+    case "five_minute":
+      if (value < 3 || value > 5.5) throw new Error("五分记录法 value 应在 3.0 到 5.5 之间");
+      decimal = Math.pow(10, value - 5);
+      break;
+    case "logmar":
+      if (value < -0.5 || value > 2.5) throw new Error("logMAR value 应在 -0.5 到 2.5 之间");
+      decimal = Math.pow(10, -value);
+      break;
+    case "snellen":
+      if (value <= 0) throw new Error("Snellen 分母 value 必须为正数");
+      decimal = snellenNumerator / value;
+      break;
+  }
+
+  const fiveMinute = 5 + Math.log10(decimal);
+  const logmar = -Math.log10(decimal);
+  const snellen20 = Math.round(20 / decimal);
+  const snellen6 = Math.round((6 / decimal) * 10) / 10;
+
+  const inputLine =
+    notation === "snellen"
+      ? `Snellen ${snellenNumerator}/${trimTrailingZeros(value.toFixed(2))}`
+      : notation === "decimal"
+        ? `小数记录 ${formatDecimalAcuity(value)}`
+        : notation === "five_minute"
+          ? `五分记录 ${trimTrailingZeros(value.toFixed(1))}`
+          : `logMAR ${trimTrailingZeros(value.toFixed(2))}`;
+
+  return textResult(`## 视力记录法换算
+
+> 同一视力可用四种等价记法表示：**小数记录法**（国内视力表下排，如 1.0）、**五分记录法 / 对数记录法**（国内视力表上排，中国 GB 11533 标准，如 5.0）、**Snellen 分数**（欧美常用，如 20/20 或 6/6）、**logMAR**（科研统计常用，如 0.00）。换算关系：五分 L = 5 + lg(小数)，logMAR = −lg(小数)，Snellen = 分子 ÷ 小数。
+
+**输入**
+- ${inputLine}
+
+**换算结果（四种等价记法）**
+- 小数记录法：**${formatDecimalAcuity(decimal)}**
+- 五分记录法（对数）：**${trimTrailingZeros(fiveMinute.toFixed(1))}**
+- Snellen（美制/公制）：**20/${snellen20}** ≈ **6/${trimTrailingZeros(snellen6.toFixed(1))}**
+- logMAR：**${trimTrailingZeros(logmar.toFixed(2))}**
+- 视力水平：**${acuityLevelLabel(decimal)}**
+
+**常用对照**
+- 小数 1.0 = 五分 5.0 = 20/20 = 6/6 = logMAR 0.00（标准正常视力）
+- 小数 0.5 = 五分 4.7 ≈ 20/40 = logMAR 0.30
+- 小数 0.1 = 五分 4.0 = 20/200 = logMAR 1.00
+
+**说明**
+- 视力（矫正或裸眼）反映的是「看清的能力」，与验光度数（近视 / 远视多少度）不是一回事，同样视力可能对应不同度数。
+- 每个方向的视标每小一行、logMAR 减 0.1，五分记录法每行差 0.1；不同视力表设计略有差异，换算值取近似。
+- 本工具只做记法换算与科普，不替代专业验光；配镜请以主觉验光和矫正视力为准。`);
+}
+
+// 近视力换算：1M 视标在 1 m 处张角 5′；某距离近视力小数 = 测试距离(m) ÷ M 值。
+const POINT_PER_M_UNIT = 8; // 印刷点数与 M 记法的常用近似：1M ≈ 8pt。
+
+function handleNearAcuityConverter(args: ToolArgs): ToolResult {
+  const notation = expectEnum(args, "notation", ["m_unit", "point", "decimal"] as const);
+  const value = expectNumber(args, "value");
+  const testDistanceCm = optionalNumber(args, "test_distance_cm", { min: 10, max: 100 }) ?? 40;
+  const testDistM = testDistanceCm / 100;
+
+  // 先把任一记法统一换算成「印张尺寸 M 值」，再由测试距离推出近视力小数与其余等效。
+  let mValue: number;
+  let inputLine: string;
+  switch (notation) {
+    case "m_unit":
+      if (value < 0.1 || value > 20) throw new Error("M 记法 value 应在 0.1 到 20 之间");
+      mValue = value;
+      inputLine = `${trimTrailingZeros(value.toFixed(2))}M 视标`;
+      break;
+    case "point":
+      if (value < 1 || value > 160) throw new Error("印刷点数 value 应在 1 到 160 之间");
+      mValue = value / POINT_PER_M_UNIT;
+      inputLine = `${trimTrailingZeros(value.toFixed(1))} pt 印刷字`;
+      break;
+    case "decimal":
+      if (value <= 0 || value > 2) throw new Error("近视力小数 value 应在 0 到 2 之间");
+      mValue = testDistM / value;
+      inputLine = `近视力小数 ${formatDecimalAcuity(value)}`;
+      break;
+  }
+
+  const decimal = testDistM / mValue;
+  const pointSize = mValue * POINT_PER_M_UNIT;
+  const fiveMinute = 5 + Math.log10(decimal);
+  const logmar = -Math.log10(decimal);
+  const snellen20 = Math.round(20 / decimal);
+
+  return textResult(`## 近用视力（近视力表）记法换算
+
+> 近视力卡常用三种写法：**M 记法**（国际标准，1M 视标在 1 m 处张角 5′）、**印刷点数 pt**（如 8pt，接近报纸正文）、直接的**近视力小数**。看近的清晰与距离有关，所以近视力必须连同测试距离一起看。核心换算：**该距离近视力小数 = 测试距离(m) ÷ M 值**，点数 ≈ M × ${POINT_PER_M_UNIT}。
+
+**输入**
+- ${inputLine} @ 测试距离 ${trimTrailingZeros(testDistanceCm.toFixed(0))} cm
+
+**换算结果（测试距离 ${trimTrailingZeros(testDistanceCm.toFixed(0))} cm）**
+- 印张尺寸（M 记法）：**${trimTrailingZeros(mValue.toFixed(2))} M**
+- 印刷点数（约）：**${trimTrailingZeros(pointSize.toFixed(0))} pt**
+- 该距离近视力（小数）：**${formatDecimalAcuity(decimal)}**
+- Snellen 等效：**20/${snellen20}**
+- logMAR：**${trimTrailingZeros(logmar.toFixed(2))}** ，五分记录：**${trimTrailingZeros(fiveMinute.toFixed(1))}**
+- 近视力水平：**${acuityLevelLabel(decimal)}**
+
+**常用近视力对照（约 40 cm）**
+| M 记法 | 点数(pt) | Jaeger(约) | Snellen 等效 | 小数 |
+| --- | --- | --- | --- | --- |
+| 0.4M | 3pt | J1 | 20/20 | 1.0 |
+| 0.5M | 4pt | J2 | 20/25 | 0.8 |
+| 0.6M | 5pt | J3 | 20/30 | 0.67 |
+| 0.8M | 6pt | J5 | 20/40 | 0.5 |
+| 1.0M | 8pt | J6 | 20/50 | 0.4 |
+| 1.6M | 12pt | J10 | 20/80 | 0.25 |
+| 2.0M | 16pt | J12 | 20/100 | 0.2 |
+
+**说明**
+- M 记法最标准、可换算：某测试距离的近视力小数 = 测试距离(m) ÷ M 值，所以同一 M 视标测得越远、视力数值越好。
+- 点数由 1M ≈ ${POINT_PER_M_UNIT}pt 的常用近似推得，仅供粗略参考。
+- Jaeger（J1–J16）各家近视力卡并不统一，上表仅为常见近似，换用不同卡片时以卡片自带的 M / Snellen 标注为准。
+- 近视力与远视力（见 visual_acuity_converter）可能不同；中老年看近变差多与老花（调节力不足）有关，可配合 reading_add_estimator、accommodation_amplitude 评估。
+- 本工具只做记法换算与科普，不替代专业验光；配镜请以主觉验光和矫正视力为准。`);
+}
+
+// 低于该阈值的分量视为 0，避免浮点误差把 90°/180° 等纯方向算出极小的杂散分量。
+const PRISM_COMPONENT_EPSILON = 0.005;
+// 处方棱镜常用的最小步进（Δ），用于给出便于书写的取整值。
+const PRISM_STEP = 0.25;
+
+function formatPrism(value: number): string {
+  return `${trimTrailingZeros(value.toFixed(2))}Δ`;
+}
+
+function roundToStep(value: number, step: number): number {
+  return Math.round(value / step) * step;
+}
+
+/** 由有符号分量 (x=颞侧为正, y=上为正) 给出中文基底方向描述。 */
+function describePrismBase(x: number, y: number): string {
+  const hz = Math.abs(x) < PRISM_COMPONENT_EPSILON ? "" : x > 0 ? "颞侧(base-out)" : "鼻侧(base-in)";
+  const vt = Math.abs(y) < PRISM_COMPONENT_EPSILON ? "" : y > 0 ? "上方(base-up)" : "下方(base-down)";
+  if (hz && vt) return `${hz} 偏 ${vt}`;
+  return hz || vt || "无（棱镜为 0）";
+}
+
+function handlePrismResolver(args: ToolArgs): ToolResult {
+  const mode = expectEnum(args, "mode", ["combine", "resolve"] as const);
+  return mode === "combine" ? prismCombine(args) : prismResolve(args);
+}
+
+function prismCombine(args: ToolArgs): ToolResult {
+  const horizontal = optionalNumber(args, "horizontal", { min: 0, max: 50 }) ?? 0;
+  const vertical = optionalNumber(args, "vertical", { min: 0, max: 50 }) ?? 0;
+  const horizontalBase = optionalEnum(args, "horizontal_base", ["in", "out"] as const);
+  const verticalBase = optionalEnum(args, "vertical_base", ["up", "down"] as const);
+
+  if (horizontal === 0 && vertical === 0) {
+    throw new Error("水平与垂直棱镜不能同时为 0，至少提供一个非零分量");
+  }
+  if (horizontal > 0 && horizontalBase === undefined) {
+    throw new Error("提供水平棱镜时必须指定基底方向 horizontal_base（in=鼻侧 / out=颞侧）");
+  }
+  if (vertical > 0 && verticalBase === undefined) {
+    throw new Error("提供垂直棱镜时必须指定基底方向 vertical_base（up=上 / down=下）");
+  }
+
+  // x：颞侧(base-out)为正、鼻侧(base-in)为负；y：上(base-up)为正、下(base-down)为负。
+  const x = horizontal * (horizontalBase === "in" ? -1 : 1);
+  const y = vertical * (verticalBase === "down" ? -1 : 1);
+  const magnitude = Math.hypot(x, y);
+  let angle = (Math.atan2(y, x) * 180) / Math.PI;
+  if (angle < 0) angle += 360;
+
+  const roundedMag = roundToStep(magnitude, PRISM_STEP);
+  const inputParts: string[] = [];
+  if (horizontal > 0) {
+    inputParts.push(`水平 ${formatPrism(horizontal)} 基底朝${horizontalBase === "in" ? "鼻侧(base-in)" : "颞侧(base-out)"}`);
+  }
+  if (vertical > 0) {
+    inputParts.push(`垂直 ${formatPrism(vertical)} 基底朝${verticalBase === "up" ? "上(base-up)" : "下(base-down)"}`);
+  }
+
+  const bothNonZero = horizontal > 0 && vertical > 0;
+  const notes: string[] = [];
+  if (bothNonZero) {
+    notes.push(
+      `合成大小 = √(${trimTrailingZeros(horizontal.toFixed(2))}² + ${trimTrailingZeros(vertical.toFixed(2))}²) = ${trimTrailingZeros(magnitude.toFixed(4))} ≈ **${formatPrism(magnitude)}**。`
+    );
+    notes.push(
+      `方向角 = atan2(${trimTrailingZeros(y.toFixed(2))}, ${trimTrailingZeros(x.toFixed(2))}) = **${trimTrailingZeros(angle.toFixed(1))}°**（约定：颞侧=0°、上=90°、鼻侧=180°、下=270°，逆时针）。`
+    );
+    notes.push(
+      `写处方多把斜向棱镜拆成水平 + 垂直两项分别书写（即此处的输入），合棱镜主要用于理解实际的棱镜方向与总量。`
+    );
+  } else {
+    notes.push("只有单一方向的分量，合棱镜大小与方向即等于该分量本身。");
+  }
+
+  return textResult(`## 棱镜合成（水平 + 垂直 → 合棱镜）
+
+> 处方棱镜可拆成水平分量（基底朝鼻侧 base-in / 颞侧 base-out）与垂直分量（基底朝上 base-up / 下 base-down），两者按**向量相加**。合棱镜大小 = √(水平² + 垂直²)，方向角按「颞侧=0°、上=90°、鼻侧=180°、下=270°，逆时针」几何约定度量。
+
+**输入**
+- ${inputParts.join("\n- ")}
+
+**合成结果**
+- 合棱镜大小：**${formatPrism(magnitude)}**（取 0.25Δ 步进约 ${formatPrism(roundedMag)}）
+- 方向角：**${trimTrailingZeros(angle.toFixed(1))}°**
+- 基底方向：**${describePrismBase(x, y)}**
+
+**计算过程**
+${renderBulletList(notes, "—")}
+
+**说明**
+- base-in / base-out 以鼻子为参照，左右眼含义一致，不存在歧义；而临床 360° 基底角记法左右眼起算方向不同，故此处改用 in/out/up/down 分量 + 本工具的几何角一并表述。
+- 实际书写处方时棱镜多按 0.25Δ 取整；分别标注水平与垂直分量比只写合棱镜更不易出错。
+- 本工具只做棱镜向量换算与科普，不替代验光与处方，棱镜处方须由专业人员开具。`);
+}
+
+function prismResolve(args: ToolArgs): ToolResult {
+  const magnitude = expectNumber(args, "magnitude", { min: 0.01, max: 50 });
+  const angle = expectNumber(args, "angle", { min: 0, max: 360 });
+
+  const rad = (angle * Math.PI) / 180;
+  const x = magnitude * Math.cos(rad); // 颞侧为正
+  const y = magnitude * Math.sin(rad); // 上为正
+  const horizontal = Math.abs(x);
+  const vertical = Math.abs(y);
+
+  const hzLine =
+    horizontal < PRISM_COMPONENT_EPSILON
+      ? "水平分量：**0**（纯垂直棱镜）"
+      : `水平分量：**${formatPrism(horizontal)}** 基底朝${x > 0 ? "颞侧(base-out)" : "鼻侧(base-in)"}（取 0.25Δ 步进约 ${formatPrism(roundToStep(horizontal, PRISM_STEP))}）`;
+  const vtLine =
+    vertical < PRISM_COMPONENT_EPSILON
+      ? "垂直分量：**0**（纯水平棱镜）"
+      : `垂直分量：**${formatPrism(vertical)}** 基底朝${y > 0 ? "上(base-up)" : "下(base-down)"}（取 0.25Δ 步进约 ${formatPrism(roundToStep(vertical, PRISM_STEP))}）`;
+
+  return textResult(`## 棱镜分解（合棱镜 → 水平 + 垂直）
+
+> 把一个斜向的合棱镜按方向角分解回水平、垂直两个分量，便于磨房分别加工或书写处方。水平分量 = 大小 × cos(角度)，垂直分量 = 大小 × sin(角度)；角度约定「颞侧=0°、上=90°、鼻侧=180°、下=270°，逆时针」。
+
+**输入**
+- 合棱镜大小：${formatPrism(magnitude)}
+- 方向角：${trimTrailingZeros(angle.toFixed(1))}°（基底朝 ${describePrismBase(x, y)}）
+
+**分解结果**
+- ${hzLine}
+- ${vtLine}
+
+**计算过程**
+- 水平 = ${formatPrism(magnitude)} × cos(${trimTrailingZeros(angle.toFixed(1))}°) = ${trimTrailingZeros(x.toFixed(4))}（${x >= 0 ? "颞侧 base-out" : "鼻侧 base-in"}）
+- 垂直 = ${formatPrism(magnitude)} × sin(${trimTrailingZeros(angle.toFixed(1))}°) = ${trimTrailingZeros(y.toFixed(4))}（${y >= 0 ? "上 base-up" : "下 base-down"}）
+- 自检：√(水平² + 垂直²) = ${trimTrailingZeros(Math.hypot(x, y).toFixed(2))} 应等于合棱镜大小 ${trimTrailingZeros(magnitude.toFixed(2))}。
+
+**说明**
+- base-in / base-out 以鼻子为参照，左右眼含义一致；临床 360° 基底角记法左右眼起算不同，使用时请结合是左眼还是右眼。
+- 处方棱镜通常按 0.25Δ 取整书写。
+- 本工具只做棱镜向量换算与科普，不替代验光与处方。`);
+}
+
+// Hofstetter 调节幅度经验公式系数（单位 D，随年龄线性下降）。
+const HOFSTETTER_MIN_BASE = 15;
+const HOFSTETTER_MIN_SLOPE = 0.25;
+const HOFSTETTER_AVG_BASE = 18.5;
+const HOFSTETTER_AVG_SLOPE = 0.3;
+const HOFSTETTER_MAX_BASE = 25;
+const HOFSTETTER_MAX_SLOPE = 0.4;
+// 舒适持续用眼原则：只动用约一半调节力，另一半留作储备。
+const ACCOMMODATION_RESERVE_FRACTION = 0.5;
+const ACCOMMODATION_STEP_D = 0.25;
+
+/** Hofstetter 公式：给定年龄与系数算出调节幅度（D），并封底到 0。 */
+function hofstetterAmplitude(age: number, base: number, slope: number): number {
+  return Math.max(base - slope * age, 0);
+}
+
+/** 由调节力（D）换算眼睛能看清的最近距离（cm）；调节力≤0 时无法看清。 */
+function amplitudeToDistanceCm(amplitudeD: number): number | undefined {
+  return amplitudeD > 0 ? 100 / amplitudeD : undefined;
+}
+
+function formatAccommodationDistance(distanceCm: number | undefined): string {
+  if (distanceCm === undefined) {
+    return "无法看清（调节力已近耗竭）";
+  }
+  return `${trimTrailingZeros(distanceCm.toFixed(1))} cm`;
+}
+
+function handleAccommodationAmplitude(args: ToolArgs): ToolResult {
+  const age = expectNumber(args, "age", { min: 5, max: 120, integer: true });
+  const workingCm = optionalNumber(args, "working_distance_cm", { min: 10, max: 200 });
+
+  const minAmp = hofstetterAmplitude(age, HOFSTETTER_MIN_BASE, HOFSTETTER_MIN_SLOPE);
+  const avgAmp = hofstetterAmplitude(age, HOFSTETTER_AVG_BASE, HOFSTETTER_AVG_SLOPE);
+  const maxAmp = hofstetterAmplitude(age, HOFSTETTER_MAX_BASE, HOFSTETTER_MAX_SLOPE);
+
+  const npaCm = amplitudeToDistanceCm(avgAmp);
+  const comfortReserveD = avgAmp * ACCOMMODATION_RESERVE_FRACTION;
+  const comfortNearestCm = amplitudeToDistanceCm(comfortReserveD);
+
+  const notes: string[] = [];
+
+  if (age < PRESBYOPIA_ONSET_AGE) {
+    notes.push(
+      `${age} 岁调节力通常仍较充足；随年龄增长，平均调节幅度约每年下降 ${trimTrailingZeros(
+        HOFSTETTER_AVG_SLOPE.toFixed(2)
+      )}D，调节近点会逐渐后移，约 40 岁后看近开始费力，即老视（老花）。`
+    );
+  } else {
+    notes.push(
+      `${age} 岁平均调节幅度已降至约 ${formatDiopter(
+        avgAmp
+      )}，调节近点后移到约 ${formatAccommodationDistance(
+        npaCm
+      )}，看近费力属正常老视表现，可用近附加（老花镜 / 渐进）补偿。`
+    );
+  }
+
+  notes.push(
+    `舒适持续用眼一般只动用约一半调节力（另一半留作储备），因此长时间看清的最近距离（约 ${formatAccommodationDistance(
+      comfortNearestCm
+    )}）比生理近点更远；看得清一时，不代表能久看不累。`
+  );
+
+  let demandBlock = "";
+  if (workingCm !== undefined) {
+    const demandD = 100 / workingCm;
+    let status: string;
+    if (demandD <= comfortReserveD + 1e-9) {
+      status = "舒适（调节需求在「一半调节力」的储备之内，可较久用眼）";
+    } else if (demandD <= avgAmp + 1e-9) {
+      status = "偏吃力（动用了一半以上调节力，储备不足，久看易疲劳）";
+    } else {
+      status = "超出平均调节力（这个距离已难以持续看清）";
+    }
+
+    let addLine = "";
+    if (demandD > comfortReserveD + 1e-9) {
+      const rawAdd = demandD - comfortReserveD;
+      const add = Math.round(rawAdd / ACCOMMODATION_STEP_D) * ACCOMMODATION_STEP_D;
+      if (add > 0) {
+        addLine = `\n- 建议近附加（补足储备）：约 **+${trimTrailingZeros(
+          add.toFixed(2)
+        )}D**，让该距离用眼重新留出约一半调节储备（与 reading_add_estimator 的按年龄估算可互相印证）`;
+        notes.push(
+          "该距离下调节储备不足，可考虑在看近时叠加近附加（下加光）；具体度数仍以主觉验光试戴为准。"
+        );
+      }
+    }
+
+    demandBlock = `
+
+**在 ${trimTrailingZeros(workingCm.toFixed(0))} cm 处**
+- 该距离的调节需求：**${formatDiopter(demandD)}**（需求 = 100 ÷ 距离cm）
+- 状态：**${status}**${addLine}`;
+  } else {
+    notes.push(
+      "如需判断某个用眼距离是否舒适、是否需要近附加，请一并提供 working_distance_cm。"
+    );
+  }
+
+  const workingLine =
+    workingCm !== undefined ? `\n- 主要用眼距离：${trimTrailingZeros(workingCm.toFixed(0))} cm` : "";
+
+  return textResult(`## 调节幅度（Amplitude of Accommodation）评估
+
+> 眼睛把焦点从远处调近的最大屈光能力叫「调节力」，随年龄下降。以下用 Hofstetter 经验公式按年龄估算调节幅度：最小 = 15 − 0.25×年龄，平均 = 18.5 − 0.30×年龄，最大 = 25 − 0.40×年龄（单位 D）。调节近点 = 100 ÷ 调节幅度（cm）。仅供科普参考，实际以主觉验光和调节功能检查为准。
+
+**输入**
+- 年龄：${age} 岁${workingLine}
+
+**估算调节幅度**
+- 最小（Hofstetter 下限）：**${formatDiopter(minAmp)}**
+- 平均（预期值）：**${formatDiopter(avgAmp)}**
+- 最大（上限）：**${formatDiopter(maxAmp)}**
+- 调节近点（按平均调节力）：**${formatAccommodationDistance(npaCm)}**
+- 舒适持续用眼最近距离（保留一半调节力）：**${formatAccommodationDistance(comfortNearestCm)}**${demandBlock}
+
+**说明**
+${renderBulletList(notes, "评估完成。")}
+
+**提醒**
+- 调节幅度是双眼看近的生理能力，个体差异较大，Hofstetter 公式只给人群平均趋势。
+- 突然、单眼或快速加重的看近困难，或伴随头痛、复视、视物变形，应先就医排查，而非仅配老花镜。
+- 本工具只做科普参考，不替代验光师 / 医生。`);
+}
+
+const SUNGLASS_ENV_BASE_CATEGORY: Record<string, number> = {
+  indoor_night: 0,
+  overcast: 1,
+  sunny: 2,
+  bright: 3,
+  snow_water: 4,
+};
+
+const SUNGLASS_CATEGORY_VLT: Record<number, string> = {
+  0: "80%–100%",
+  1: "43%–80%",
+  2: "18%–43%",
+  3: "8%–18%",
+  4: "3%–8%",
+};
+
+const SUNGLASS_CATEGORY_LABEL: Record<number, string> = {
+  0: "0 类（近无色 / 极浅）",
+  1: "1 类（浅色）",
+  2: "2 类（中等）",
+  3: "3 类（深色）",
+  4: "4 类（极深）",
+};
+
+const SUNGLASS_CATEGORY_SCENE: Record<number, string> = {
+  0: "室内、夜间、黄昏等几乎无强光的场合（更接近防护 / 装饰片）",
+  1: "阴天、多云、光线较弱的白天",
+  2: "一般晴天、日常户外活动",
+  3: "强烈日照：正午、盛夏、海边与开阔水面 / 水泥地反光",
+  4: "极强光：雪地、冰川、高原、沙漠、开阔水面（透光极低，不可开车佩戴）",
+};
+
+const SUNGLASS_ENV_LABEL: Record<string, string> = {
+  indoor_night: "室内 / 夜间 / 黄昏",
+  overcast: "阴天 / 多云 / 光线较弱的白天",
+  sunny: "普通晴天 / 日常户外",
+  bright: "强烈日照（正午、盛夏、海边城市）",
+  snow_water: "雪地 / 高原 / 水面 / 沙漠（极强反射光）",
+};
+
+function handleSunglassTintGuide(args: ToolArgs): ToolResult {
+  const environment = expectEnum(args, "environment", [
+    "indoor_night",
+    "overcast",
+    "sunny",
+    "bright",
+    "snow_water",
+  ] as const);
+  const sensitivity = optionalEnum(args, "light_sensitivity", ["normal", "high"] as const) ?? "normal";
+  const driving = optionalBoolean(args, "driving") ?? false;
+  const hasPrescription = optionalBoolean(args, "has_prescription") ?? false;
+
+  const baseCategory = SUNGLASS_ENV_BASE_CATEGORY[environment];
+  const nightDriving = driving && environment === "indoor_night";
+  const dayDriving = driving && environment !== "indoor_night";
+
+  const adjustNotes: string[] = [];
+  let category = baseCategory;
+
+  if (sensitivity === "high") {
+    const bumped = Math.min(4, baseCategory + 1);
+    if (bumped !== category) {
+      category = bumped;
+      adjustNotes.push(
+        `因畏光 / 对强光敏感，在环境基准（${SUNGLASS_CATEGORY_LABEL[baseCategory]}）上再调深一档到 ${SUNGLASS_CATEGORY_LABEL[category]}，减少刺眼感。`
+      );
+    } else {
+      adjustNotes.push("已是最深的 4 类，畏光也无需再往上调。");
+    }
+  }
+
+  if (dayDriving && category === 4) {
+    category = 3;
+    adjustNotes.push(
+      "驾驶用途：4 类（极深）镜片透光过低、法规不允许开车佩戴，已改为最深可用于白天驾驶的 3 类。"
+    );
+  }
+
+  if (nightDriving) {
+    category = 0;
+    adjustNotes.push(
+      "夜间 / 昏暗驾驶：只用无色（0 类）或很浅的镜片，切勿戴深色太阳镜；黄色「夜视镜」并不能真正提升夜间安全。"
+    );
+  }
+
+  // 镜片颜色建议
+  const colorRecs: string[] = [];
+  if (nightDriving) {
+    colorRecs.push("夜间驾驶不建议任何深色染色片，选无色片（可加减反射膜降低对向车灯眩光）即可。");
+  } else if (environment === "indoor_night") {
+    colorRecs.push("此环境基本用不到太阳镜色片；若为室内防护 / 装饰，选极浅的浅色片即可。");
+  } else {
+    if (dayDriving) {
+      colorRecs.push("灰色（中性灰）：**首选**，真实还原颜色、不改变红绿灯等信号色，最适合驾驶与日常通用。");
+      colorRecs.push("茶 / 棕色：增强对比与层次感、滤蓝光，看清路面与远处更清晰，多云或强反光下尤佳（轻微偏暖色）。");
+    } else if (environment === "snow_water" || environment === "bright") {
+      colorRecs.push("茶 / 棕色：增强对比、压暗强反光，雪地与水面看清地形更从容。");
+      colorRecs.push("灰色（中性灰）：真实还原颜色、通用耐看，强光下同样适用。");
+    } else if (environment === "overcast") {
+      colorRecs.push("茶 / 棕色或黄 / 琥珀色：在阴天、雾天等低照度下提升对比、让画面更「通透」（黄色会明显偏色，仅适合弱光）。");
+      colorRecs.push("灰色：若只想略微减光又不偏色，浅灰也可。");
+    } else {
+      colorRecs.push("灰色（中性灰）：通用首选，真实还原颜色，日常晴天最省心。");
+      colorRecs.push("茶 / 棕色或墨绿色：想要更强对比或更耐看的色调时可选，墨绿色彩还原也不错。");
+    }
+    colorRecs.push("避免：明亮日照或夜间驾驶时用黄 / 琥珀色（偏色且减光有限）；追求还原真实色彩时避免彩色炫彩膜。");
+  }
+
+  // 偏光建议
+  let polarizedBlock: string;
+  const polarizedWorthIt = !nightDriving && environment !== "indoor_night" && category >= 2;
+  if (nightDriving || environment === "indoor_night") {
+    polarizedBlock =
+      "- 偏光：此环境无需偏光（夜间 / 室内没有强反射眩光，偏光还会让本就暗的画面更暗）。";
+  } else if (polarizedWorthIt) {
+    polarizedBlock =
+      "- 偏光：**建议**。能滤掉水面、雪地、湿滑路面与前车玻璃的反射眩光，看得更清也更省眼力。\n- 偏光注意：会让手机 / 汽车中控 / 仪表等液晶屏变暗甚至看不清；需要频繁看液晶屏者、飞行员慎选；部分挡风玻璃 / 车窗会出现应力彩纹。";
+  } else {
+    polarizedBlock =
+      "- 偏光：可选。光线不算强时偏光收益有限；若常遇水面 / 湿路反光也可以选，但注意它会让液晶屏（手机 / 车机 / 仪表）变暗难看清。";
+  }
+
+  // 变色片与带度数选配
+  let prescriptionBlock = "";
+  if (hasPrescription) {
+    const prescLines: string[] = [
+      "定制带度数太阳镜（染色片，可叠加偏光 / 变色）：户外看得清又护眼，最直接。",
+      "变色片（光致变色，一副室内外通用）：方便，但变色偏慢、夏天高温下变得不够深，且**多数变色片在车内不会变深**（挡风玻璃挡掉了触发变色的紫外线），不适合当驾驶太阳镜。",
+      "磁吸太阳镜夹片 / 偏光套镜：保留原近视镜，户外临时加一层，性价比高、便于收纳。",
+    ];
+    if (category >= 3) {
+      prescLines.push("度数较高时深色染色片的边缘会更明显、更重，可选更高折射率（如 1.67 / 1.74）减薄，参考 lens_thickness_estimator。");
+    }
+    prescriptionBlock = `
+
+**带度数（近视 / 散光 / 老花）选配**
+${renderBulletList(prescLines, "按度数与预算在带度数太阳镜、变色片、磁吸夹片间选择。")}`;
+  }
+
+  // 驾驶合规提示
+  let drivingLegalLine = "";
+  if (dayDriving) {
+    drivingLegalLine =
+      "\n- 白天驾驶：0–3 类均可，**切勿使用 4 类**（透光过低、法规不允许开车佩戴）。";
+  } else if (nightDriving) {
+    drivingLegalLine =
+      "\n- 夜间 / 昏暗驾驶：只用无色（0 类）或很浅的镜片，切勿戴深色太阳镜。";
+  }
+
+  const adjustBlock =
+    adjustNotes.length > 0
+      ? `\n\n**推荐分类的调整**\n${renderBulletList(adjustNotes, "无额外调整。")}`
+      : "";
+
+  return textResult(`## 太阳镜镜片色号（透光率）与颜色选择
+
+> 太阳镜镜片按可见光透过率（VLT）分为 ISO 12312-1 的 0–4 类，数字越大越深、透光越低。分类只表示「有多暗」，**不代表防紫外线**——任何太阳镜都应达到 UV400，否则镜片一暗、瞳孔放大，进入眼内的紫外线反而更多。以下为选购科普，不替代验光与专业验配。
+
+**输入**
+- 用光环境：${SUNGLASS_ENV_LABEL[environment]}
+- 光敏感度：${sensitivity === "high" ? "畏光 / 敏感" : "一般"}
+- 用途：${driving ? (nightDriving ? "夜间 / 昏暗驾驶" : "白天驾驶") : "非驾驶（日常 / 户外）"}
+- 是否带度数：${hasPrescription ? "需要带度数" : "无需度数（平光）"}
+
+**推荐镜片分类（色号）**
+- 分类：**${SUNGLASS_CATEGORY_LABEL[category]}**
+- 可见光透过率（VLT）：**${SUNGLASS_CATEGORY_VLT[category]}**
+- 适用场景：${SUNGLASS_CATEGORY_SCENE[category]}${adjustBlock}
+
+**镜片颜色建议**
+${renderBulletList(colorRecs, "按环境与个人喜好选择镜片颜色。")}
+
+**偏光与功能**
+${polarizedBlock}${drivingLegalLine}${prescriptionBlock}
+
+**提醒**
+- 认准 **UV400**（阻隔 400nm 以下紫外线）是硬指标，比颜色深浅更重要；廉价「墨镜」若不防紫外线，戴了比不戴更伤眼。
+- 4 类镜片透光极低，仅用于雪山 / 高原 / 冰川等极端强光，**任何时候都不能开车佩戴**。
+- 儿童、白内障术后、正在做眼病治疗者的太阳镜选择请遵医嘱。
+- 本工具只做选购科普，不替代验光师 / 医生与实际试戴。`);
+}
+
+/** 镜片基材属性：折射率、阿贝数（越高色散越小）、抗冲击评价与一句话定位。 */
+type LensMaterialKey = "cr39" | "trivex" | "pc" | "hi160" | "hi167" | "hi174" | "glass";
+const LENS_MATERIALS: Record<
+  LensMaterialKey,
+  { name: string; index: string; abbe: number; impact: string; blurb: string }
+> = {
+  cr39: {
+    name: "CR-39 普通树脂",
+    index: "1.50",
+    abbe: 58,
+    impact: "一般",
+    blurb: "光学清晰、阿贝数高、便宜；但同度数下更厚更不耐磨，适合低度数。",
+  },
+  trivex: {
+    name: "Trivex",
+    index: "1.53",
+    abbe: 45,
+    impact: "极高（抗冲击）",
+    blurb: "轻、抗冲击强、阿贝数较高、自带 UV；适合无框 / 运动 / 儿童，价格偏高。",
+  },
+  pc: {
+    name: "PC 聚碳酸酯",
+    index: "1.59",
+    abbe: 30,
+    impact: "极高（抗冲击）",
+    blurb: "抗冲击最强、轻、自带 UV、性价比高；阿贝数低、边缘色散明显，是安全 / 儿童 / 运动镜片首选。",
+  },
+  hi160: {
+    name: "1.60 高折射树脂",
+    index: "1.60",
+    abbe: 42,
+    impact: "中等",
+    blurb: "减薄与性价比的通用甜点，适合中度数，阿贝数尚可。",
+  },
+  hi167: {
+    name: "1.67 高折射树脂",
+    index: "1.67",
+    abbe: 32,
+    impact: "偏低（较脆）",
+    blurb: "中高度数明显减薄；阿贝数偏低、材料偏脆。",
+  },
+  hi174: {
+    name: "1.74 高折射树脂",
+    index: "1.74",
+    abbe: 33,
+    impact: "低（脆）",
+    blurb: "最薄，适合高度数配小框；材料脆、阿贝数低、价格高。",
+  },
+  glass: {
+    name: "玻璃",
+    index: "1.52+",
+    abbe: 59,
+    impact: "极低（易碎）",
+    blurb: "光学最佳、最耐磨；但重且易碎裂，现已基本被树脂取代。",
+  },
+};
+
+const LENS_MATERIAL_FRAME_TYPES = ["full_rim", "half_rim", "rimless"] as const;
+const LENS_MATERIAL_USAGES = ["general", "kids", "sports", "safety", "driving"] as const;
+const LENS_MATERIAL_PRIORITIES = ["balanced", "thinnest", "clarity", "lightweight"] as const;
+
+const LENS_MATERIAL_FRAME_LABEL: Record<(typeof LENS_MATERIAL_FRAME_TYPES)[number], string> = {
+  full_rim: "全框",
+  half_rim: "半框（尼龙丝）",
+  rimless: "无框（钻孔）",
+};
+const LENS_MATERIAL_USAGE_LABEL: Record<(typeof LENS_MATERIAL_USAGES)[number], string> = {
+  general: "日常",
+  kids: "儿童",
+  sports: "运动",
+  safety: "安全防护",
+  driving: "以驾驶为主",
+};
+const LENS_MATERIAL_PRIORITY_LABEL: Record<(typeof LENS_MATERIAL_PRIORITIES)[number], string> = {
+  balanced: "均衡",
+  thinnest: "尽量薄",
+  clarity: "尽量清晰（看重阿贝数）",
+  lightweight: "尽量轻",
+};
+
+/** 低阿贝数（≤35）材料在夜间强光下边缘色散 / 光晕更明显。 */
+const LOW_ABBE_MATERIALS: LensMaterialKey[] = ["pc", "hi167", "hi174"];
+
+function materialLine(key: LensMaterialKey): string {
+  const m = LENS_MATERIALS[key];
+  return `${m.name}（折射率 ${m.index}、阿贝数 ${m.abbe}、抗冲击 ${m.impact}）`;
+}
+
+type MaterialDecision = {
+  primary: LensMaterialKey;
+  reason: string;
+  alternatives: LensMaterialKey[];
+  avoid: Array<{ key: LensMaterialKey; reason: string }>;
+  notes: string[];
+};
+
+function decideLensMaterial(
+  power: number,
+  frameType: (typeof LENS_MATERIAL_FRAME_TYPES)[number],
+  usage: (typeof LENS_MATERIAL_USAGES)[number],
+  priority: (typeof LENS_MATERIAL_PRIORITIES)[number]
+): MaterialDecision {
+  const safety = usage === "kids" || usage === "sports" || usage === "safety";
+  const notes: string[] = [];
+
+  let decision: MaterialDecision;
+
+  if (safety) {
+    let primary: LensMaterialKey;
+    let reason: string;
+    let alternatives: LensMaterialKey[];
+    if (priority === "clarity") {
+      primary = "trivex";
+      alternatives = ["pc"];
+      reason =
+        "儿童 / 运动 / 安全场景必须抗冲击；Trivex 阿贝数(45)明显高于 PC(30)，边缘色散更少、光学更清晰。";
+    } else if (priority === "lightweight") {
+      primary = "trivex";
+      alternatives = ["pc"];
+      reason = "抗冲击优先；Trivex 密度更低更轻，阿贝数也高于 PC。";
+    } else {
+      primary = "pc";
+      alternatives = ["trivex"];
+      reason =
+        "PC 抗冲击最强、轻、自带 UV、性价比高，是儿童 / 运动 / 安全镜片的默认之选；预算充足或看重清晰度可升级 Trivex。";
+    }
+    decision = {
+      primary,
+      reason,
+      alternatives,
+      avoid: [
+        { key: "glass", reason: "易碎裂溅入眼睛，安全 / 运动 / 儿童场景绝对禁用。" },
+        { key: "cr39", reason: "抗冲击性不足，不适合作为安全 / 运动 / 儿童镜片。" },
+        { key: "hi167", reason: "材料偏脆，抗冲击不如 PC / Trivex，安全场景不建议。" },
+        { key: "hi174", reason: "材料最脆，安全场景不建议。" },
+      ],
+      notes,
+    };
+    if (power >= 5) {
+      notes.push(
+        "PC / Trivex 折射率上限约 1.59 / 1.53，高度数下镜片会偏厚，建议缩小镜框、选全框控制厚度；安全场景仍以抗冲击优先，不要为减薄改用较脆的高折射片。"
+      );
+    }
+    return decision;
+  }
+
+  if (frameType === "rimless") {
+    const alternatives: LensMaterialKey[] = power >= 4 ? ["pc", "hi160"] : ["pc"];
+    decision = {
+      primary: "trivex",
+      reason:
+        "无框镜片靠螺丝在镜片上钻孔固定，需要韧性好、不易在孔位开裂的材料；Trivex 抗冲击、轻，且阿贝数(45)优于 PC，是无框首选。",
+      alternatives,
+      avoid: [
+        { key: "glass", reason: "无框需在镜片上钻孔，玻璃极易在钻孔处崩裂。" },
+        { key: "hi174", reason: "1.74 偏脆，无框钻孔与装拆时易崩边，不建议。" },
+      ],
+      notes,
+    };
+    if (power >= 4) {
+      notes.push(
+        "度数偏高时 Trivex / PC（≤1.59）会略厚；若更看重减薄，可退一步选 1.60（韧性尚可）并接受一定风险，仍应避开 1.67 / 1.74 等更脆材料，钻孔处务必留足余量。"
+      );
+    }
+    return decision;
+  }
+
+  // 全框 / 半框：按度数为主，结合偏好
+  let primary: LensMaterialKey;
+  let reason: string;
+  let alternatives: LensMaterialKey[];
+  if (power < 2) {
+    if (priority === "clarity") {
+      primary = "cr39";
+      alternatives = ["trivex"];
+      reason = "度数不高，CR-39 阿贝数最高(58)、光学清晰，无需为减薄多花钱。";
+    } else if (priority === "lightweight") {
+      primary = "trivex";
+      alternatives = ["hi160", "cr39"];
+      reason = "度数不高时厚度不是问题，Trivex 更轻且抗冲击；也可用薄一点的 1.60。";
+    } else {
+      primary = "cr39";
+      alternatives = ["hi160"];
+      reason = "度数不高，CR-39 清晰便宜、性价比最高，普通树脂即可。";
+    }
+  } else if (power < 4) {
+    primary = "hi160";
+    alternatives = priority === "clarity" ? ["cr39", "trivex"] : ["cr39", "trivex"];
+    reason = "中度数：1.60 是减薄与性价比的通用甜点，阿贝数(42)也不错。";
+  } else if (power < 6) {
+    primary = "hi167";
+    alternatives = ["hi160"];
+    reason = "中高度数：1.67 明显减薄，兼顾厚度与重量。";
+  } else {
+    primary = "hi174";
+    alternatives = ["hi167"];
+    reason = "高度数：1.74 最薄，配合小而贴合的镜框控制边缘厚度。";
+  }
+
+  const avoid: Array<{ key: LensMaterialKey; reason: string }> = [];
+  if (frameType === "half_rim") {
+    avoid.push({ key: "glass", reason: "半框靠尼龙丝嵌入镜片沟槽，玻璃在开槽处易崩边。" });
+    if (primary === "hi174") {
+      notes.push("半框开槽时 1.74 较脆，务必由熟练技师操作，或退一步选 1.67 更稳妥。");
+    }
+  } else {
+    avoid.push({ key: "glass", reason: "玻璃重且易碎，现已基本被树脂取代，仅极端耐磨需求才考虑。" });
+  }
+
+  decision = { primary, reason, alternatives, avoid, notes };
+
+  // 看重清晰度但落到低阿贝数材料时的提醒
+  if (priority === "clarity" && LOW_ABBE_MATERIALS.includes(primary)) {
+    notes.push(
+      `你更看重清晰度：高折射率片阿贝数偏低（如 1.67≈32、1.74≈33），高度数时边缘可能有轻微色散；在厚度可接受的前提下，尽量选阿贝数更高的材料（如 1.60≈42 或 Trivex≈45）。`
+    );
+  }
+
+  // 夜间驾驶对低阿贝数敏感
+  if (usage === "driving" && LOW_ABBE_MATERIALS.includes(primary)) {
+    notes.push(
+      "夜间驾驶：低阿贝数材料（PC / 1.67 / 1.74）在对向车灯、路灯下边缘色散 / 光晕更明显；若以夜间驾驶为主且厚度允许，优先阿贝数更高的材料，并配好减反射膜。"
+    );
+  }
+
+  return decision;
+}
+
+function handleLensMaterialAdvisor(args: ToolArgs): ToolResult {
+  const sph = expectNumber(args, "sph", { min: -20, max: 12 });
+  const cyl = optionalNumber(args, "cyl", { min: -8, max: 8 }) ?? 0;
+  const frameType = optionalEnum(args, "frame_type", LENS_MATERIAL_FRAME_TYPES) ?? "full_rim";
+  const usage = optionalEnum(args, "usage", LENS_MATERIAL_USAGES) ?? "general";
+  const priority = optionalEnum(args, "priority", LENS_MATERIAL_PRIORITIES) ?? "balanced";
+
+  const power = Math.max(Math.abs(sph), Math.abs(sph + cyl));
+  const decision = decideLensMaterial(power, frameType, usage, priority);
+  const primary = LENS_MATERIALS[decision.primary];
+
+  const altBlock =
+    decision.alternatives.length === 0
+      ? "- 无特别备选，首选已覆盖需求。"
+      : decision.alternatives
+          .map((key) => `- ${materialLine(key)}：${LENS_MATERIALS[key].blurb}`)
+          .join("\n");
+
+  const avoidBlock =
+    decision.avoid.length === 0
+      ? "- 无明显禁忌材料。"
+      : decision.avoid.map(({ key, reason }) => `- ${LENS_MATERIALS[key].name}：${reason}`).join("\n");
+
+  const notesBlock =
+    decision.notes.length === 0 ? "" : `\n\n**场景提醒**\n${renderBulletList(decision.notes, "")}`;
+
+  return textResult(`## 镜片材料（基材）选择顾问
+
+> 镜片材料决定「多厚、多重、多抗摔、边缘色散明显不明显」。折射率越高越薄，但阿贝数（衡量色散，越高越好）往往越低、材料也可能更脆。PC 与 Trivex 抗冲击最好且自带 UV，是儿童 / 运动 / 安全场景的必选。以下为选购科普，最终以验光师与实际试戴为准。
+
+**输入参数**
+- 球镜：${formatSignedDiopter(sph)}
+- 柱镜：${cyl === 0 ? "无明显散光" : formatSignedDiopter(cyl)}
+- 参考功率（最大子午线）：${formatDiopter(power)}
+- 镜框类型：${LENS_MATERIAL_FRAME_LABEL[frameType]}
+- 使用场景：${LENS_MATERIAL_USAGE_LABEL[usage]}
+- 取舍偏好：${LENS_MATERIAL_PRIORITY_LABEL[priority]}
+
+**推荐材料**
+- 首选：**${materialLine(decision.primary)}**
+- 原因：${decision.reason}
+
+**备选**
+${altBlock}
+
+**不建议**
+${avoidBlock}${notesBlock}
+
+**通用提醒**
+- PC 与 Trivex 本身即阻隔紫外线，无需额外加 UV 镀膜；但耐磨性一般，建议加硬膜。
+- 材料只决定基材属性；防蓝光、变色、偏振、减反射等是镀膜/功能，另见 lens_coating_advisor；想量化不同折射率的厚度差异见 lens_thickness_estimator。
+- 高折射率减薄的同时密度通常更高，减重幅度往往小于减薄幅度，别只盯折射率。
+- 本工具只做选购科普，不替代验光师与实际试戴。`);
+}
+
+// |SE| 小于此阈值视为正视（接近平光）。
+const CLEAR_VISION_EMMETROPIA_D = 0.25;
+
+/** 把距离(cm)渲染为易读文本：≥100cm 时同时给出米，保留一位小数去尾零。 */
+function formatRangeDistance(distanceCm: number): string {
+  const cm = `${trimTrailingZeros(distanceCm.toFixed(1))} cm`;
+  if (distanceCm >= 100) {
+    const m = trimTrailingZeros((distanceCm / 100).toFixed(2));
+    return `${m} m（${cm}）`;
+  }
+  return cm;
+}
+
+function handleClearVisionRange(args: ToolArgs): ToolResult {
+  const sph = expectNumber(args, "sph", { min: -30, max: 30 });
+  const cyl = optionalNumber(args, "cyl", { min: -10, max: 10 }) ?? 0;
+  const age = optionalNumber(args, "age", { min: 5, max: 120, integer: true });
+
+  const se = sph + cyl / 2;
+  const hasCyl = cyl !== 0;
+  const amp =
+    age !== undefined ? hofstetterAmplitude(age, HOFSTETTER_AVG_BASE, HOFSTETTER_AVG_SLOPE) : undefined;
+
+  let stateLabel: string;
+  const rangeLines: string[] = [];
+  const notes: string[] = [];
+
+  if (se <= -CLEAR_VISION_EMMETROPIA_D) {
+    // 近视：有真实远点。
+    const m = Math.abs(se);
+    const farPointCm = 100 / m;
+    stateLabel = `${severityLabel(m)}近视（SE ${formatSignedDiopter(se)}）`;
+    rangeLines.push(
+      `远点（能看清的最远处）：**${formatRangeDistance(farPointCm)}**；再远就模糊，看远需要戴镜矫正。`
+    );
+    if (amp !== undefined) {
+      const nearPointCm = 100 / (m + amp);
+      rangeLines.push(
+        `近点（能看清的最近处）：**${formatRangeDistance(nearPointCm)}**（动用全部约 ${formatDiopter(amp)} 调节力）。`
+      );
+      rangeLines.push(
+        `清晰范围：约 **${formatRangeDistance(nearPointCm)} ～ ${formatRangeDistance(farPointCm)}**，这段之内裸眼相对清楚，之外模糊。`
+      );
+    } else {
+      rangeLines.push("近点（最近清晰处）取决于调节力：填入 age 可估算最近清晰距离。");
+    }
+    notes.push(
+      "裸眼在远点以内都相对清楚——这正是「近视的人摘镜看手机 / 看书反而清楚」的原因：近距离恰好落在清晰范围内，看远才需要戴镜。"
+    );
+    notes.push(
+      `近视度数越高远点越近（100 ÷ 度数）：${formatSignedDiopter(se)} 对应远点约 ${formatRangeDistance(farPointCm)}，裸眼能看清的范围越小、越贴近眼前。`
+    );
+    if (amp !== undefined) {
+      notes.push("随年龄增长调节力下降，近点会外移（摘镜能看清的最近处变远）；但远点只由度数决定，不随年龄变化。");
+    }
+  } else if (se >= CLEAR_VISION_EMMETROPIA_D) {
+    // 远视：无真实远点，需动用调节力。
+    const h = se;
+    stateLabel = `${severityLabel(h)}远视（SE ${formatSignedDiopter(se)}）`;
+    if (amp === undefined) {
+      rangeLines.push(
+        `远视没有近视那样的真实远点：焦点落在视网膜之后，裸眼需先动用约 ${formatDiopter(h)} 的调节力才能看清远处。能否看清、以及最近清晰距离都取决于调节力（年龄）——请填入 age 做估算。`
+      );
+      notes.push("年轻人调节力充足时可代偿远视、看似正常，但长时间用眼易疲劳、头痛。");
+      notes.push("隐性远视常在年轻时被调节代偿而漏诊，建议散瞳验光确认真实度数。");
+    } else if (amp >= h) {
+      const residual = amp - h;
+      rangeLines.push(
+        `看远：动用约 ${formatDiopter(h)} 调节力后**可看清远处**（调节代偿）。`
+      );
+      if (residual > 0) {
+        const nearPointCm = 100 / residual;
+        rangeLines.push(
+          `近点（能看清的最近处）：**${formatRangeDistance(nearPointCm)}**（代偿远视后剩余约 ${formatDiopter(residual)} 调节力）。`
+        );
+        rangeLines.push(
+          `清晰范围：约 **${formatRangeDistance(nearPointCm)} 以外**，但全程都在动用调节、容易疲劳。`
+        );
+      } else {
+        rangeLines.push("近点：调节力刚够看清远处，几乎没有余量看近，看近会很吃力。");
+      }
+      notes.push("裸眼看远、看近都要持续动用调节力，容易视疲劳、看久头痛；配远视矫正镜能解放调节、更省力。");
+      notes.push("随年龄调节力下降，原本能代偿的远视会逐渐显现（看远也开始模糊），远视者通常比近视者更早需要戴镜。");
+    } else {
+      rangeLines.push(
+        `当前按年龄估算调节力约 ${formatDiopter(amp)}，不足以克服 ${formatDiopter(h)} 的远视：**裸眼看远也难以看清**，看近更吃力。`
+      );
+      rangeLines.push("建议及时到专业机构验光矫正。");
+      notes.push("调节力不足以代偿远视时，远近都可能模糊，应尽快验光配镜，不要硬撑。");
+    }
+  } else {
+    // 正视：远处清晰到无穷远。
+    stateLabel = `正视 / 接近平光（SE ${formatSignedDiopter(se)}）`;
+    rangeLines.push("看远：**清晰到无穷远**（正视眼裸眼远处清楚）。");
+    if (amp !== undefined && amp > 0) {
+      const nearPointCm = 100 / amp;
+      rangeLines.push(`近点（能看清的最近处）：**${formatRangeDistance(nearPointCm)}**（动用全部约 ${formatDiopter(amp)} 调节力）。`);
+      rangeLines.push(`清晰范围：约 **${formatRangeDistance(nearPointCm)} 以外全部清晰**。`);
+    } else if (amp !== undefined) {
+      rangeLines.push("近点：调节力已近耗竭，裸眼看近困难（老视 / 老花表现）。");
+    } else {
+      rangeLines.push("近点（最近清晰处）取决于调节力：填入 age 可估算最近清晰距离。");
+    }
+    notes.push("正视眼裸眼看远清楚；看近靠调节力，随年龄下降（约 40 岁后）近点外移，即老视（老花）。");
+  }
+
+  if (hasCyl) {
+    notes.push(
+      "含散光：这里按等效球镜 SE = SPH + CYL/2 做粗略估算；散光会让各方向清晰度不一致，实际清晰范围会打折扣。"
+    );
+  }
+
+  const inputLines = [`- 球镜：${formatSignedDiopter(sph)}${hasCyl ? ` / 柱镜 ${formatSignedDiopter(cyl)}` : ""}`];
+  if (hasCyl) {
+    inputLines.push(`- 等效球镜（SE = SPH + CYL/2）：**${formatSignedDiopter(se)}**`);
+  }
+  inputLines.push(`- 屈光状态：**${stateLabel}**`);
+  if (amp !== undefined) {
+    inputLines.push(
+      `- 年龄：${age} 岁 → 估算调节幅度约 ${formatDiopter(amp)}（Hofstetter 平均，与 accommodation_amplitude 一致）`
+    );
+  }
+
+  return textResult(`## 裸眼清晰视界估算（远点 / 近点）
+
+> 不戴镜时，眼睛只有在「远点 ～ 近点」这段距离内能看清。近视的远点 = 100 ÷ 近视度数（cm），远点以外看远模糊，却能看清很近处；远视要靠调节力把焦点拉回。以下按等效球镜做理想化估算，仅供科普，实际以验光为准。
+
+**输入（裸眼）**
+${inputLines.join("\n")}
+
+**裸眼清晰范围**
+${renderBulletList(rangeLines, "无")}
+
+**说明**
+${renderBulletList(notes, "无")}
+
+**提醒**
+- 这是基于等效球镜的理想化估算，散光、瞳孔大小、个体调节差异都会影响实际清晰度与范围。
+- 「能看清」不等于「久看不累」：长时间用眼只宜动用约一半调节力，可配合 accommodation_amplitude 评估舒适用眼距离。
+- 本工具只做科普参考，不替代验光师 / 医生。`);
+}
+
+function optionalEnumNumber(
+  args: ToolArgs,
+  key: string,
+  allowed: readonly number[]
+): number | undefined {
+  if (!(key in args) || args[key] === undefined) {
+    return undefined;
+  }
+  const value = expectNumber(args, key);
+  if (!allowed.includes(value)) {
+    throw new Error(`参数 ${key} 必须是以下值之一：${allowed.join(", ")}`);
+  }
+  return value;
 }
 
 function ensureObject(value: unknown): ToolArgs {
